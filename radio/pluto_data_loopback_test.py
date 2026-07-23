@@ -30,6 +30,16 @@ mod/demod hier blocks bundle pulse shaping and clock recovery that are known
 to work together — the right tool for "prove data flows". The block-by-block
 BPSK/ BER-curve modem is milestone B2 and gets its own treatment.
 
+DC-offset design (added after run 1 failed, 2026-07-23): the first hardware
+run put the GMSK signal at baseband center and got bursty BER 1.8e-1, while
+the identical chain back-to-back in software is error-free — the corruption
+is physical: on a zero-IF shared-LO loopback, the RX LO leakage and the
+AD936x's adaptive DC-correction loops sit exactly mid-signal. Fix: transmit
+digitally shifted +``--offset`` (rotator; rotation preserves the constant
+envelope so RF levels are unchanged) and translate back down on RX with a
+frequency-xlating low-pass that also rejects the leakage. Same trick the
+tone test exploited implicitly by living at +100 kHz.
+
 Quiet state: TX attenuation slammed to max (89.75 dB) on every exit path.
 
 Usage (requires explicit flag):
@@ -125,7 +135,9 @@ def make_tx_sink(uri: str, freq: float, rate: float, atten: float) -> object:
     """
     from gnuradio import iio
 
-    snk = iio.fmcomms2_sink_fc32(uri, [True, True], 0x8000, False)
+    snk = iio.fmcomms2_sink_fc32(
+        uri, [True, True], 0x10000, False
+    )  # bigger buffer: underrun margin
     snk.set_len_tag_key("")
     snk.set_frequency(int(freq))
     snk.set_samplerate(int(rate))
@@ -178,7 +190,16 @@ def main() -> int:
     parser.add_argument("--uri", default=None, help="IIO URI (default: auto, else ip:192.168.2.1)")
     parser.add_argument("--freq", type=float, default=915e6, help="LO frequency, TX and RX [Hz]")
     parser.add_argument("--rate", type=float, default=2.084e6, help="sample rate [Sa/s]")
-    parser.add_argument("--sps", type=int, default=4, help="samples per symbol (GMSK)")
+    parser.add_argument("--sps", type=int, default=8, help="samples per symbol (GMSK)")
+    parser.add_argument(
+        "--offset",
+        type=float,
+        default=250e3,
+        help="digital offset from LO [Hz] (keeps signal off DC)",
+    )
+    parser.add_argument(
+        "--dump", default=None, help="on analysis FAIL, save iq+bits to this .npz path"
+    )
     parser.add_argument(
         "--amplitude", type=float, default=0.5, help="baseband amplitude, 0..1 full scale"
     )
@@ -204,8 +225,12 @@ def main() -> int:
 
     # ---- stage 1: imports -------------------------------------------------
     try:
+        import math
+
         import numpy as np
         from gnuradio import blocks, digital, gr
+        from gnuradio import filter as gr_filter
+        from gnuradio.filter import firdes
     except Exception as exc:  # noqa: BLE001 — report any import failure as stage 1
         eprint("FAIL [1] import gnuradio/numpy:", exc)
         return 2
@@ -217,6 +242,7 @@ def main() -> int:
     baud = args.rate / args.sps
     print(
         f"[..] 2  uri={uri}  LO={args.freq / 1e6:.3f} MHz  "
+        f"signal at LO{args.offset / 1e3:+.0f} kHz  "
         f"rate={args.rate / 1e6:.3f} MSa/s  GMSK sps={args.sps} "
         f"({baud / 1e3:.1f} kbaud)  frame={len(frame)} B  "
         f"tx_atten={args.tx_atten:g} dB  rx_gain={args.rx_gain:g} dB"
@@ -227,21 +253,30 @@ def main() -> int:
         """Bytes -> GMSK mod -> TX; RX -> GMSK demod -> bits (plus raw IQ tap)."""
 
         def __init__(self) -> None:
-            """Build both chains on one Pluto (TX transmits framed data)."""
+            """Build both chains on one Pluto (TX transmits framed data).
+
+            The modulated signal is rotated up by ``--offset`` before the sink
+            (rotation preserves the constant envelope) and translated back down
+            on RX by a frequency-xlating low-pass, so the signal never sits on
+            the zero-IF DC hole (RX LO leakage + AD936x DC-correction loops).
+            """
             gr.top_block.__init__(self, "pluto_data_loopback")
             data = blocks.vector_source_b(list(frame), repeat=True)
             mod = digital.gmsk_mod(samples_per_symbol=args.sps, bt=0.35)
             scale = blocks.multiply_const_cc(args.amplitude)
+            up = blocks.rotator_cc(2.0 * math.pi * args.offset / args.rate)
             self.tx = make_tx_sink(uri, args.freq, args.rate, args.tx_atten)
-            self.connect(data, mod, scale, self.tx)
+            self.connect(data, mod, scale, up, self.tx)
 
             src = make_rx_source(uri, args.freq, args.rate, args.rx_gain)
             skip = blocks.skiphead(gr.sizeof_gr_complex, args.settle)
             head = blocks.head(gr.sizeof_gr_complex, args.nsamples)
+            taps = firdes.low_pass(1.0, args.rate, 0.75 * baud, 0.25 * baud)
+            down = gr_filter.freq_xlating_fir_filter_ccf(1, taps, args.offset, args.rate)
             demod = digital.gmsk_demod(samples_per_symbol=args.sps)
             self.iq_sink = blocks.vector_sink_c()
             self.bit_sink = blocks.vector_sink_b()
-            self.connect(src, skip, head, demod, self.bit_sink)
+            self.connect(src, skip, head, down, demod, self.bit_sink)
             self.connect(head, self.iq_sink)
 
     try:
@@ -334,6 +369,9 @@ def main() -> int:
     if failures:
         for f in failures:
             eprint("FAIL [4]", f)
+        if args.dump:
+            np.savez(args.dump, iq=iq, bits=bits)
+            eprint(f"post-mortem capture saved to {args.dump}")
         return 6
 
     print("PASS: real data framed, transmitted, received, and decoded through")
