@@ -32,7 +32,13 @@ repo + quality gates live.
 - **P1 partial.** Flat-sat Pluto enumerates over USB (`usb:1.4.5`) and IP
   (`192.168.2.1` / `pluto.local`); fw v0.37; driver already reports
   `ad9361-phy,model: ad9364` (extended-range unlock effectively present).
-  RX-only smoke test written (`radio/pluto_smoke_test.py`), pending first run.
+  Physical state: TX→30 dB pads→RX looped on the flat-sat unit, on the Jetson.
+- **Smoke test written, not yet run.** `radio/pluto_smoke_test.py` (RX-only,
+  never transmits) committed and awaiting Trevor's inspection + go-ahead.
+  Caveat: the `fmcomms2_source_fc32` positional-arg order is written for
+  gr-iio 3.10.1.1 but unverified on-device; a mismatch fails cleanly at
+  stage 2 with a TypeError and prints the real signature (no RF either way).
+- **Repo restructured + plans merged** (this document) — pushed to GitHub.
 
 ### Decision log
 
@@ -45,11 +51,21 @@ repo + quality gates live.
 
 ### Next up
 
-- Run RX-only Pluto smoke test → then, with explicit go-ahead and 30 dB pads
-  confirmed inline, first TX: single-Pluto loopback tone/BPSK (P3 precursor).
-- N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
-  CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
-- N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+1. Trevor inspects `radio/pluto_smoke_test.py` → run it (RX-only; expected
+   result with TX silent: noise floor, no dominant tone).
+2. With explicit go-ahead and 30 dB pads confirmed inline: first TX —
+   single-Pluto loopback tone/BPSK, as a separate loudly-labeled script
+   (P3 precursor).
+3. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
+   CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
+   Add to jetson-setup.sh with `torch.cuda.is_available()` gate.
+4. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+
+Operational notes for working sessions: Claude Code runs as `trevor` directly
+on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
+nvpmodel, kernel work) are run by Trevor. Workflow convention: scripts get
+written to the repo for inspection first, run only after go-ahead; anything
+that transmits requires explicit per-instance approval.
 
 ---
 
