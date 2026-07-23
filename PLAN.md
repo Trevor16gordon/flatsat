@@ -33,15 +33,17 @@ repo + quality gates live.
   (`192.168.2.1` / `pluto.local`); fw v0.37; driver already reports
   `ad9361-phy,model: ad9364` (extended-range unlock effectively present).
   Physical state: TX→30 dB pads→RX looped on the flat-sat unit, on the Jetson.
-- **Smoke test written, not yet run.** `radio/pluto_smoke_test.py` (RX-only,
-  never transmits) committed and awaiting Trevor's inspection + go-ahead.
-  Former caveat resolved 2026-07-23: the on-device binding was introspected
-  (import-only, no IIO context opened) and the script rewritten to the
-  verified in-tree gr-iio 3.10 API — `fmcomms2_source_fc32(uri, ch_en,
-  buffer_size)` + setters; no bandwidth setter exists, RF filter follows
-  sample rate via `set_filter_params("Auto", ...)`. `iio.get_pluto_uri()`
-  confirmed present for auto-detect. TypeError fallback at stage 2 retained
-  as a safety net.
+- **RX smoke test PASSED (2026-07-23).** `radio/pluto_smoke_test.py` (RX-only,
+  never transmits) run with Trevor's go-ahead after the constructor was
+  rewritten to the verified in-tree gr-iio 3.10 API (introspected on-device:
+  `fmcomms2_source_fc32(uri, ch_en, buffer_size)` + setters; no bandwidth
+  setter — RF filter follows sample rate). Result at 915 MHz / 2.084 MSa/s /
+  40 dB gain, URI auto-detected `usb:1.4.5`: 262,144 IQ samples captured;
+  mean power −65.7 dBFS, peak |amp| 0.002 (no saturation), DC offset ~0
+  (rfdc/bbdc working), dominant FFT bin at DC (residual LO leakage — normal
+  for zero-IF with no signal present). Clean noise floor, no dominant tone
+  ⇒ expected result with TX silent. Receive path confirmed alive. Benign
+  first-run `vmcircbuf` factory warnings from GNU Radio; ignorable.
 - **Repo restructured + plans merged** (this document) — pushed to GitHub.
 
 ### Decision log
@@ -55,16 +57,13 @@ repo + quality gates live.
 
 ### Next up
 
-1. Trevor inspects `radio/pluto_smoke_test.py` (now on the verified gr-iio
-   API) → run it (RX-only; expected result with TX silent: noise floor, no
-   dominant tone).
-2. With explicit go-ahead and 30 dB pads confirmed inline: first TX —
+1. With explicit go-ahead and 30 dB pads confirmed inline: first TX —
    single-Pluto loopback tone/BPSK, as a separate loudly-labeled script
-   (P3 precursor).
-3. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
+   (P3 precursor). Script to be written for inspection first.
+2. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
    CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
    Add to jetson-setup.sh with `torch.cuda.is_available()` gate.
-4. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+3. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
