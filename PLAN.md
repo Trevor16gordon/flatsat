@@ -1,173 +1,464 @@
-# Project Plan — Flat-Sat + Adaptive ML Radio
+# Flat-Sat Software Architecture & Development Plan
 
-Working plan capturing the hardware decisions and two-track structure settled in
-planning. Two independent but hardware-sharing tracks run off one compute node
-and two radios.
+v1.1 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status — updated 2026-07-23**
+**Status: bring-up in progress.** N1 complete · N2 radio-half complete · P1
+partially complete (flat-sat Pluto enumerated; firmware update deferred) ·
+repo + quality gates live.
 
-## Done
+---
 
-- **N1 nearly complete.** JetPack 6.2.1 flashed to microSD (board firmware was
-  already 36.4.3, so no JetPack 5.1.3 firmware detour was needed). Headless
-  oem-config over USB-C serial (`screen /dev/cu.usbmodem* 115200`), WiFi via
-  `nmcli` post-install (installer's WiFi tool failed — skip it via the
-  Ethernet-DHCP-timeout trick), `avahi-daemon` → `ssh trevor@jetson.local`, jtop
-  installed. Hostname: `jetson`.
-- **Storage upgrade complete.** 500 GB NVMe (Fanxiang S690Q) installed in the M.2
-  slot; rootfs migrated on-device (parted GPT + single ext4 partition → rsync of
-  `/` → `root=/dev/nvme0n1p1` in `/boot/extlinux/extlinux.conf`). `/` now on NVMe;
-  SD card retained as rescue boot (flip `root=` back to `mmcblk0p1` to recover).
-- **Reproducibility.** `jetson-setup.sh` — idempotent bring-up script (apt
-  updates, WiFi via env vars, jtop + poetry pinned, pipx, dpkg/pip/kernel
-  manifest dumps to `setup-manifests/`). Full reset path: reflash SD ≈ 1 hr,
-  mostly unattended. Convention: system Python untouched; project venvs;
-  TensorRT-needing envs use `--system-site-packages`.
-- **N2, radio half.** GNU Radio 3.10 + libiio/libad9361 installed via the script.
-- **RF chain assembled.** 3× 10 dB SMA pads on hand (not the 30+10 originally
-  listed). First test: single-Pluto loopback (TX → 3 pads → RX on one unit), then
-  graduate to the two-radio A→B link. **Never TX→RX without pads.**
+## 0. Working status and decision log
 
-## Next session (Claude Code)
+### Done (as of 2026-07-23)
 
-- Finish git: `~/flatsat` repo, Jetson commits directly over SSH key; script +
-  manifests + this plan go in.
-- **P1** — plug in Pluto #1, `iio_info -s` enumerates it; firmware update.
-- **P2** — `fw_setenv` compatible `ad9364` unlock on both units.
-- **P3** — loopback tone/BPSK in GNU Radio, then the two-radio cabled link.
-- **N2b** — PyTorch from NVIDIA's JP6/CUDA-12.6 Jetson wheel index (not PyPI
-  torch), TensorRT via `nvidia-jetpack`; pass: `torch.cuda.is_available()` →
-  `True`. Add to script.
-- **N3** — PREEMPT_RT kernel packages, `isolcpus` in `extlinux.conf` (keep stock
-  kernel entry as fallback), `cyclictest` gate.
+- **N1 complete.** JetPack 6.2.1 flashed to microSD (board firmware was already
+  36.4.3 — no JP5.1.3 detour needed). Headless oem-config over USB-C serial,
+  WiFi via `nmcli` (installer WiFi tool fails — skip via Ethernet-DHCP-timeout
+  trick), `avahi-daemon` → `ssh trevor@jetson.local`, jtop. Hostname: `jetson`.
+- **Storage.** 500 GB NVMe (Fanxiang S690Q) in M.2; rootfs migrated on-device
+  (GPT + ext4 → rsync → `root=/dev/nvme0n1p1` in extlinux.conf). SD retained as
+  rescue boot (flip `root=` back to `mmcblk0p1` to recover).
+- **Reproducibility.** `tools/jetson-setup.sh` — idempotent bring-up (state
+  checks skip completed work); dpkg/pip/kernel manifests dumped to
+  `tools/setup-manifests/` and committed. Full reset ≈ 1 hr reflash.
+- **N2, radio half.** GNU Radio 3.10.1.1 + libiio 0.23 + libad9361 via apt;
+  gr-iio `fmcomms2` Pluto blocks verified importable.
+- **Repo + GitHub.** `Trevor16gordon/flatsat` (private), gh CLI authenticated,
+  git+gh install captured in setup script.
+- **Quality gates.** ruff (ANN: all function inputs/outputs typed; D:
+  docstrings mandatory) + mypy (`disallow_untyped_defs`) + pre-commit hooks +
+  CI re-run. Untyped or undocumented Python cannot be committed.
+- **P1 partial.** Flat-sat Pluto enumerates over USB (`usb:1.4.5`) and IP
+  (`192.168.2.1` / `pluto.local`); fw v0.37; driver already reports
+  `ad9361-phy,model: ad9364` (extended-range unlock effectively present).
+  RX-only smoke test written (`radio/pluto_smoke_test.py`), pending first run.
 
-## Decisions & hardware on hand
+### Decision log
 
-**Compute** — NVIDIA Jetson Orin Nano Super Developer Kit (chosen over the AMD
-Kria KV260). Rationale: the work's center of gravity moved from flat-sat realism
-toward learned/ML-native radio, where the KV260's DPU (CNN-only, frozen at Vitis
-AI 3.5, no transformers) was the weakest flank and the top project risk. The
-Jetson runs native PyTorch/TensorRT, hosts SDRs at higher throughput, has an
-installable PREEMPT_RT kernel, native IMX219 camera support, and is cheaper
-($249). What was forfeited — the FPGA fabric and an on-die RTOS island — is either
-not needed by the current thesis (FPGA) or relocated to the independent STM32
-judge (hard-real-time island, cleaner fault separation).
+| Date | Decision | Rationale / consequence |
+|------|----------|-------------------------|
+| 2026-07-23 | **No conda.** GNU Radio self-managed; stay on apt 3.10.1.1 for now (deviates from the radioconda 3.10.11+ pin in v1.0 §3). | Simpler env story (system python + venvs only). Open risk: Mac ground modem must version-match before any cross-machine BER baseline; revisit before B2. |
+| 2026-07-23 | **Pluto firmware stays v0.37** for now; v0.39 upgrade deferred to just before comparative baselines. | Unit is modern + already reports ad9364; flashing is the riskiest Pluto op — defer until it buys something. P1 exit amended accordingly. |
+| 2026-07-23 | **Serial→role assignment.** `104473b04a06000602001c00dd1f84cfaa` = **flat-sat radio** (on the Jetson). Second unit = **ground radio** (eventually on the Mac). | Recorded per §2; ground segment on Mac is future work — both radios live on the Jetson until the ground segment stands up. |
+| 2026-07-23 | **Repo layout by architecture segment** (`flight/`, `ground/`, `radio/`, `tools/`); plans merged into this single PLAN.md. | Mirrors the two-segment architecture from day one. |
 
-**Radios** — 2× borrowed ADALM-Pluto SDR. Two radios (not one) means a genuine
-bidirectional link — one as "ground," one as "satellite" — through a cabled,
-attenuated path, rather than self-loopback. Each Pluto is USB-2-limited to
-~4–8 MS/s sustained, which is ideal: the narrowband, D2D-relevant waveforms
+### Next up
+
+- Run RX-only Pluto smoke test → then, with explicit go-ahead and 30 dB pads
+  confirmed inline, first TX: single-Pluto loopback tone/BPSK (P3 precursor).
+- N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
+  CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
+- N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+
+---
+
+## 1. Purpose and philosophy
+
+This project builds a distributed flat-sat testbed to learn, by construction,
+what modern satellite software development actually requires. The reference
+point is Muon Space's stack (MuonOS): a Linux-based, telemetry-first,
+data-centric architecture where the same software runs against simulation and
+hardware, and where software delivery to orbit is safe and routine. The
+satellite may never fly; the knowledge is the product. Two tracks run in
+parallel — Track A (avionics, FDIR, space-MLOps) and Track B (adaptive ML
+radio) — converging at milestone C1: redeploying an ML model over the RF link
+with rollback.
+
+Three design principles govern everything below. First, **seams over
+features**: the architecture's value is in its boundaries (HAL seam, link seam,
+F´/bus bridge), because seams are where simulation, fault injection, and future
+replacement happen. Second, **the quiet state is the default**: after anything
+unexpected, the system rests in its safest configuration and only deliberate
+human action makes it interesting again. Third, **trust is earned by
+measurement**: no ML component gets authority over the system until it has run
+in shadow mode against ground truth and posted numbers.
+
+An important honest framing on the MuonOS question: public evidence indicates
+Muon built its flight software entirely in-house — their MuOS is described as
+data-centric, IP-based middleware unifying space, ground, and cloud, and
+nothing in their materials or hiring suggests F´ or cFS heritage. This project
+nevertheless uses F´ deliberately (§5): as a reference implementation of the
+canonical C&DH service inventory, to be progressively understood and, where
+instructive, reimplemented bus-natively. The endpoint — a data-centric stack
+where framework services have been replaced by owned equivalents — is the "my
+own MuonOS" goal; F´ is scaffolding, not destination.
+
+## 2. Hardware baseline
+
+The flight computer is an NVIDIA Jetson Orin Nano Super Dev Kit (8 GB, 6×
+Cortex-A78AE, Ampere GPU), booted from the JP6.2.1 SD image with rootfs
+migrated to a Fanxiang S690Q 500 GB NVMe (Gen4 drive negotiating to the Orin's
+Gen3 — ~3 GB/s, entirely sufficient; the SD card is retained as a golden
+recovery image). The radio segment is two ADALM-Pluto SDRs — one flat-sat, one
+ground station — with serial numbers recorded against roles:
+
+| Role | Serial | Host | Firmware |
+|------|--------|------|----------|
+| Flat-sat radio | `104473b04a06000602001c00dd1f84cfaa` | Jetson | v0.37 (Rev.C, reports ad9364) |
+| Ground radio | *(record when unboxed)* | Mac (future; Jetson until ground segment exists) | TBD |
+
+Firmware pin: v0.39 + ad9364 unlock *before comparative baseline measurements*
+(deferred for now — see decision log). RF passives on hand: 3× 10 dB SMA pads
+(30 dB total), short SMA M-M cables, F-F barrels, 50 Ω terminators. Cabled
+only; nothing transmits over the air. **Never TX→RX without pads inline.**
+
+Sensors (IMU, magnetometer, thermal, GNSS, camera) attach via I2C/USB per the
+BOM v6 selections. The independent hardware judge — STM32 NUCLEO-H723ZG plus
+eFuse power switching (~$300) — is deferred until the physical-fault milestone;
+until then its role is documented as an explicit gap. The development and
+ground-segment host is a Mac (no x86 Linux box on hand), which runs Basilisk,
+the GNU Radio ground modem, the F´ GDS, mission control, and ML training;
+on-device flashing/migration procedures are used in place of SDK Manager.
+
+Compute rationale (from the original hardware decision): the Jetson was chosen
+over the AMD Kria KV260 because the work's center of gravity moved from
+flat-sat realism toward learned/ML-native radio, where the KV260's DPU
+(CNN-only, frozen at Vitis AI 3.5, no transformers) was the weakest flank and
+top project risk. Native PyTorch/TensorRT, higher SDR-hosting throughput, an
+installable PREEMPT_RT kernel, native IMX219 camera support, and lower cost
+($249) won. What was forfeited — FPGA fabric and an on-die RTOS island — is
+either not needed by the current thesis (FPGA) or relocated to the STM32 judge
+(hard-real-time island, cleaner fault separation). Each Pluto is USB-2-limited
+to ~4–8 MS/s sustained, which is ideal: narrowband, D2D-relevant waveforms
 (GSM ~200 kHz, NB-IoT 180 kHz) fit comfortably and match the interference/D2D
 thesis.
 
-**RF passives** — borrowed: 3× 10 dB SMA pads (30 dB total), short SMA M-M
-cables, F-F barrels, 50 Ω terminators. (Cabled only; nothing transmits over the
-air.)
+## 3. Version matrix and lifecycle plan
 
-**Storage** — 64 GB microSD (boot/rescue) + 500 GB NVMe (root, installed).
-Rootfs migrated to NVMe 2026-07-23; SD kept as rescue boot.
+All pins verified July 2026 unless amended (see decision log). The JetPack
+choice cascades into everything: it fixes Ubuntu, kernel, Python, CUDA, and
+therefore every wheel above.
 
-**Flat-sat hardware, added when Track A reaches physical faults (~later):**
-STM32H7 Nucleo-H723ZG judge, TI TPS259824OEVM eFuse (LCL), Korad KA3005P PSU, CAN
-transceivers + USB-CAN adapters, Qwiic sensor chain.
+| Layer | Pin | Rationale / notes |
+|-------|-----|-------------------|
+| BSP | JetPack 6.2.1 (L4T r36.4.x; device reports r36.4.7) | Ubuntu 22.04, kernel 5.15, CUDA 12.6, TensorRT 10.3; the mature path. JP7.2 deliberately deferred |
+| RT kernel | `nvidia-l4t-rt-kernel` + headers + oot-modules + display, via NVIDIA's OTA apt repo | No custom kernel build. "Developer Preview" quality; generic kernel stays in extlinux.conf as boot fallback, always |
+| Python (onboard) | 3.10 (fixed by 22.04) | All onboard wheels must be cp310 |
+| PyTorch | torch 2.8.0 / torchvision 0.23.0 from the jp6/cu126 index at pypi.jetson-ai-lab.io | Only these wheels match JP6.2; some want numpy<2 |
+| Inference | onnxruntime first; TensorRT 10.3 when latency demands it | FDIR at ~1 Hz does not need TensorRT |
+| Middleware | Zenoh (rmw_zenoh available if ROS 2 interop wanted) | Humble EOL May 2027 is a migration driver |
+| GNU Radio | **AMENDED 2026-07-23: apt 3.10.1.1, self-managed, no conda.** (v1.0 pinned radioconda 3.10.11+ — overridden by no-conda decision) | Open risk: Mac ground modem must version-match before cross-machine BER baselines; revisit before B2 |
+| libiio | 0.2x line (device has 0.23) | In-tree gr-iio targets 0.x; the libiio 1.x API rewrite pairs only with newest source builds — don't mix |
+| Pluto firmware | **AMENDED 2026-07-23: v0.37 for now; v0.39 before comparative measurements** | Flash both units to the same version before any baseline |
+| Flight core | F´ v4.2.0 via fprime-bootstrap (pins matching fprime-tools/fpp) | v4 is a breaking change from v3 — pre-late-2025 tutorials silently mislead. Trust only versioned official docs |
+| Simulator | Basilisk 2.11.x on the Mac | Never on the Jetson; bridged over Ethernet (§10) |
+| Ground MCS | Yamcs 5.x (or OpenC3 COSMOS) | Native CCSDS handling pairs with F´ v4 framing |
 
-## The two tracks
+Lifecycle: three clocks expire in 2027 (Ubuntu 22.04, ROS 2 Humble, NVIDIA's
+attention shifting to JP7). The plan treats this as a feature: a named 2027
+milestone performs the fleet migration to JP7.2/24.04 with A/B rollback and no
+loss of the FDIR corpus pipeline — a realistic space-MLOps exercise.
 
-- **Track A — Flat-Sat / avionics / FDIR / space-MLOps.** Runs on the Jetson
-  alone at first; adds the STM32/power cluster later.
-- **Track B — Adaptive ML radio.** Runs on the Jetson + two Plutos + RF passives.
+## 4. Architecture overview
 
-They converge at one milestone (reprogram/redeploy an ML model over the RF link),
-which is why both live in one plan.
+Two segments, two buses, never merged. The flat-sat runs an onboard Zenoh bus;
+the ground segment runs its own bus plus mission database. Exactly two things
+connect them: the RF link (Pluto↔Pluto, existing only during scheduled contact
+windows) and the lab-Ethernet sim seam (Basilisk feeding fake sensors).
+Everything else in the system is a process on one bus or the other.
 
-## Software bring-up milestones (do first — gates everything)
+**Layering.** L0: hardware, or Basilisk standing in for it. L1: HAL daemons —
+one process per device owning driver-level access (I2C/SPI/IIO), publishing
+typed topics; no application ever touches a hardware register. The
+fault-injection shim lives here. L2: transport — Zenoh for the general plane;
+the 100–200 Hz ADCS path either stays within a single pinned process or uses
+shared-memory transport, never forced through the same machinery as image
+blobs. L3: services — C&DH spine (F´, §5), mode manager (§7), FDIR (§8),
+telemetry recording. L4: applications — ADCS, payload, anomaly scorer, link
+agent. L5: link layer — CCSDS framing over GNU Radio to the Pluto, gated by the
+contact scheduler (§6). Ground mirrors this: modem, link-service mirror, ground
+bus, Yamcs, pass scheduler, Basilisk, ML training, CI.
 
-### Jetson Orin Nano
+**HAL daemon contract.** Every sensor message carries: sample timestamp,
+publish timestamp, a validity word (range check, comm/CRC status, freshness),
+and a monotonic sequence number. Daemons flag and forward — they never silently
+repair data, because FDIR cannot detect what the HAL papers over. The topic
+name and message schema are the entire interface: a Basilisk-fed daemon
+publishing the same schema is indistinguishable downstream, which is the whole
+simulation strategy. The injection shim interposes on any topic on command:
+corrupt, bias, delay, drop, freeze (replay-last), or kill — each campaign
+scripted through the normal command path so ground truth is logged
+automatically.
 
-- **N1 — First light.** Flash JetPack to microSD; headless setup over USB-C; SSH
-  in over Ethernet. Pass: `ssh` shell, `nvidia-smi`/jtop shows the GPU.
-- **N2 — Toolchain.** Install GNU Radio + PyTorch + TensorRT; confirm GPU
-  inference runs. Pass: a trivial CUDA/PyTorch tensor op on GPU;
-  `gnuradio-companion` launches.
-- **N3 — Real-time kernel.** Install the JetPack PREEMPT_RT kernel; `isolcpus` +
-  SCHED_FIFO; run `cyclictest` under load. Pass: `uname -a` shows PREEMPT_RT;
-  worst-case latency < ~100 µs on an isolated core.
+**Middleware discipline.** Zenoh peer mode onboard (brokerless — there is no
+broker process to crash or pin; note DDS is likewise brokerless, a common
+misconception). Latched/queryable state topics (`sys/mode`) so respawned
+processes learn current state immediately. Shared-memory allocations tuned down
+per-node from Zenoh's large defaults — a dozen daemons plus PyTorch on 8 GB
+requires explicit per-service memory budgets, which is also authentic
+flight-software hygiene. Big payloads (images, IQ) travel by shared memory or
+buffer-handle reference with best-effort QoS, so a fat tensor can never delay a
+control message.
 
-### Pluto (×2)
+**Real-time strategy.** Determinism comes from the OS, not from special code:
+PREEMPT_RT kernel (OTA debs), the ADCS process under SCHED_FIFO (priority >90)
+pinned to a dedicated core with isolcpus/nohz_full/rcu_nocbs and IRQ affinity
+steering interrupts away. The known threat on Orin is not CPU contention but
+memory-bandwidth contention from the GPU: the N3 acceptance test therefore runs
+cyclictest under combined CUDA + memory-bandwidth load, targeting <~100 µs
+worst-case. Documented community results (~50–120 µs quiet, 300–500 µs spikes
+under unpinned interrupt load) say this is achievable but only with IRQ
+affinity done properly. Fallback if the gate fails: relax the ADCS loop rate
+(LEO attitude dynamics tolerate 10–50 Hz easily) and assign hard-real-time
+duties to the STM32 later. Orchestration is Docker/Podman supervised by systemd
+(Restart=, WatchdogSec=, cgroup pinning) — deliberately not k3s, whose
+control-plane overhead and multi-node purpose don't fit a single flight
+computer; Kubernetes belongs in the ground segment if anywhere.
 
-- **P1 — Recognized.** Both Plutos enumerate on the host (USB network devices,
-  distinct IPs); update firmware. Pass: `iio_info` sees each; both visible
-  simultaneously.
-- **P2 — Unlocked.** Apply `fw_setenv compatible ad9364` on each (70 MHz–6 GHz,
-  56 MHz BW). Pass: each reports the extended tuning range.
-- **P3 — Two-radio cabled link.** Pluto A TX → 30 dB pad → cable → 10 dB → Pluto B
-  RX; a tone/BPSK from A is visible on B in GNU Radio. Pass: clean received
-  constellation/spectrum at a controlled power level.
+## 5. C&DH layer: F´ v4.2
 
-> Do the risky first-boot/firmware steps at home before travel — a QSPI-firmware
-> update may be needed before JetPack boots, and that's better hit with a full
-> setup than in a hotel.
+One F´ deployment process owns the C&DH spine and radio path. The service
+inventory it provides, and what each means here: command dispatch (opcode
+routing, dictionary validation, ack semantics); the command sequencer
+(uploaded, time-tagged sequences — the heart of overpass operations);
+channelized telemetry with v4.2's named streams — REALTIME vs RECORDED with
+per-group on-change/rate-limited/heartbeat policies, which is the live-pass vs
+store-and-forward split as configuration; events/EVRs (ordered,
+severity-filtered — every FDIR decision becomes ground-visible); the parameter
+database (all tunables — FDIR thresholds, mode tables, ADCS gains — settable by
+command, never reflash); file uplink/downlink/management (the C1 deployment
+path); data products (the onboard anomaly corpus: recorded, cataloged,
+priority-dumped during contacts); CCSDS framing with prioritized com queues
+(command acks never wait behind payload data); health pinging with watchdog
+hook; rate groups (the deterministic timing skeleton); and buffer management
+(static memory discipline). Two things F´ deliberately lacks — a system mode
+manager and real FDIR — are built custom (§7, §8), which is correct: they are
+the research.
 
-## Track A — Flat-Sat / Avionics / FDIR / Space-MLOps
+**The bridge pattern.** A single F´ component bridges to the Zenoh plane: bus
+topics in → telemetry channels and events; F´ commands in → bus publications
+out. HAL daemons, ADCS, and ML services never link against F´ — they stay
+bus-native, restartable, Python-friendly. Placement rule: anything that must
+survive contact-window ops (commands, sequences, telemetry, files) lives
+F´-side; anything experimental or GPU-adjacent lives bus-side. Over time, F´
+services may be reimplemented bus-natively one at a time behind the bridge —
+the MuonOS trajectory of §1.
 
-Objective: a consolidated, new-space-style avionics node on the Jetson (RT Linux
-+ flight software + edge ML), an independent hardware watchdog, and — the research
-payload — a fault-injection harness that produces a labeled anomaly corpus and
-demonstrates recover/reprogram-over-the-link. Explores the "space-MLOps" product
-hypothesis hands-on. Scope note (July 2026): start with a basic FDIR
-detection/response pipeline, not the full three-tier SBIR stack.
+**On-ramp:** F´ builds natively on macOS (develop + GDS on the Mac; the Orin
+self-hosts its own builds). Sequence: reference deployment with GDS → strip to
+a minimal FlatSatCdh topology (dispatcher, sequencer, telemetry, events,
+params, health, rate groups) → one trivial custom component to learn the
+FPP→autocode→wire loop → swap the com driver from TCP to the CCSDS/Pluto path.
+
+## 6. Link layer and the two-bus rule
+
+A space link is intermittent, asymmetric (kbps up, Mbps down), high-BER, and
+mostly absent — so the middleware is never tunneled over it; discovery chatter
+and reliable-QoS retransmission would melt down, and transparency would erase
+exactly the operational structure this project exists to learn. Instead, the
+onboard link service subscribes to telemetry topics, frames into CCSDS, stores
+between passes, and transmits during windows; the ground mirror deframes and
+republishes onto the ground bus. To every other process the link is invisible;
+underneath it is an explicitly managed, scheduled, store-and-forward pipe. The
+correctness test: everything keeps working with the link down, just with stale
+ground data. The contact scheduler enforces windows even though both Plutos sit
+on one desk — simulated pass geometry (eventually driven by Basilisk orbit
+propagation) gates the radio, telemetry accumulates between passes and dumps on
+contact, commands queue ground-side. Track B plugs in underneath: the classical
+GNU Radio modem is the baseline PHY (BER-vs-SNR curves recorded under the
+locked environment), the learned receiver later swaps in under identical
+framing, and the adaptive link agent — subscribing to link telemetry,
+publishing modcod recommendations the link service may honor — is disabled by
+Safe mode by definition.
+
+## 7. Mode management
+
+Four flat states: Init/Boot → Nominal ⇄ (Safe → Recovery). The transition
+asymmetry is the philosophy: toward safety is automatic and
+software-triggerable from anywhere (FDIR trip, watchdog, failed init checks);
+away from safety is ground-command-only. Recovery is distinct from Nominal so
+checkout happens payload-off, one subsystem at a time; Recovery can trip back
+to Safe. Orthogonal conditions (in-contact, sim-fed) are flags, never modes —
+modes multiply combinatorially and tax every app.
+
+A mode is a contract each app implements locally: Nominal = payload + ML
+active, full telemetry policy, adaptive link permitted; Safe = load shed, ADCS
+in survival law, low-rate housekeeping heartbeat, most-robust modcod locked.
+Distribution is hybrid broadcast-plus-ack: mode published latched on `sys/mode`
+with monotonic sequence and reason; every registered app must ack the sequence
+within a timeout; a missing ack is itself a fault escalating to supervisor
+kill. Per-app mode responses live in the parameter database as a mode table
+(app × mode → config), tunable by command and sweepable by fault campaigns. The
+mode manager is small, boring, and dependency-minimal — no imports from the
+experimental world — because Safe's entry path must not depend on anything that
+can be the reason for entering it. Below it sit the containment shells:
+FDIR→mode manager (software), health/watchdog (process), STM32 power-cycle to a
+Safe-booting slot (hardware, once installed). Anti-flap: minimum dwell times,
+persistent transition counters with escalation on repeat entry, every
+transition logged as event + data product with triggering telemetry snapshot
+(free corpus labels). Boot policy: any unexpected reset (reset-reason flag in
+persistent storage) boots into Safe; only a clean prior shutdown allows
+Init→Nominal.
+
+## 8. FDIR — basic tier
+
+Scope decision: the flat-sat builds a basic FDIR first; the SBIR three-tier
+stack (AUKF, transformer, LLM reasoning) comes later on the same seams. The
+pipeline is two parallel detectors feeding an arbiter feeding a response
+ladder.
+
+Level 0 is the HAL validity word (§4). Level 1 is the limit checker: one
+service, declarative YAML/param rules of four types — static bounds,
+rate-of-change, staleness, cross-channel consistency — each with an N-of-M
+persistence requirement, emitting fault flags naming rule, channel, value.
+Deliberately dumb; its dumbness is its trustworthiness. The arbiter maps flags
+to suspects via a topology table (channel → {device, daemon, shared bus}),
+performs common-cause grouping (all I2C channels faulting = the bus, not three
+devices), fuses detectors, counts strikes, and rate-limits. The response
+ladder: Tier 1 restart the implicated daemon; Tier 2 reconfigure around it
+(mark invalid, switch redundant source, GPIO power-cycle); Tier 3 request Safe
+from the mode manager — FDIR is a client of mode authority, never the owner.
+Responses are table-driven; every action emits an event with snapshot.
+
+Level 2, shadow-mode ML: per-channel rolling z-scores and EWMA drift on a
+windowed feature vector first; then at most a small autoencoder (reconstruction
+error as score) via ONNX/onnxruntime. It publishes `fdir/anomaly` (score,
+contributing channels, model + threshold version) which the arbiter logs but
+cannot act on. Promotion to response authority happens only after weeks of
+shadow operation measured against the limit checker and injection ground truth
+— the advisory→measured→authorized gate is the single most transferable lesson
+in the subsystem.
+
+Starter fault set, one per detector class: frozen sensor (replay-last; caught
+by staleness/variance, invisible to bounds), thermal runaway (injected ramp;
+rate rule), daemon death (process kill; heartbeat, auto-fixed by Tier 1 — the
+first closed-loop demo). Standing metrics from day one: detection latency
+(injection→flag) and time-to-recovery (flag→nominal), per fault class.
+
+## 9. ML and data flywheel
+
+The loop: telemetry recorder + injection campaigns → labeled anomaly corpus
+(onboard as data products, dumped by priority, archived ground-side) → training
+(PyTorch on Mac/cloud) → model registry (versioned artifacts: weights, feature
+spec, thresholds, training-set hash) → uplink via CCSDS file transfer → A/B
+model slots onboard (activate-new, rollback-on-regression) → inference
+publishing scored messages that are themselves telemetry → back into the
+corpus. Two properties make it honest: predictions are recorded beside the
+inputs that produced them (self-growing training set as an architectural side
+effect), and deployment goes through the real link machinery with rollback — C1
+is exactly one traversal of this loop's right-hand side. Every model output
+message carries its model version; every response ties back to the rule or
+model that triggered it.
+
+## 10. Simulation
+
+Basilisk 2.11.x runs on the Mac, never the Jetson (RAM, wheel support, and —
+decisively — the sim computer should not be the flight computer). The seam is
+the HAL: Basilisk-fed daemon processes publish identical schemas on the same
+topics, over lab Ethernet. Time is the tricky part and gets decided early: the
+flat-sat runs on wall-clock; Basilisk runs real-time-paced so the flight
+software never knows sim time exists; sample timestamps come from the
+publishing daemon in flight-clock terms. (Faster-than-real-time campaigns are a
+later, deliberate extension — they require the flight software to accept an
+external time source, which touches everything.) Basilisk's orbit propagation
+eventually drives the contact scheduler's pass geometry, closing the loop
+between simulated orbits and simulated comms windows.
+
+## 11. Testing, CI, and code quality
+
+Three test tiers. Unit: F´'s autogenerated component harnesses plus pytest for
+bus services. Integration/HIL: the F´ GDS Python API drives scripted
+command/telemetry regressions against the live flat-sat from the Mac — commands
+in, expected events and channels out — runnable on every merge. Campaign:
+scripted fault-injection sweeps (fault class × mode × load level) producing
+corpus data and regression-checking the standing FDIR metrics; RF-path
+regressions re-run the classical BER-vs-SNR baseline under the locked
+environment whenever the modem changes. Latency gates (cyclictest under load)
+run as scheduled jobs so RT regressions are caught when introduced, not when
+noticed.
+
+**Code quality gates (live as of 2026-07-23).** Every Python function must
+have typed inputs and outputs and a docstring — enforced twice: ruff with the
+full `ANN` (flake8-annotations) and `D` (pydocstyle, Google convention) rule
+sets, and mypy with `disallow_untyped_defs`/`disallow_incomplete_defs`.
+Enforcement points: pre-commit git hooks (install once per clone:
+`pre-commit install`) and the `quality` GitHub Actions workflow re-running the
+same hooks on push/PR, so a locally bypassed commit still fails remotely.
+Config lives in `pyproject.toml` + `.pre-commit-config.yaml`; tooling installs
+via pipx in `tools/jetson-setup.sh`. Known relaxations: `test_*.py` files skip
+module/function docstring rules (types still enforced); leading-underscore
+(private) modules relax docstring rules per Python convention.
+
+## 12. Milestones
+
+| # | Milestone | Exit criterion |
+|---|-----------|----------------|
+| N1–N3 | Jetson bring-up | SSH + NVMe root ✅; GR installed ✅ (apt 3.10.1.1, amended); PyTorch/TensorRT from pinned indexes; RT kernel installed with generic fallback, cyclictest <~100 µs under CUDA + memory load |
+| P1–P3 | Pluto bring-up | Both enumerate (identity collision resolved); common firmware on both (v0.39 before baselines — amended) + ad9364 unlock; cabled A→B link with recorded baseline. *P1 partial: flat-sat unit enumerated, reports ad9364* |
+| M1 | HAL + injection | All sensors behind daemons with validity words; shim can freeze/bias/kill any topic by command; Basilisk feeding fakes end-to-end |
+| M2 | Minimal C&DH | F´ FlatSatCdh topology; time-tagged sequence executes; realtime + recorded telemetry streams; params tunable from GDS |
+| M3 | Contact emulation | Radio exists only during scheduled windows; telemetry stores and dumps on contact; commands queue ground-side; system healthy through link outages |
+| M4 | Closed-loop FDIR | Limit table + arbiter + Tier-1/2/3 ladder; three starter faults detected and recovered automatically; metrics dashboarded |
+| M5 | Shadow ML | Statistical scorer live in shadow; precision/recall vs ground truth measured over ≥2 weeks of campaigns |
+| M6 | Mode discipline | Safe-by-default boot; broadcast+ack transitions; flap protection demonstrated under repeated injection |
+| C1 | Space-MLOps demo | New model trained from corpus, uplinked over RF via file transfer during a contact window, activated in B slot, regression-checked, rolled back on command |
+| M7 (2027) | Fleet migration | JP7.2/Ubuntu 24.04 migration with A/B rollback, zero corpus-pipeline loss |
+
+### Track A activities (avionics / FDIR / space-MLOps)
 
 | ID | Activity | Pass criterion | Artifact |
 |----|----------|----------------|----------|
-| A1 | Consolidated RT avionics: pin a mock 100 Hz–1 kHz ADCS loop to an isolated core under load | Loop holds period with < ~100 µs jitter under CPU/GPU stress | Cyclictest/jitter plot; "consolidated vs federated" note |
-| A2 | Flight software: build F´ (and cFS) natively on the Jetson from the reference deployments | FSW runs, emits telemetry, accepts commands | Running FSW; telemetry log |
-| A3 | Networking: CSP/libcsp over virtual CAN (vcan) — no hardware yet | `csp_ping` round-trip; telemetry over CSP | CSP-over-vcan demo |
-| A4 | Basilisk HIL bridge: simSynch wall-clock tick → ZMQ/JSON → FSW with simulated sensors/actuators | Sim→FSW→actuator loop closes at 1 Hz, bounded jitter | Closed HIL loop; latency plot |
-| A5 | Fault injection + resilience: kernel fault-injection, `strace -e inject`, A/B rootfs + overlayroot | Deliberate faults injected and logged; corrupt-rootfs run self-recovers | Labeled anomaly dataset + "fault cookbook" |
-| A6 | Physical layer (adds STM32 judge + eFuse + PSU + CAN): power-path LCL, real CAN bus, sensor hub | Judge cuts/restores the Jetson's rail cleanly; real CAN telemetry | Power-fault campaign; hardware watchdog demo |
-| A7 | Onboard edge ML: run an anomaly detector on the Jetson making a real-time FDIR call | Detector flags an injected fault faster than a ground round-trip | Onboard-intelligence demo + decision writeup |
+| A1 | Consolidated RT avionics: mock 100 Hz–1 kHz ADCS loop pinned to isolated core under load | Holds period with < ~100 µs jitter under CPU/GPU stress | Cyclictest/jitter plot; consolidated-vs-federated note |
+| A2 | Flight software: build F´ (and cFS) natively on the Jetson | FSW runs, emits telemetry, accepts commands | Running FSW; telemetry log |
+| A3 | Networking: CSP/libcsp over virtual CAN (vcan) | `csp_ping` round-trip; telemetry over CSP | CSP-over-vcan demo |
+| A4 | Basilisk HIL bridge: simSynch tick → ZMQ/JSON → FSW | Sim→FSW→actuator loop closes at 1 Hz, bounded jitter | Closed HIL loop; latency plot |
+| A5 | Fault injection + resilience: kernel fault-injection, `strace -e inject`, A/B rootfs + overlayroot | Faults injected and logged; corrupt-rootfs run self-recovers | Labeled anomaly dataset + fault cookbook |
+| A6 | Physical layer (adds STM32 judge + eFuse + PSU + CAN) | Judge cuts/restores the Jetson's rail cleanly; real CAN telemetry | Power-fault campaign; hardware watchdog demo |
+| A7 | Onboard edge ML: real-time FDIR anomaly detector | Flags injected fault faster than a ground round-trip | Onboard-intelligence demo + writeup |
 
-Note: A1–A5 and A7 need only the Jetson. A6 is the moment to buy the
-STM32/eFuse/PSU cluster (~$300).
+A1–A5, A7 need only the Jetson. A6 is the moment to buy the STM32/eFuse/PSU
+cluster (~$300).
 
-## Track B — Adaptive ML Radio
-
-Objective: build the classical comms chain hands-on, then replace rigid blocks
-with learned ones, with the flagship result being a learned receiver that beats
-classical under interference — the intuition-builder, the NSF-pitch evidence, and
-the headline artifact. Two Plutos make it a real link.
+### Track B activities (adaptive ML radio)
 
 | ID | Activity | Pass criterion | Artifact |
 |----|----------|----------------|----------|
-| B1 | Receive a real signal: decode a live satellite downlink (NOAA APT image or cubesat frame via gr-satellites) using a Pluto + antenna | A decoded image/frame from space | Weather image / telemetry from orbit (postable) |
-| B2 | Classical modem, block by block: bits→FEC→symbols→pulse→link (Pluto A→pad→Pluto B)→sync→demod→decode; sweep SNR via attenuators | Clean decode; BER-vs-SNR curve measured over the real link | The baseline BER curve |
+| B1 | Receive a real signal: NOAA APT / cubesat frame via gr-satellites (Pluto RX + antenna) | A decoded image/frame from space | Weather image / telemetry from orbit (postable) |
+| B2 | Classical modem block by block; sweep SNR via attenuators over the real link | Clean decode; BER-vs-SNR curve | The baseline BER curve |
 | B3 | Framing: CCSDS/AX.25 + Reed-Solomon via gr-satellites over the two-radio link | End-to-end framed packet decode both directions | Framed-link decode + BLER |
-| B4 | ⭐ Learned receiver under interference: inject a software jammer/co-channel signal, sweep SIR; train a neural receiver on the Jetson; compare to matched-filter/LDPC baseline; then train on jammers A,B / test on unseen C | Neural beats classical on BER-vs-SIR; graceful degradation on unseen interference | The money chart (NSF evidence + credibility post + deck slide) |
-| B5 | Real-time modulation classifier on the edge GPU: train a CNN (RadioML), run live on the Jetson against received IQ | Live modulation classification at usable rate | Real-time RF-ML classifier demo |
-| B6 | Adaptive link: agent observes channel/SIR and picks modulation/coding/power against a swept channel (variable attenuator) | Higher throughput than a fixed baseline over the sweep | Adaptive-comms result |
+| B4 | ⭐ Learned receiver under interference: software jammer, sweep SIR; neural receiver vs matched-filter/LDPC baseline; train on jammers A,B / test on unseen C | Neural beats classical on BER-vs-SIR; graceful degradation on unseen interference | The money chart (NSF evidence) |
+| B5 | Real-time modulation classifier (RadioML CNN) live on Jetson against received IQ | Live classification at usable rate | Real-time RF-ML classifier demo |
+| B6 | Adaptive link: agent picks modulation/coding/power against a swept channel | Higher throughput than fixed baseline over the sweep | Adaptive-comms result |
 
-Note: B1 needs a Pluto (RX) + antenna. B2–B6 use both Plutos + RF passives + the
-Jetson. Pretrain/derisk B4–B5 with public datasets (RadioML 2018.01A, MIT RF
-Challenge, NVIDIA Sionna) before touching RF.
-
-## Convergence, sequencing, and artifacts
-
-**The bridge milestone (both tracks):**
-
-- **C1 — Reprogram/redeploy over the link.** Push an ML model or config update to
-  the Jetson "satellite" over the Pluto RF link (CCSDS TC + a CFDP-style
-  transfer), with A/B rollback. Pass: a model update lands and runs over RF; a bad
-  update rolls back. Artifact: "I updated my flat-sat's ML model over the radio,
-  with rollback" — the space-MLOps hypothesis, demonstrated. Needs Track A (A5 A/B
-  boot) + Track B (B3 link).
-
-**Hardware timeline:** Jetson + 2 Plutos + RF passives cover bring-up, all of
-Track B, and Track A through A5/A7. Only A6 (and the full C1 fidelity) needs the
-STM32/eFuse/PSU cluster — buy it when Track A reaches physical power faults.
+B1 needs a Pluto + antenna. B2–B6 use both Plutos + passives + the Jetson.
+Pretrain/derisk B4–B5 on public datasets (RadioML 2018.01A, MIT RF Challenge,
+NVIDIA Sionna) before touching RF.
 
 **Artifact trail (build-in-public):** satellite decode → BER baseline → framed
 link → learned-vs-classical-under-interference chart → real-time classifier →
-adaptive link · and in parallel · cyclictest/RT plot → running flight software →
-closed HIL loop → labeled fault dataset → reprogram-over-RF. Post each with one
-honest paragraph of what it taught you — the demos build the intuition, the posts
-generate the inbound conversations.
+adaptive link · and in parallel · cyclictest/RT plot → running flight software
+→ closed HIL loop → labeled fault dataset → reprogram-over-RF. Post each with
+one honest paragraph of what it taught.
+
+## 13. Open risks and decisions
+
+RT-kernel maturity on Orin remains the top technical risk (Developer Preview
+quality; mitigated by the fallback chain: relaxed loop rates → STM32 ownership
+of hard-RT). The STM32 judge's absence until its milestone leaves the "Jetson
+supervising itself" gap open — documented, not solved. The Zenoh-vs-ROS 2
+question stays open until M1 forces it (Zenoh favored; rmw_zenoh preserves the
+ROS option). Basilisk time management (§10) needs deciding at M1, not
+discovering at M3. The F´-replacement trajectory (§5) is a standing judgment
+call to revisit per-service — the criterion is always whether reimplementing
+teaches more than it costs. **Added 2026-07-23:** GNU Radio version skew
+(Jetson apt 3.10.1.1 vs whatever the Mac ground modem runs) must be resolved
+before any cross-machine BER baseline — either pin the Mac to 3.10.1.1 or
+upgrade both ends together.
+
+## 14. Repository layout
+
+```
+flatsat/
+├── PLAN.md                  # this document — architecture + status + decisions
+├── README.md
+├── pyproject.toml           # ruff + mypy quality contract
+├── .pre-commit-config.yaml  # commit-time enforcement
+├── .github/workflows/       # CI re-running the same hooks
+├── tools/                   # bring-up + host tooling
+│   ├── jetson-setup.sh      #   idempotent Jetson bring-up
+│   └── setup-manifests/     #   versioned known-good system snapshots
+├── radio/                   # shared PHY: flowgraphs, smoke tests, modem work
+├── flight/                  # onboard segment: HAL daemons, services, link svc
+└── ground/                  # ground segment (Mac): modem, GDS, mission ctl
+```

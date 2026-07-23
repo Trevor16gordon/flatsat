@@ -821,8 +821,8 @@ ii  libgcrypt20:arm64                                        1.9.4-3ubuntu3.2   
 ii  libgd3:arm64                                             2.3.0-2ubuntu2.3                                 arm64        GD Graphics Library
 ii  libgdata-common                                          0.18.1-2build1                                   all          Library for accessing GData webservices - common data files
 ii  libgdata22:arm64                                         0.18.1-2build1                                   arm64        Library for accessing GData webservices - shared libraries
-ii  libgdbm-compat4:arm64                                    1.23-1                                           arm64        GNU dbm database routines (legacy support runtime version) 
-ii  libgdbm6:arm64                                           1.23-1                                           arm64        GNU dbm database routines (runtime version) 
+ii  libgdbm-compat4:arm64                                    1.23-1                                           arm64        GNU dbm database routines (legacy support runtime version)
+ii  libgdbm6:arm64                                           1.23-1                                           arm64        GNU dbm database routines (runtime version)
 ii  libgdk-pixbuf-2.0-0:arm64                                2.42.8+dfsg-1ubuntu0.5                           arm64        GDK Pixbuf library
 ii  libgdk-pixbuf2.0-bin                                     2.42.8+dfsg-1ubuntu0.5                           arm64        GDK Pixbuf library (thumbnailer)
 ii  libgdk-pixbuf2.0-common                                  2.42.8+dfsg-1ubuntu0.5                           all          GDK Pixbuf library - data files

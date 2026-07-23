@@ -1,0 +1,43 @@
+# Repo-wide Python quality configuration.
+#
+# Enforcement contract (see .pre-commit-config.yaml + CI):
+#   - Every function/method MUST have type annotations on all inputs and the
+#     return value (ruff ANN* + mypy disallow_untyped_defs — two independent
+#     enforcers).
+#   - Every module, class, and function MUST have a docstring (ruff D*,
+#     Google convention).
+# Commits that violate these fail at the pre-commit hook; pushes fail in CI.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"          # onboard Python is 3.10 (fixed by Ubuntu 22.04)
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort (import ordering)
+    "UP",       # pyupgrade
+    "B",        # bugbear (likely bugs)
+    "ANN",      # flake8-annotations: EVERY function input + return typed
+    "D",        # pydocstyle: EVERY module/class/function has a docstring
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may skip docstrings-on-every-test verbosity, but not type annotations.
+"**/test_*.py" = ["D100", "D103"]
+
+[tool.mypy]
+python_version = "3.10"
+# The hard gate: untyped or partially-typed defs are errors.
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+warn_unused_ignores = true
+# gnuradio/iio/jetson libs ship no type stubs; don't block on them.
+ignore_missing_imports = true

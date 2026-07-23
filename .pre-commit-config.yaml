@@ -1,0 +1,30 @@
+# Pre-commit hooks — run automatically on every `git commit`.
+# One-time per clone: pre-commit install
+# Manual full run:    pre-commit run --all-files
+#
+# Ruff (ANN+D rules) and mypy (disallow_untyped_defs) together make it
+# impossible to commit a Python function without typed inputs/outputs and a
+# docstring. CI re-runs the same hooks, so --no-verify only defers the failure.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-executables-have-shebangs
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check      # lint: ANN (typing), D (docstrings), E/F/W/I/UP/B
+        args: [--fix]
+      - id: ruff-format     # formatting
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy            # independent enforcement of fully-typed defs

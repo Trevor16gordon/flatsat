@@ -103,6 +103,25 @@ fi
 # Projects needing them: python3 -m venv --system-site-packages .venv
 # and point poetry at it; pure-python projects get normal isolated envs.
 
+log "N1: code quality tooling (ruff + pre-commit via pipx)"
+# Quality contract (pyproject.toml + .pre-commit-config.yaml): every python
+# function must have typed inputs/outputs and a docstring — enforced by
+# ruff (ANN, D) + mypy at commit time, re-checked in CI.
+for tool in ruff pre-commit; do
+  if pipx list 2>/dev/null | grep -q "package $tool "; then
+    skip "$tool already installed"
+  else
+    do_ "pipx install $tool"
+    pipx install "$tool"
+  fi
+done
+# install the git hook if this checkout carries the config (idempotent)
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ -f "$REPO_ROOT/.pre-commit-config.yaml" ]] && [[ -d "$REPO_ROOT/.git" ]]; then
+  do_ "pre-commit install (git hook)"
+  (cd "$REPO_ROOT" && "$HOME/.local/bin/pre-commit" install)
+fi
+
 log "N1: git + GitHub CLI"
 apt_install git
 # git identity — only set if provided via env AND not already configured.
