@@ -14,9 +14,10 @@
 
 set -euo pipefail
 
-log()  { echo -e "\n=== $* ==="; }
-skip() { echo "  [skip] $*"; }
-do_()  { echo "  [do]   $*"; }
+log()      { echo -e "\n=== $* ==="; }
+skip()     { echo "  [skip] $*"; }
+do_()      { echo "  [do]   $*"; }
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 # Directory this script lives in (the repo) — manifests land here so they're
 # captured in version control automatically.
@@ -101,6 +102,41 @@ fi
 # Jetson wrinkle: TensorRT python bindings are apt-only (system site-packages).
 # Projects needing them: python3 -m venv --system-site-packages .venv
 # and point poetry at it; pure-python projects get normal isolated envs.
+
+log "N1: git + GitHub CLI"
+apt_install git
+# git identity — only set if provided via env AND not already configured.
+#   GIT_USER_NAME="Trevor Gordon" GIT_USER_EMAIL="you@example.com" ./jetson-setup.sh
+if [[ -n "${GIT_USER_NAME:-}" ]] && [[ -z "$(git config --global user.name || true)" ]]; then
+  do_ "git config --global user.name"
+  git config --global user.name "$GIT_USER_NAME"
+else
+  skip "git user.name (already set, or GIT_USER_NAME unset)"
+fi
+if [[ -n "${GIT_USER_EMAIL:-}" ]] && [[ -z "$(git config --global user.email || true)" ]]; then
+  do_ "git config --global user.email"
+  git config --global user.email "$GIT_USER_EMAIL"
+else
+  skip "git user.email (already set, or GIT_USER_EMAIL unset)"
+fi
+# GitHub CLI from the official apt repo (apt's own gh is old); skip if present.
+if have_cmd gh; then
+  skip "gh already installed ($(gh --version | head -1))"
+else
+  do_ "install gh from GitHub's official apt repo"
+  have_cmd wget || apt_install wget
+  sudo mkdir -p -m 755 /etc/apt/keyrings
+  wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+  sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+  sudo apt-get update
+  sudo apt-get install -y gh
+fi
+# One-time, interactive (browser device-code — not scriptable):
+#   gh auth login  ->  GitHub.com  ->  HTTPS  ->  Authenticate Git: Yes  ->  web browser
+echo "  note: run 'gh auth login' once to authenticate GitHub (GitHub.com / HTTPS / web browser)"
 
 log "N1: power mode -> MAXN SUPER"
 # mode 2 = MAXN SUPER on JP6.2.x Orin Nano; verify with: sudo nvpmodel -q

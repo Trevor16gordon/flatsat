@@ -17,8 +17,13 @@ hardware-sharing tracks. See [`PLAN.md`](PLAN.md) for the full plan.
 ```bash
 ./jetson-setup.sh                                   # all validated stages
 WIFI_SSID="MyNet" WIFI_PASS="secret" ./jetson-setup.sh   # also join WiFi
+GIT_USER_NAME="Trevor Gordon" GIT_USER_EMAIL="you@example.com" ./jetson-setup.sh  # set git identity
 FORCE_UPGRADE=1 ./jetson-setup.sh                   # force apt upgrade
 ```
+
+Installs `git` + the GitHub CLI (`gh`, from GitHub's official apt repo). `gh` auth
+is a one-time interactive step the script can't do for you:
+`gh auth login` → GitHub.com → HTTPS → *Authenticate Git: Yes* → web browser.
 
 The script is idempotent: each stage checks state first (`dpkg -s`, `pip show`,
 `nvpmodel -q`, active WiFi) and skips work already done, so re-running is fast and
