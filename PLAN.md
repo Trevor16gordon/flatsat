@@ -80,9 +80,16 @@ pad loopback; firmware update deferred) · repo + quality gates live · next: N3
 ### Next up
 
 1. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
-   Sudo-heavy: Trevor runs the command blocks; needs a reboot window. Gate:
-   cyclictest <~100 µs under CUDA + memory-bandwidth load (torch now
-   available to generate the GPU load).
+   Runbook ready: `tools/n3-rt-kernel-runbook.md` (Trevor-driven, all sudo;
+   needs a reboot window + serial console on standby). Gate: cyclictest
+   <~100 µs under CUDA + memory-bandwidth load (torch generates GPU load).
+   ⚠ Preflight discovery (2026-07-23, unconfirmed until SD is mounted): the
+   bootloader appears to read the SD card's extlinux.conf + /boot/Image, not
+   the NVMe's — the NVMe copy still says `root=/dev/mmcblk0p1` (stale
+   pre-migration artifact) while / runs on nvme0n1p1 and the mounted ESP is
+   SD p10. Consequence: apt kernel installs land on NVMe /boot and are
+   invisible to the bootloader until synced to the SD APP partition —
+   runbook stage 0 verifies, stage 3 handles.
 2. Later (P3 proper): BPSK over the same loopback, then two-radio link once
    the ground Pluto is unboxed (serial → role table §2) and firmware is
    aligned (v0.39 on both — decision log).
