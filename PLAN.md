@@ -67,6 +67,18 @@ pad loopback; firmware update deferred) · repo + quality gates live · next: N3
   tune: rotate up on TX, xlating-LPF down on RX; envelope unchanged).
   Diagnosis method that worked: identical chain back-to-back in software
   (BER 0) exonerated the modem before touching RF again.
+- **SNR sweep PASSED (2026-07-23) — first BER-vs-SNR waterfall.**
+  `radio/pluto_snr_sweep_test.py`: one TX capture (same GMSK link), then
+  calibrated AWGN added offline in 15 stages, each re-demodulated. Real
+  capture: clean ≥30 dB; BER 5.2e-5 at 20 dB; 2.4e-3 at 15 dB; 1.9e-2 at
+  12 dB; frame sync collapses below ~5 dB; dead at 4 dB. Synthetic (pure
+  software) capture ran ~2 dB better at the same SNRs — the measured
+  implementation penalty of real hardware (phase noise, residual DC, capture
+  noise floor). Capture archived at
+  `~/flatsat-captures/loopback_gmsk_915MHz_20260723.npz` — re-sweep any
+  ladder offline via `--load`, no RF. This is the B2 methodology in miniature
+  (there: real attenuator sweeps + two radios; the offline-AWGN trick stays
+  useful for controlled comparisons).
 - **N2b complete (2026-07-23).** PyTorch 2.8.0 (CUDA 12.6 build) +
   torchvision 0.23.0 in `~/venvs/flatsat-ml` (`--system-site-packages`),
   wheels from `pypi.jetson-ai-lab.io/jp6/cu126` (the `.dev` mirror is dead)
