@@ -44,6 +44,18 @@ repo + quality gates live.
   for zero-IF with no signal present). Clean noise floor, no dominant tone
   ⇒ expected result with TX silent. Receive path confirmed alive. Benign
   first-run `vmcircbuf` factory warnings from GNU Radio; ignorable.
+- **TX loopback tone test PASSED (2026-07-23)** — first RF transmission of
+  the project, run with Trevor's per-instance go-ahead, 30 dB pads confirmed
+  inline. `radio/pluto_tx_loopback_test.py` (gated on `--transmit`; TX
+  attenuation forced to 89.75 dB on every exit path): cos tone at LO+100 kHz,
+  amp 0.5, 20 dB TX atten, 30 dB RX gain, 915 MHz, 2.084 MSa/s. Result:
+  dominant bin +100.00 kHz (offset error +1 Hz), tone 65.9 dB above median
+  floor, mean power −52.3 dBFS (vs −65.7 RX-only baseline), peak |amp| 0.0044
+  — no saturation. TX and RX paths both verified end-to-end through the pads.
+  Note: received level ran well below the survey link budget (≈−49 dBm
+  predicted at RX) — enormous margins either way; calibrate absolute levels
+  only if/when a baseline needs them. Benign TX underrun chars (`UUU`) at
+  flowgraph teardown.
 - **Repo restructured + plans merged** (this document) — pushed to GitHub.
 
 ### Decision log
@@ -57,13 +69,13 @@ repo + quality gates live.
 
 ### Next up
 
-1. With explicit go-ahead and 30 dB pads confirmed inline: first TX —
-   single-Pluto loopback tone/BPSK, as a separate loudly-labeled script
-   (P3 precursor). Script to be written for inspection first.
-2. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
+1. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
    CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
    Add to jetson-setup.sh with `torch.cuda.is_available()` gate.
-3. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+2. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+3. Later (P3 proper): BPSK over the same loopback, then two-radio link once
+   the ground Pluto is unboxed (serial → role table §2) and firmware is
+   aligned (v0.39 on both — decision log).
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
