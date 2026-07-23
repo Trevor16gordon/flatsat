@@ -2,9 +2,9 @@
 
 v1.1 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status: bring-up in progress.** N1 complete · N2 radio-half complete · P1
-partially complete (flat-sat Pluto enumerated; firmware update deferred) ·
-repo + quality gates live.
+**Status: bring-up in progress.** N1 complete · N2 complete (radio + N2b
+PyTorch/CUDA) · P1 partially complete (flat-sat Pluto verified TX+RX through
+pad loopback; firmware update deferred) · repo + quality gates live · next: N3.
 
 ---
 
@@ -56,6 +56,16 @@ repo + quality gates live.
   predicted at RX) — enormous margins either way; calibrate absolute levels
   only if/when a baseline needs them. Benign TX underrun chars (`UUU`) at
   flowgraph teardown.
+- **N2b complete (2026-07-23).** PyTorch 2.8.0 (CUDA 12.6 build) +
+  torchvision 0.23.0 in `~/venvs/flatsat-ml` (`--system-site-packages`),
+  wheels from `pypi.jetson-ai-lab.io/jp6/cu126` (the `.dev` mirror is dead)
+  downloaded `--no-deps` and installed from local files — pypi.org ships a
+  CPU-only torch under the identical version string, so index mixing is
+  never allowed to resolve torch. numpy held at 1.21.5 (<2) for the system
+  gnuradio bindings. Acceptance gate `tools/verify_torch_cuda.py` PASSED:
+  CUDA build, Orin GPU (compute 8.7), GPU matmul matches CPU, gnuradio
+  3.10.1.1 imports alongside torch in one process (B5 prerequisite).
+  Implemented idempotently in `jetson-setup.sh`; venv captured in manifests.
 - **Repo restructured + plans merged** (this document) — pushed to GitHub.
 
 ### Decision log
@@ -69,11 +79,11 @@ repo + quality gates live.
 
 ### Next up
 
-1. N2b: PyTorch from the jp6/cu126 index (device facts confirmed: L4T r36.4.7,
-   CUDA 12.6, TensorRT 10.3 + python3-libnvinfer already present, Python 3.10).
-   Add to jetson-setup.sh with `torch.cuda.is_available()` gate.
-2. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
-3. Later (P3 proper): BPSK over the same loopback, then two-radio link once
+1. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
+   Sudo-heavy: Trevor runs the command blocks; needs a reboot window. Gate:
+   cyclictest <~100 µs under CUDA + memory-bandwidth load (torch now
+   available to generate the GPU load).
+2. Later (P3 proper): BPSK over the same loopback, then two-radio link once
    the ground Pluto is unboxed (serial → role table §2) and firmware is
    aligned (v0.39 on both — decision log).
 
