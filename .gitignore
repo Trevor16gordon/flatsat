@@ -1,0 +1,12 @@
+# apt-upgrade throttle stamp (local state, not source)
+.last-apt-upgrade
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# editor / os
+*.swp
+.DS_Store
