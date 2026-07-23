@@ -56,6 +56,17 @@ pad loopback; firmware update deferred) · repo + quality gates live · next: N3
   predicted at RX) — enormous margins either way; calibrate absolute levels
   only if/when a baseline needs them. Benign TX underrun chars (`UUU`) at
   flowgraph teardown.
+- **Data loopback PASSED (2026-07-23) — first real data over RF.**
+  `radio/pluto_data_loopback_test.py` (GMSK via stock gmsk_mod/gmsk_demod,
+  framed 64-bit access code + 64-byte payload, 260.5 kbaud at LO+250 kHz):
+  113/113 frames bit-perfect, payload BER 0.00 over 57,856 bits, message
+  recovered verbatim. Run 1 failed (BER 1.8e-1) with the signal centered at
+  baseband DC — on a shared-LO zero-IF loopback the RX LO leakage +
+  AD936x DC-correction loops sit mid-signal. Lesson recorded for all future
+  waveforms on this hardware: **keep signal energy off DC** (digital offset
+  tune: rotate up on TX, xlating-LPF down on RX; envelope unchanged).
+  Diagnosis method that worked: identical chain back-to-back in software
+  (BER 0) exonerated the modem before touching RF again.
 - **N2b complete (2026-07-23).** PyTorch 2.8.0 (CUDA 12.6 build) +
   torchvision 0.23.0 in `~/venvs/flatsat-ml` (`--system-site-packages`),
   wheels from `pypi.jetson-ai-lab.io/jp6/cu126` (the `.dev` mirror is dead)
