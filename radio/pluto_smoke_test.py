@@ -23,6 +23,10 @@ Usage:
   ./pluto_smoke_test.py --uri ip:192.168.2.1
   ./pluto_smoke_test.py --freq 915e6 --rate 2.084e6 --gain 40
 
+RF bandwidth note: the in-tree gr-iio 3.10 API has no bandwidth setter; the
+RF filter is auto-configured from the sample rate (set_filter_params "Auto"),
+same as GRC's Pluto Source block.
+
 Exit code 0 = pass; non-zero identifies the failed stage.
 """
 
@@ -66,19 +70,19 @@ def resolve_uri(cli_uri: str | None) -> str:
     return "ip:192.168.2.1"
 
 
-def make_rx_source(uri: str, freq: float, rate: float, bw: float, gain: float) -> object:
+def make_rx_source(uri: str, freq: float, rate: float, gain: float) -> object:
     """Construct an RX-only fmcomms2 source block (no TX block anywhere).
 
-    The positional argument order matches gr-iio 3.10.1.1's
-    ``fmcomms2_source_fc32``. If this install differs, construction raises
-    TypeError and the caller prints the real signature via
-    :func:`diag_signature` — without ever transmitting.
+    Uses the in-tree gr-iio 3.10 API, verified by introspection on this box
+    (apt GNU Radio 3.10.1.1): ``fmcomms2_source_fc32(uri, ch_en, buffer_size)``
+    followed by setter calls. There is no bandwidth setter in this API —
+    ``set_filter_params("Auto", ...)`` sizes the RF filter from the sample
+    rate, matching what GRC's Pluto Source block generates.
 
     Args:
         uri: IIO context URI (e.g. ``ip:192.168.2.1`` or ``usb:1.4.5``).
         freq: RX LO frequency in Hz.
         rate: Sample rate in samples/second.
-        bw: RF bandwidth in Hz.
         gain: Manual RX gain in dB.
 
     Returns:
@@ -87,25 +91,21 @@ def make_rx_source(uri: str, freq: float, rate: float, bw: float, gain: float) -
     """
     from gnuradio import iio
 
-    return iio.fmcomms2_source_fc32(
+    src = iio.fmcomms2_source_fc32(
         uri,  # IIO context URI
-        int(freq),  # RX LO frequency [Hz]
-        int(rate),  # sample rate [Sa/s]
-        int(bw),  # RF bandwidth [Hz]
-        True,  # ch1 (I) enabled -> RX1
-        True,  # ch2 (Q) enabled -> RX1
-        False,  # ch3 disabled (Pluto is 1x1)
-        False,  # ch4 disabled
+        [True, True],  # ch_en: I + Q voltage channels of RX1 (Pluto is 1x1)
         0x8000,  # kernel buffer size [samples]
-        True,  # quadrature tracking
-        True,  # RF DC offset correction
-        True,  # baseband DC offset correction
-        "manual",  # RX1 gain mode
-        float(gain),  # RX1 gain value [dB]
-        "manual",  # RX2 gain mode (unused on Pluto)
-        float(gain),  # RX2 gain value (unused on Pluto)
-        "A_BALANCED",  # RF port select
     )
+    src.set_len_tag_key("")
+    src.set_frequency(int(freq))  # RX LO [Hz]
+    src.set_samplerate(int(rate))  # [Sa/s]
+    src.set_gain_mode(0, "manual")
+    src.set_gain(0, float(gain))  # [dB]
+    src.set_quadrature(True)
+    src.set_rfdc(True)  # RF DC offset correction
+    src.set_bbdc(True)  # baseband DC offset correction
+    src.set_filter_params("Auto", "", 0.0, 0.0)  # RF filter follows samplerate
+    return src
 
 
 def diag_signature() -> None:
@@ -130,11 +130,9 @@ def main() -> int:
     parser.add_argument("--uri", default=None, help="IIO URI (default: auto, else ip:192.168.2.1)")
     parser.add_argument("--freq", type=float, default=915e6, help="RX LO frequency [Hz]")
     parser.add_argument("--rate", type=float, default=2.084e6, help="sample rate [Sa/s]")
-    parser.add_argument("--bw", type=float, default=None, help="RF bandwidth [Hz] (default: rate)")
     parser.add_argument("--gain", type=float, default=40.0, help="manual RX gain [dB]")
     parser.add_argument("--nsamples", type=int, default=1 << 18, help="IQ samples to capture")
     args = parser.parse_args()
-    bw: float = args.bw if args.bw else args.rate
 
     print("=" * 66)
     print(" Pluto RX-only smoke test — NO TRANSMIT (receive path only)")
@@ -152,7 +150,7 @@ def main() -> int:
     uri = resolve_uri(args.uri)
     print(
         f"[..] 2  uri={uri}  freq={args.freq / 1e6:.3f} MHz  "
-        f"rate={args.rate / 1e6:.3f} MSa/s  bw={bw / 1e6:.3f} MHz  "
+        f"rate={args.rate / 1e6:.3f} MSa/s (RF bw auto)  "
         f"gain={args.gain:g} dB  nsamples={args.nsamples}"
     )
 
@@ -163,7 +161,7 @@ def main() -> int:
         def __init__(self) -> None:
             """Build the source→head→sink chain (RX only, no TX block)."""
             gr.top_block.__init__(self, "pluto_rx_smoke")
-            src = make_rx_source(uri, args.freq, args.rate, bw, args.gain)
+            src = make_rx_source(uri, args.freq, args.rate, args.gain)
             head = blocks.head(gr.sizeof_gr_complex, args.nsamples)
             self.sink = blocks.vector_sink_c()
             self.connect(src, head, self.sink)

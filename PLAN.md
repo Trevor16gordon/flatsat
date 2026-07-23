@@ -35,9 +35,13 @@ repo + quality gates live.
   Physical state: TX→30 dB pads→RX looped on the flat-sat unit, on the Jetson.
 - **Smoke test written, not yet run.** `radio/pluto_smoke_test.py` (RX-only,
   never transmits) committed and awaiting Trevor's inspection + go-ahead.
-  Caveat: the `fmcomms2_source_fc32` positional-arg order is written for
-  gr-iio 3.10.1.1 but unverified on-device; a mismatch fails cleanly at
-  stage 2 with a TypeError and prints the real signature (no RF either way).
+  Former caveat resolved 2026-07-23: the on-device binding was introspected
+  (import-only, no IIO context opened) and the script rewritten to the
+  verified in-tree gr-iio 3.10 API — `fmcomms2_source_fc32(uri, ch_en,
+  buffer_size)` + setters; no bandwidth setter exists, RF filter follows
+  sample rate via `set_filter_params("Auto", ...)`. `iio.get_pluto_uri()`
+  confirmed present for auto-detect. TypeError fallback at stage 2 retained
+  as a safety net.
 - **Repo restructured + plans merged** (this document) — pushed to GitHub.
 
 ### Decision log
@@ -51,8 +55,9 @@ repo + quality gates live.
 
 ### Next up
 
-1. Trevor inspects `radio/pluto_smoke_test.py` → run it (RX-only; expected
-   result with TX silent: noise floor, no dominant tone).
+1. Trevor inspects `radio/pluto_smoke_test.py` (now on the verified gr-iio
+   API) → run it (RX-only; expected result with TX silent: noise floor, no
+   dominant tone).
 2. With explicit go-ahead and 30 dB pads confirmed inline: first TX —
    single-Pluto loopback tone/BPSK, as a separate loudly-labeled script
    (P3 precursor).
