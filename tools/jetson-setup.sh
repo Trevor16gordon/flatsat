@@ -175,11 +175,48 @@ log "N2: GNU Radio + IIO/Pluto stack"
 # gr-iio ships the fmcomms2 source/sink blocks — the native Pluto interface.
 apt_install gnuradio gnuradio-dev libiio-utils libiio0 libad9361-0 libad9361-dev
 
-# ---------------------------------------------- N2b: PyTorch/TensorRT (pending) --
-# Added after we validate on-device:
-#   - PyTorch from NVIDIA's JP6/CUDA-12.6 Jetson wheel index (NOT PyPI torch)
-#   - TensorRT via nvidia-jetpack meta-package
-#   - pass check: torch.cuda.is_available() == True
+# ------------------------------------------------- N2b: PyTorch (jp6/cu126) --
+
+log "N2b: PyTorch venv (jp6/cu126 Jetson wheels)"
+# Wheels MUST come from the Jetson index — pypi.org's torch 2.8.0 aarch64
+# wheel is CPU-only under the IDENTICAL version string, so it is downloaded
+# with --no-deps from the Jetson index and installed from the local file;
+# dependencies then resolve from pypi.org but can never displace torch itself.
+# Venv is --system-site-packages: TensorRT python bindings are apt-only, and
+# Track B (B5 live classifier) wants gnuradio + torch in one process.
+# numpy<2 pinned first: torch/vision would otherwise pull numpy 2.x into the
+# venv, breaking the system gnuradio bindings (built against numpy 1.x).
+ML_VENV="${FLATSAT_ML_VENV:-$HOME/venvs/flatsat-ml}"
+TORCH_VERSION="${TORCH_VERSION:-2.8.0}"
+TORCHVISION_VERSION="${TORCHVISION_VERSION:-0.23.0}"
+JETSON_WHEEL_INDEX="${JETSON_WHEEL_INDEX:-https://pypi.jetson-ai-lab.io/jp6/cu126}"
+WHEEL_CACHE="$HOME/.cache/flatsat/jetson-wheels"
+apt_install python3-venv
+if [[ -f "$ML_VENV/bin/python" ]]; then
+  skip "venv exists: $ML_VENV"
+else
+  do_ "python3 -m venv --system-site-packages $ML_VENV"
+  mkdir -p "$(dirname "$ML_VENV")"
+  python3 -m venv --system-site-packages "$ML_VENV"
+fi
+if "$ML_VENV/bin/pip" show torch 2>/dev/null | grep -q "^Version: ${TORCH_VERSION}$"; then
+  skip "torch==${TORCH_VERSION} already in venv"
+else
+  do_ "download torch/torchvision from the Jetson index (no deps)"
+  mkdir -p "$WHEEL_CACHE"
+  "$ML_VENV/bin/pip" download --no-deps -d "$WHEEL_CACHE" \
+    --index-url "$JETSON_WHEEL_INDEX" \
+    "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
+  do_ "pip install numpy<2 + local Jetson wheels"
+  "$ML_VENV/bin/pip" install "numpy<2"
+  "$ML_VENV/bin/pip" install \
+    "$WHEEL_CACHE"/torch-"${TORCH_VERSION}"-*.whl \
+    "$WHEEL_CACHE"/torchvision-"${TORCHVISION_VERSION}"-*.whl
+fi
+do_ "N2b gate: verify_torch_cuda.py (CUDA build, GPU compute, gnuradio coexists)"
+"$ML_VENV/bin/python" "$SCRIPT_DIR/verify_torch_cuda.py"
+# TensorRT: python3-libnvinfer already ships with JP6.2.1 (apt) — reachable
+# from this venv via system site-packages; onnxruntime comes later per §3.
 
 # ------------------------------------------- N3: PREEMPT_RT kernel (pending) --
 # Added after N2 validates:
@@ -195,6 +232,9 @@ mkdir -p "$MANIFEST_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 dpkg -l                     > "$MANIFEST_DIR/dpkg-$STAMP.txt"
 pip3 list 2>/dev/null       > "$MANIFEST_DIR/pip-$STAMP.txt"
+if [[ -f "$ML_VENV/bin/pip" ]]; then
+  "$ML_VENV/bin/pip" list 2>/dev/null > "$MANIFEST_DIR/pip-ml-venv-$STAMP.txt"
+fi
 uname -a                    > "$MANIFEST_DIR/kernel-$STAMP.txt"
 cat /etc/nv_tegra_release  >> "$MANIFEST_DIR/kernel-$STAMP.txt" 2>/dev/null || true
 echo "  manifest written to $MANIFEST_DIR (commit these to the repo)"
