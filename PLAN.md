@@ -13,6 +13,20 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-24)
 
+- **A1 software half CLOSED (2026-07-24 evening): FIFO via systemd, 3-way
+  measured.** ADCS loop as flatsat-adcs.service (SCHED_FIFO 80, core 3,
+  granted by systemd — verified with chrt; in-process reporting now prints
+  verified state, not attempts). Wakeup-lateness MAX per condition, 100 Hz,
+  6000-cycle windows: SCHED_OTHER idle 620 µs / loaded **1699 µs**; FIFO
+  (service) idle **86–207 µs**; FIFO under full GPU+CPU+mem load
+  **124–137 µs** — the equal-priority-preemption tail is gone (13×), load
+  is near-invisible to the loop. Residual ~100 µs tail = idle-state exits +
+  unisolated core; that is the A1 isolation runbook's target (isolcpus/
+  nohz_full/IRQ affinity/idle cap on RT_CORE from the host profile).
+  Observed under load-ramp: 2 stale-input cycles — the NON-RT fake-IMU
+  daemon lagged, not the loop; instrumentation correctly fingers the
+  weakest link (sensor daemons' RT tier is a future table decision).
+
 - **Process orchestration (2026-07-24): table → systemd, placement via host
   profile.** `flight/processes.toml` = the single process source of truth
   (module, args, RT policy/priority, core ROLE, memory budget);
