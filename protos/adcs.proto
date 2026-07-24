@@ -1,0 +1,20 @@
+// ADCS actuator command messages (Track A: A1 mock loop onward).
+//
+// Commands reuse the common Header: sample_time_ns = when the control law
+// ran, seq = per-source command counter, validity = acquisition facts about
+// the INPUTS the command was computed from (a command computed from stale
+// sensor data says so, rather than pretending).
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "hal.proto";
+
+// Reaction-wheel torque command, body frame, SI units.
+message WheelTorqueCommand {
+  Header header = 1;
+  double torque_x_n_m = 2;
+  double torque_y_n_m = 3;
+  double torque_z_n_m = 4;
+}

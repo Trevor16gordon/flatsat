@@ -24,5 +24,11 @@ mkdir -p "$OUT"
   --mypy_out="$OUT" \
   "$REPO"/protos/*.proto
 
+# protoc emits flat sibling imports (`import hal_pb2`) that assume the output
+# dir is on sys.path; rewrite them package-relative so the modules work as
+# flight.msgs.* without path hacks.
+sed -i -E 's/^import ([a-z0-9_]+_pb2) as/from flight.msgs import \1 as/' "$OUT"/*_pb2.py
+sed -i -E 's/^import ([a-z0-9_]+_pb2)$/from flight.msgs import \1/' "$OUT"/*_pb2.pyi
+
 echo "generated into $OUT:"
 ls -la "$OUT"
