@@ -13,6 +13,18 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-24)
 
+- **Bus latency measured (2026-07-24) — the transport-tail question closed
+  with data.** `flight/bus_bench.py` (echo + paced pinger, protobuf payloads
+  over zenoh loopback TCP, warmup discarded, SCHED_OTHER — no sudo): one-way
+  idle p50 193 µs / max 686 µs (n=1000); under the full N3 load (CUDA matmul
+  + stress-ng 4cpu+2vm) p50 167 µs / p99.9 322 µs / max 542 µs (n=2000, zero
+  loss). Load IMPROVES tails (idle-state/clock-ramp exit penalties dominate
+  when quiescent). Verdict: a 100–200 Hz control path can cross the bus with
+  ≥10× worst-case margin — bus-first ADCS confirmed as default; §4's
+  single-pinned-process consolidation stays an unneeded escape hatch.
+  Standing caveats: loopback only (cross-machine adds the NIC), and rerun
+  with `--fifo` under sudo if tails ever matter at SCHED_FIFO tiers.
+
 - **M1 foundation layer (2026-07-24).** `protos/` established as the single
   source of truth for inter-service interfaces (decision: protobuf schemas;
   Python codegen + mypy stubs committed via `tools/gen-protos.sh`; generated
