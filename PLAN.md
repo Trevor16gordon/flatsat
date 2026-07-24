@@ -2,15 +2,36 @@
 
 v1.1 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status: bring-up in progress.** N1 complete · N2 complete (radio + N2b
-PyTorch/CUDA) · P1 partially complete (flat-sat Pluto verified TX+RX through
-pad loopback; firmware update deferred) · repo + quality gates live · next: N3.
+**Status: Jetson bring-up COMPLETE (N1–N3).** N3 PREEMPT_RT live, gate passed
+untuned (69 µs worst-case under load) · P1 partially complete (flat-sat Pluto
+verified TX+RX+data through pad loopback; firmware update deferred) · repo +
+quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ---
 
 ## 0. Working status and decision log
 
-### Done (as of 2026-07-23)
+### Done (as of 2026-07-24)
+
+- **N3 COMPLETE (2026-07-24) — PREEMPT_RT kernel live, gate passed.**
+  Installed via NVIDIA's rt-kernel OTA repo (`5.15.148-rt-tegra`, build
+  36.4.0-20241014 against BSP r36.4.7). Boot-path discovery confirmed on
+  hardware: bootloader reads the SD APP partition's extlinux.conf + kernel
+  (with `root=/dev/nvme0n1p1`), NOT the NVMe's — apt installs required
+  manual sync to SD (runbook stages 3–4). Postinst trap confirmed and fixed:
+  its generated entry wrote `root=/dev/mmcblk0p1` (would have booted the
+  stale SD rootfs). Fallback preserved: stock `primary` entry + its own
+  initrd untouched on SD; RT entry has separate Image.real-time +
+  initrd.real-time; rescue = serial console boot menu or SD-card edit on
+  the Mac. Verified under RT: `/sys/kernel/realtime`=1, CONFIG_PREEMPT_RT=y,
+  nvgpu loaded, zero failed units, full N2b CUDA gate re-passed.
+  **Acceptance gate: cyclictest 10 min, SMP, prio 95, under sustained CUDA
+  4096² matmul + stress-ng (4 cpu + 2 vm×1GB): worst-case 69 µs (per-core
+  max 69/39/45/56/48/48, avg 5–10 µs) — beats the <~100 µs target with NO
+  isolation tuning.** This is the A1 "before" baseline; isolcpus/nohz_full/
+  IRQ affinity remain A1 work. Install captured idempotently in
+  jetson-setup.sh (boot sync deliberately manual, script warns + points at
+  `tools/n3-rt-kernel-runbook.md`).
 
 - **N1 complete.** JetPack 6.2.1 flashed to microSD (board firmware was already
   36.4.3 — no JP5.1.3 detour needed). Headless oem-config over USB-C serial,
@@ -102,20 +123,18 @@ pad loopback; firmware update deferred) · repo + quality gates live · next: N3
 
 ### Next up
 
-1. N3: PREEMPT_RT kernel via OTA repo; keep generic kernel entry as fallback.
-   Runbook ready: `tools/n3-rt-kernel-runbook.md` (Trevor-driven, all sudo;
-   needs a reboot window + serial console on standby). Gate: cyclictest
-   <~100 µs under CUDA + memory-bandwidth load (torch generates GPU load).
-   ⚠ Preflight discovery (2026-07-23, unconfirmed until SD is mounted): the
-   bootloader appears to read the SD card's extlinux.conf + /boot/Image, not
-   the NVMe's — the NVMe copy still says `root=/dev/mmcblk0p1` (stale
-   pre-migration artifact) while / runs on nvme0n1p1 and the mounted ESP is
-   SD p10. Consequence: apt kernel installs land on NVMe /boot and are
-   invisible to the bootloader until synced to the SD APP partition —
-   runbook stage 0 verifies, stage 3 handles.
-2. Later (P3 proper): BPSK over the same loopback, then two-radio link once
-   the ground Pluto is unboxed (serial → role table §2) and firmware is
-   aligned (v0.39 on both — decision log).
+1. Unbox ground Pluto (Trevor, ~10 min): record serial into §2 role table;
+   confront the two-Pluto identity collision (both default to
+   usb 192.168.2.1) before any two-radio work.
+2. M1 seam work (no hardware needed): Zenoh evaluation (pub/sub + latched
+   `sys/mode` smoke test) and the HAL daemon message contract as typed code
+   (sample/publish timestamps, validity word, sequence number) + one
+   fake-sensor daemon.
+3. P3 proper: BPSK/framing over the loopback, then two-radio link once the
+   ground Pluto is enumerated and firmware aligned (v0.39 both — decision
+   log). Zero-IF lesson applies: keep signal energy off DC.
+4. A1 (later): core isolation (isolcpus/nohz_full/IRQ affinity) + re-run
+   the cyclictest gate against the 69 µs untuned baseline.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
@@ -456,7 +475,7 @@ module/function docstring rules (types still enforced); leading-underscore
 
 | # | Milestone | Exit criterion |
 |---|-----------|----------------|
-| N1–N3 | Jetson bring-up | SSH + NVMe root ✅; GR installed ✅ (apt 3.10.1.1, amended); PyTorch/TensorRT from pinned indexes; RT kernel installed with generic fallback, cyclictest <~100 µs under CUDA + memory load |
+| N1–N3 | Jetson bring-up | SSH + NVMe root ✅; GR installed ✅ (apt 3.10.1.1, amended); PyTorch cu126 + CUDA gate ✅; RT kernel live with stock fallback ✅, cyclictest 69 µs worst-case under CUDA + memory load ✅ — **complete 2026-07-24** |
 | P1–P3 | Pluto bring-up | Both enumerate (identity collision resolved); common firmware on both (v0.39 before baselines — amended) + ad9364 unlock; cabled A→B link with recorded baseline. *P1 partial: flat-sat unit enumerated, reports ad9364* |
 | M1 | HAL + injection | All sensors behind daemons with validity words; shim can freeze/bias/kill any topic by command; Basilisk feeding fakes end-to-end |
 | M2 | Minimal C&DH | F´ FlatSatCdh topology; time-tagged sequence executes; realtime + recorded telemetry streams; params tunable from GDS |
