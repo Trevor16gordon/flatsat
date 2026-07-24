@@ -13,6 +13,18 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-24)
 
+- **Process orchestration (2026-07-24): table → systemd, placement via host
+  profile.** `flight/processes.toml` = the single process source of truth
+  (module, args, RT policy/priority, core ROLE, memory budget);
+  `tools/host-profiles/jetson-orin-nano.env` = placement truth (RT_CORE=3,
+  housekeeping 0-2,4-5 — the SAME file the A1 isolation cmdline must use);
+  `tools/gen-units.py` compiles both into committed systemd units +
+  `flatsat.target`. systemd grants FIFO/affinity/MemoryMax declaratively —
+  flight code stays unprivileged; Restart=on-failure = FDIR Tier-1 for
+  free. Install (sudo): `tools/install-units.sh`. Declare-then-verify rule
+  adopted: profiles state placement, processes assert it at startup
+  (assertion hook still TODO in SensorDaemon/loop).
+
 - **A1 (software half) — first closed control loop over the bus,
   instrumented (2026-07-24).** `flight/hal/fake_imu.py` (synthetic gyro in
   the Basilisk seam slot) → `flight/adcs/loop.py`: PD rate damping at
