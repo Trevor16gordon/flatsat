@@ -1,0 +1,27 @@
+// System mode state (PLAN.md §7).
+//
+// Published latched on sys/mode with a monotonic sequence and reason; every
+// registered app must ack the sequence within a timeout. Toward-safety
+// transitions are automatic; away-from-safety is ground-command-only.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// The four flat states. Orthogonal conditions (in-contact, sim-fed) are
+// flags on other topics, never modes.
+enum SystemMode {
+  SYSTEM_MODE_UNSPECIFIED = 0;
+  SYSTEM_MODE_INIT = 1;
+  SYSTEM_MODE_NOMINAL = 2;
+  SYSTEM_MODE_SAFE = 3;
+  SYSTEM_MODE_RECOVERY = 4;
+}
+
+// Latched mode state: the current mode plus the transition that produced it.
+message ModeState {
+  SystemMode mode = 1;
+  uint64 mode_seq = 2;           // monotonic transition counter; acks cite it
+  string reason = 3;             // cause of the last transition
+  fixed64 transition_time_ns = 4; // flight-clock time of the transition
+}

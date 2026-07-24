@@ -11,6 +11,12 @@
 [tool.ruff]
 line-length = 100
 target-version = "py310"          # onboard Python is 3.10 (fixed by Ubuntu 22.04)
+# Generated protobuf bindings are exempt from the quality contract — the
+# .proto files are the reviewed source of truth (see tools/gen-protos.sh).
+# force-exclude makes the exemption hold even when pre-commit passes the
+# generated filenames explicitly.
+extend-exclude = ["*_pb2.py", "*_pb2.pyi"]
+force-exclude = true
 
 [tool.ruff.lint]
 select = [

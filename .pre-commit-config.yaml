@@ -28,3 +28,6 @@ repos:
     rev: v2.3.0
     hooks:
       - id: mypy            # independent enforcement of fully-typed defs
+        # Generated protobuf bindings are exempt (protos/ is the reviewed
+        # source of truth); consumers are still fully checked via .pyi stubs.
+        exclude: '_pb2\.pyi?$'

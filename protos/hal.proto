@@ -1,0 +1,45 @@
+// HAL daemon message contract (PLAN.md §4) — the seam everything stands on.
+//
+// Every sensor message embeds Header. The header carries the four fields the
+// architecture depends on: when the quantity was sampled, when it was
+// published, a per-source monotonic sequence number, and a validity word.
+// Daemons FLAG AND FORWARD — they never silently repair data; FDIR cannot
+// detect what the HAL papers over.
+//
+// These .proto files are the single source of truth for inter-service
+// interfaces. Regenerate language bindings with tools/gen-protos.sh.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// Fault flags OR-ed into Header.validity. Zero means "no flags: valid".
+enum ValidityFlag {
+  VALIDITY_FLAG_VALID = 0;      // no fault flags set
+  VALIDITY_FLAG_RANGE = 1;      // value outside physical bounds
+  VALIDITY_FLAG_COMM = 2;       // bus/communication error during read
+  VALIDITY_FLAG_CRC = 4;        // checksum failure on the raw read
+  VALIDITY_FLAG_STALE = 8;      // no fresh sample within the freshness deadline
+  VALIDITY_FLAG_SATURATED = 16; // sensor railed at a measurement limit
+}
+
+// Common envelope embedded by every sensor/telemetry message.
+message Header {
+  string source = 1;           // publishing daemon instance, e.g. "imu0"
+  fixed64 sample_time_ns = 2;  // flight-clock time the quantity was sampled
+  fixed64 publish_time_ns = 3; // flight-clock time the message was published
+  uint64 seq = 4;              // per-source monotonic sequence number
+  uint32 validity = 5;         // bitwise OR of ValidityFlag; 0 == valid
+}
+
+// Inertial measurement sample. Body frame, SI units.
+message ImuSample {
+  Header header = 1;
+  double gyro_x_rad_s = 2;
+  double gyro_y_rad_s = 3;
+  double gyro_z_rad_s = 4;
+  double accel_x_m_s2 = 5;
+  double accel_y_m_s2 = 6;
+  double accel_z_m_s2 = 7;
+  double temperature_c = 8;
+}
