@@ -13,6 +13,22 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-24)
 
+- **A1 (software half) — first closed control loop over the bus,
+  instrumented (2026-07-24).** `flight/hal/fake_imu.py` (synthetic gyro in
+  the Basilisk seam slot) → `flight/adcs/loop.py`: PD rate damping at
+  100 Hz, absolute-deadline cadence, GC quiesced, mlockall (works
+  unprivileged here), `WheelTorqueCommand` out every cycle (`adcs.proto`;
+  stale-input commands flag themselves). Cyclictest-style self-measurement.
+  Baseline, SCHED_OTHER, sensor→bus→loop→bus: idle lateness p50 95 /
+  max 620 µs; under N3-grade load p50 78 / p99 95 / **MAX 1699 µs — a
+  single equal-priority preemption spike, the precise thing SCHED_FIFO
+  exists to remove**. 0/1999 cycles missed or stale; worst case ~2.2 ms of
+  the 10 ms budget with no privileges and no isolation. Remaining A1 (needs
+  Trevor/sudo): rerun `--fifo 80 --pin N` under load, then the isolation
+  pass (isolcpus/nohz_full/IRQ affinity, idle-state cap per the
+  cpu_dma_latency lesson) → target < ~100 µs, artifact = before/after vs
+  this baseline and cyclictest's 69 µs.
+
 - **Bus latency measured (2026-07-24) — the transport-tail question closed
   with data.** `flight/bus_bench.py` (echo + paced pinger, protobuf payloads
   over zenoh loopback TCP, warmup discarded, SCHED_OTHER — no sudo): one-way
