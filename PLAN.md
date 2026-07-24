@@ -120,6 +120,7 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 | 2026-07-23 | **Pluto firmware stays v0.37** for now; v0.39 upgrade deferred to just before comparative baselines. | Unit is modern + already reports ad9364; flashing is the riskiest Pluto op — defer until it buys something. P1 exit amended accordingly. |
 | 2026-07-23 | **Serial→role assignment.** `104473b04a06000602001c00dd1f84cfaa` = **flat-sat radio** (on the Jetson). Second unit = **ground radio** (eventually on the Mac). | Recorded per §2; ground segment on Mac is future work — both radios live on the Jetson until the ground segment stands up. |
 | 2026-07-23 | **Repo layout by architecture segment** (`flight/`, `ground/`, `radio/`, `tools/`); plans merged into this single PLAN.md. | Mirrors the two-segment architecture from day one. |
+| 2026-07-24 | **ADCS language: Python first, C++ only when measurement demands it.** Port trigger is a number, not a feeling: worst-case loop lateness under adversarial load exceeding ~5% of the period, or a rate target beyond Python's floor (~1 kHz / sub-100 µs). | 100–200 Hz has ms-scale budget; disciplined Python (prealloc, gc frozen, mlockall, FIFO) holds ~100–300 µs jitter on the RT kernel. The bus-topic seam makes the later port invisible to the rest of the system; hard-RT tier belongs to the STM32 judge anyway. Jitter harness runs from day one so the before/after is free. |
 
 ### Next up
 
