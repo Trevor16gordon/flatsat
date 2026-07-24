@@ -76,7 +76,7 @@ class LoopReport:
                 f"p99.9 {np.percentile(data, 99.9):7.1f}  "
                 f"MAX {data.max():7.1f}  us"
             )
-        print("-" * 64)
+        print("-" * 64, flush=True)
 
 
 class AdcsLoop:

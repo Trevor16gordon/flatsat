@@ -160,6 +160,7 @@ def render_service(spec: ProcessSpec, profile: dict[str, str], profile_name: str
         "[Service]",
         f"ExecStart={exec_start}",
         f"WorkingDirectory={profile['WORKDIR']}",
+        "Environment=PYTHONUNBUFFERED=1",
         "Restart=on-failure",
         "RestartSec=1",
     ]
