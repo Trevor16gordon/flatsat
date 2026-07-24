@@ -1,0 +1,38 @@
+# The flatsat process table — every onboard process, declared in one place.
+#
+# This file is the SOURCE OF TRUTH for what runs on the flat-sat and with
+# what real-time contract. tools/gen-units.py compiles it (plus a host
+# profile from tools/host-profiles/) into systemd units; the units are
+# generated artifacts, committed for inspection, installed by
+# tools/install-units.sh (sudo).
+#
+# Placement portability: processes declare a core ROLE (e.g. "rt_core"),
+# never a core NUMBER — the host profile maps roles to this board's
+# topology. Processes with no role get the housekeeping CPU set, keeping
+# the RT core clean. RT policy/priority ARE process properties, so they
+# live here.
+
+[[process]]
+name = "imu0"
+description = "Synthetic IMU daemon (Basilisk seam slot, PLAN s10)"
+module = "flight.hal.fake_imu"
+args = ["--rate", "100"]
+memory_max = "256M"
+
+[[process]]
+name = "thermal-tj"
+description = "Jetson junction-temperature HAL daemon"
+module = "flight.hal.jetson_thermal"
+args = ["--zone", "tj-thermal", "--rate", "1"]
+memory_max = "256M"
+
+[[process]]
+name = "adcs"
+description = "A1 mock ADCS loop: PD rate damping at 100 Hz (PLAN s4, s12)"
+module = "flight.adcs.loop"
+args = ["--rate", "100", "--duration", "0"]
+after = ["imu0"]
+rt_policy = "fifo"
+rt_priority = 80
+core_role = "rt_core"
+memory_max = "512M"

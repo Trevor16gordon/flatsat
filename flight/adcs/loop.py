@@ -180,26 +180,39 @@ class AdcsLoop:
         self._pub.put(cmd.SerializeToString())
         return stale
 
-    def run(self, duration_s: float) -> LoopReport:
-        """Run the loop for a fixed duration and return the self-measurement.
+    def run(
+        self,
+        duration_s: float,
+        report_every_s: float = 0.0,
+        conditions: list[str] | None = None,
+    ) -> LoopReport:
+        """Run the loop and return the self-measurement.
 
         Args:
-            duration_s: How long to run.
+            duration_s: How long to run; <= 0 means run until :meth:`stop`
+                (service mode).
+            report_every_s: If > 0, print and RESET the report at this
+                interval — bounds memory for indefinite runs and streams
+                percentiles into the journal.
+            conditions: RT-hygiene state strings echoed on every report.
 
         Returns:
-            The populated LoopReport.
+            The report covering the final (possibly partial) interval.
         """
-        report = LoopReport()
+        report = LoopReport(conditions=list(conditions or []))
         period_ns = int(1_000_000_000 / self._rate_hz)
-        end_ns = time.monotonic_ns() + int(duration_s * 1e9)
-        next_wake = time.monotonic_ns() + period_ns
+        now = time.monotonic_ns()
+        end_ns = now + int(duration_s * 1e9) if duration_s > 0 else None
+        report_ns = int(report_every_s * 1e9) if report_every_s > 0 else None
+        next_report = now + report_ns if report_ns else None
+        next_wake = now + period_ns
         seq = 0
         while not self._stop.is_set():
             delta = next_wake - time.monotonic_ns()
             if delta > 0:
                 time.sleep(delta / 1e9)
             woke = time.monotonic_ns()
-            if woke >= end_ns:
+            if end_ns is not None and woke >= end_ns:
                 break
             report.wakeup_lateness_us.append((woke - next_wake) / 1000.0)
 
@@ -209,6 +222,12 @@ class AdcsLoop:
             report.cycles += 1
             report.stale_cycles += int(stale)
             next_wake += period_ns
+
+            if next_report is not None and report_ns is not None and woke >= next_report:
+                report.print_summary()
+                conditions = report.conditions
+                report = LoopReport(conditions=conditions)
+                next_report += report_ns
         return report
 
     def stop(self) -> None:
@@ -228,7 +247,15 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="A1 mock ADCS control loop (bus-first).")
     parser.add_argument("--rate", type=float, default=100.0, help="control rate [Hz]")
-    parser.add_argument("--duration", type=float, default=30.0, help="run time [s]")
+    parser.add_argument(
+        "--duration", type=float, default=30.0, help="run time [s]; 0 = forever (service mode)"
+    )
+    parser.add_argument(
+        "--report-every",
+        type=float,
+        default=0.0,
+        help="print+reset the jitter report at this interval [s] (bounds memory; 0 = only at end)",
+    )
     parser.add_argument("--fifo", type=int, default=None, help="SCHED_FIFO priority to attempt")
     parser.add_argument("--pin", type=int, default=None, help="CPU core to pin to")
     parser.add_argument(
@@ -255,8 +282,10 @@ def main() -> int:
         if not loop.wait_for_first_sample():
             print("no sensor data on hal/imu0/sample — start an IMU or use --spawn-imu")
             return 3
-        report = loop.run(args.duration)
-        report.conditions = conditions
+        report_every = args.report_every
+        if report_every <= 0 and args.duration <= 0:
+            report_every = 60.0  # service mode must bound memory
+        report = loop.run(args.duration, report_every_s=report_every, conditions=conditions)
         report.print_summary()
     finally:
         loop.close()
