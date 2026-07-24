@@ -13,6 +13,27 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-24)
 
+- **M1 foundation layer (2026-07-24).** `protos/` established as the single
+  source of truth for inter-service interfaces (decision: protobuf schemas;
+  Python codegen + mypy stubs committed via `tools/gen-protos.sh`; generated
+  files gate-exempt, consumers fully checked via stubs; C++ codegen deferred
+  to first consumer ~M2; pydantic deferred to config edges). `hal.proto`:
+  Header (§4 contract: timestamps, monotonic seq, validity word — semantics
+  sharpened after review: acquisition facts only, operational normality is
+  FDIR L1's job) + ImuSample + TemperatureSample. `mode.proto`: SystemMode +
+  latched ModeState. Zenoh 1.9.0 validated on-device: pub/sub with protobuf
+  payloads AND the §7 latched-mode query pattern (late joiner learns mode
+  immediately) — first running evidence for the §13 Zenoh-vs-ROS2 call.
+  `SensorDaemon` base implements contract mechanics once (header stamping,
+  seq, validity propagation, drift-free absolute-deadline cadence); adding a
+  sensor = SensorConfig + a read() that must not raise. **First real HAL
+  daemon live: `flight/hal/jetson_thermal.py`** — tj-thermal at ~48 °C over
+  the bus, sample→publish ~400 µs; power-gated cv* zones publish COMM-flagged
+  on cadence (flag-and-forward proven against real EAGAIN). War story
+  recorded in code: sysfs EAGAIN evades OSError via Python text IO
+  (TypeError) and buffered binary IO (silent None) — raw os.read is the
+  honest path. 8 integration/unit tests green on-device.
+
 - **N3 COMPLETE (2026-07-24) — PREEMPT_RT kernel live, gate passed.**
   Installed via NVIDIA's rt-kernel OTA repo (`5.15.148-rt-tegra`, build
   36.4.0-20241014 against BSP r36.4.7). Boot-path discovery confirmed on
