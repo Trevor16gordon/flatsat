@@ -36,31 +36,45 @@ class _ValidityFlagEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[_Validity
     VALIDITY_FLAG_VALID: _ValidityFlag.ValueType  # 0
     """no fault flags set"""
     VALIDITY_FLAG_RANGE: _ValidityFlag.ValueType  # 1
-    """value outside physical bounds"""
+    """beyond the device's DATASHEET measurement"""
     VALIDITY_FLAG_COMM: _ValidityFlag.ValueType  # 2
-    """bus/communication error during read"""
+    """range — "the sensor cannot have measured
+    this"; not an operational limit
+    bus/communication error during read
+    """
     VALIDITY_FLAG_CRC: _ValidityFlag.ValueType  # 4
     """checksum failure on the raw read"""
     VALIDITY_FLAG_STALE: _ValidityFlag.ValueType  # 8
     """no fresh sample within the freshness deadline"""
     VALIDITY_FLAG_SATURATED: _ValidityFlag.ValueType  # 16
-    """sensor railed at a measurement limit"""
+    """pinned at the ADC/sensor rail — value is a"""
 
 class ValidityFlag(_ValidityFlag, metaclass=_ValidityFlagEnumTypeWrapper):
-    """Fault flags OR-ed into Header.validity. Zero means "no flags: valid"."""
+    """Fault flags OR-ed into Header.validity. Zero means "no flags: valid".
+
+    Scope: these are ACQUISITION facts — things only the publishing daemon
+    can observe at the driver boundary ("is this number a real, fresh,
+    uncorrupted measurement?"). Whether a real measurement is operationally
+    NORMAL (thermal limits, rate-of-change, cross-channel consistency) is
+    explicitly NOT the daemon's judgment — that is the FDIR limit checker
+    (PLAN §8 L1), configured by ground-tunable rules, not baked into HALs.
+    """
 
 VALIDITY_FLAG_VALID: ValidityFlag.ValueType  # 0
 """no fault flags set"""
 VALIDITY_FLAG_RANGE: ValidityFlag.ValueType  # 1
-"""value outside physical bounds"""
+"""beyond the device's DATASHEET measurement"""
 VALIDITY_FLAG_COMM: ValidityFlag.ValueType  # 2
-"""bus/communication error during read"""
+"""range — "the sensor cannot have measured
+this"; not an operational limit
+bus/communication error during read
+"""
 VALIDITY_FLAG_CRC: ValidityFlag.ValueType  # 4
 """checksum failure on the raw read"""
 VALIDITY_FLAG_STALE: ValidityFlag.ValueType  # 8
 """no fresh sample within the freshness deadline"""
 VALIDITY_FLAG_SATURATED: ValidityFlag.ValueType  # 16
-"""sensor railed at a measurement limit"""
+"""pinned at the ADC/sensor rail — value is a"""
 Global___ValidityFlag: _TypeAlias = ValidityFlag  # noqa: Y015
 
 @_typing.final

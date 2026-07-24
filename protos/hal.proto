@@ -14,13 +14,23 @@ syntax = "proto3";
 package flatsat.v1;
 
 // Fault flags OR-ed into Header.validity. Zero means "no flags: valid".
+//
+// Scope: these are ACQUISITION facts — things only the publishing daemon
+// can observe at the driver boundary ("is this number a real, fresh,
+// uncorrupted measurement?"). Whether a real measurement is operationally
+// NORMAL (thermal limits, rate-of-change, cross-channel consistency) is
+// explicitly NOT the daemon's judgment — that is the FDIR limit checker
+// (PLAN §8 L1), configured by ground-tunable rules, not baked into HALs.
 enum ValidityFlag {
   VALIDITY_FLAG_VALID = 0;      // no fault flags set
-  VALIDITY_FLAG_RANGE = 1;      // value outside physical bounds
+  VALIDITY_FLAG_RANGE = 1;      // beyond the device's DATASHEET measurement
+                                // range — "the sensor cannot have measured
+                                // this"; not an operational limit
   VALIDITY_FLAG_COMM = 2;       // bus/communication error during read
   VALIDITY_FLAG_CRC = 4;        // checksum failure on the raw read
   VALIDITY_FLAG_STALE = 8;      // no fresh sample within the freshness deadline
-  VALIDITY_FLAG_SATURATED = 16; // sensor railed at a measurement limit
+  VALIDITY_FLAG_SATURATED = 16; // pinned at the ADC/sensor rail — value is a
+                                // clipped lower bound, not a measurement
 }
 
 // Common envelope embedded by every sensor/telemetry message.
