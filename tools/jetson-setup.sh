@@ -218,11 +218,35 @@ do_ "N2b gate: verify_torch_cuda.py (CUDA build, GPU compute, gnuradio coexists)
 # TensorRT: python3-libnvinfer already ships with JP6.2.1 (apt) — reachable
 # from this venv via system site-packages; onnxruntime comes later per §3.
 
-# ------------------------------------------- N3: PREEMPT_RT kernel (pending) --
-# Added after N2 validates:
-#   - nvidia-l4t-rt-kernel + headers + oot-modules
-#   - isolcpus/nohz_full in /boot/extlinux/extlinux.conf (keep stock kernel entry!)
-#   - rt-tests, stress-ng; pass check: cyclictest worst-case < ~100 us
+# --------------------------------------------------- N3: PREEMPT_RT kernel --
+
+log "N3: PREEMPT_RT kernel (NVIDIA OTA debs) + RT test tools"
+# Boot-path caveat (this box): the bootloader reads extlinux.conf and the
+# kernel image from the SD card's APP partition, NOT from the NVMe rootfs —
+# apt installs land on the NVMe and are invisible to boot until synced to
+# the SD. That sync (fallback-preserving extlinux edit, root=/dev/nvme0n1p1
+# fix — the postinst template wrongly writes root=/dev/mmcblk0p1) is a
+# DELIBERATELY MANUAL step: tools/n3-rt-kernel-runbook.md stages 3-4.
+# Core-isolation tuning (isolcpus/nohz_full/IRQ affinity) is A1 work.
+RT_REPO_LIST="/etc/apt/sources.list.d/nvidia-l4t-rt-kernel.list"
+if [[ -f "$RT_REPO_LIST" ]]; then
+  skip "rt-kernel apt repo already configured"
+else
+  do_ "add NVIDIA rt-kernel apt repo (r36.4)"
+  echo "deb https://repo.download.nvidia.com/jetson/rt-kernel r36.4 main" \
+    | sudo tee "$RT_REPO_LIST" >/dev/null
+  sudo apt-get update
+  APT_UPDATED=1
+fi
+apt_install nvidia-l4t-rt-kernel nvidia-l4t-rt-kernel-headers \
+  nvidia-l4t-rt-kernel-oot-modules nvidia-l4t-display-rt-kernel
+apt_install rt-tests stress-ng
+if [[ "$(uname -r)" == *-rt-* ]] && [[ "$(cat /sys/kernel/realtime 2>/dev/null)" == "1" ]]; then
+  skip "running the PREEMPT_RT kernel ($(uname -r))"
+else
+  echo "  note: RT kernel installed but NOT running. Boot-path sync + reboot"
+  echo "        are manual: tools/n3-rt-kernel-runbook.md stages 3-4."
+fi
 
 # --------------------------------------------------------------- manifests --
 
