@@ -34,7 +34,7 @@ import numpy as np
 import zenoh
 
 from flight.msgs import adcs_pb2, hal_pb2
-from flight.rt import pin_to_core, quiesce_gc, try_fifo, try_mlockall
+from flight.rt import describe_actual, pin_to_core, quiesce_gc, try_fifo, try_mlockall
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -274,6 +274,7 @@ def main() -> int:
         try_mlockall(),
         pin_to_core(args.pin),
         quiesce_gc(),
+        *describe_actual(),
         f"control rate {args.rate:g} Hz over the bus (zenoh loopback)",
     ]
     session = zenoh.open(zenoh.Config())

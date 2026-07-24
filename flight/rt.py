@@ -62,6 +62,23 @@ def pin_to_core(core: int | None) -> str:
     return f"affinity: pinned to core {core}"
 
 
+def describe_actual() -> list[str]:
+    """Report the scheduling state ACTUALLY in effect (declare-then-verify).
+
+    The try_* helpers describe what this process attempted; the deployment
+    layer (systemd CPUSchedulingPolicy=/CPUAffinity=) may have granted more.
+    Reports should print measured truth, not attempts.
+
+    Returns:
+        Verified policy/priority and CPU affinity strings.
+    """
+    names = {os.SCHED_OTHER: "SCHED_OTHER", os.SCHED_FIFO: "SCHED_FIFO", os.SCHED_RR: "SCHED_RR"}
+    policy = names.get(os.sched_getscheduler(0), "unknown-policy")
+    priority = os.sched_getparam(0).sched_priority
+    cpus = ",".join(str(c) for c in sorted(os.sched_getaffinity(0)))
+    return [f"verified: {policy} priority {priority}", f"verified: affinity cpus {cpus}"]
+
+
 def quiesce_gc() -> str:
     """Freeze existing objects out of GC scanning and disable collection.
 
