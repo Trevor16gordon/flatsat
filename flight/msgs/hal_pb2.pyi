@@ -157,3 +157,32 @@ class ImuSample(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ImuSample: _TypeAlias = ImuSample  # noqa: Y015
+
+@_typing.final
+class TemperatureSample(_message.Message):
+    """Single-point temperature sample (e.g. a Jetson thermal zone)."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    TEMPERATURE_C_FIELD_NUMBER: _builtins.int
+    LOCATION_FIELD_NUMBER: _builtins.int
+    temperature_c: _builtins.float
+    location: _builtins.str
+    """physical/logical measurement point, e.g. "tj-thermal" """
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        temperature_c: _builtins.float = ...,
+        location: _builtins.str = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "location", b"location", "temperature_c", b"temperature_c"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___TemperatureSample: _TypeAlias = TemperatureSample  # noqa: Y015

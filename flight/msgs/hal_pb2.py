@@ -24,17 +24,19 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\thal.proto\x12\nflatsat.v1\"h\n\x06Header\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x16\n\x0esample_time_ns\x18\x02 \x01(\x06\x12\x17\n\x0fpublish_time_ns\x18\x03 \x01(\x06\x12\x0b\n\x03seq\x18\x04 \x01(\x04\x12\x10\n\x08validity\x18\x05 \x01(\r\"\xca\x01\n\tImuSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0cgyro_x_rad_s\x18\x02 \x01(\x01\x12\x14\n\x0cgyro_y_rad_s\x18\x03 \x01(\x01\x12\x14\n\x0cgyro_z_rad_s\x18\x04 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_x_m_s2\x18\x05 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_y_m_s2\x18\x06 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_z_m_s2\x18\x07 \x01(\x01\x12\x15\n\rtemperature_c\x18\x08 \x01(\x01*\xa5\x01\n\x0cValidityFlag\x12\x17\n\x13VALIDITY_FLAG_VALID\x10\x00\x12\x17\n\x13VALIDITY_FLAG_RANGE\x10\x01\x12\x16\n\x12VALIDITY_FLAG_COMM\x10\x02\x12\x15\n\x11VALIDITY_FLAG_CRC\x10\x04\x12\x17\n\x13VALIDITY_FLAG_STALE\x10\x08\x12\x1b\n\x17VALIDITY_FLAG_SATURATED\x10\x10\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\thal.proto\x12\nflatsat.v1\"h\n\x06Header\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x16\n\x0esample_time_ns\x18\x02 \x01(\x06\x12\x17\n\x0fpublish_time_ns\x18\x03 \x01(\x06\x12\x0b\n\x03seq\x18\x04 \x01(\x04\x12\x10\n\x08validity\x18\x05 \x01(\r\"\xca\x01\n\tImuSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0cgyro_x_rad_s\x18\x02 \x01(\x01\x12\x14\n\x0cgyro_y_rad_s\x18\x03 \x01(\x01\x12\x14\n\x0cgyro_z_rad_s\x18\x04 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_x_m_s2\x18\x05 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_y_m_s2\x18\x06 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_z_m_s2\x18\x07 \x01(\x01\x12\x15\n\rtemperature_c\x18\x08 \x01(\x01\"`\n\x11TemperatureSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\rtemperature_c\x18\x02 \x01(\x01\x12\x10\n\x08location\x18\x03 \x01(\t*\xa5\x01\n\x0cValidityFlag\x12\x17\n\x13VALIDITY_FLAG_VALID\x10\x00\x12\x17\n\x13VALIDITY_FLAG_RANGE\x10\x01\x12\x16\n\x12VALIDITY_FLAG_COMM\x10\x02\x12\x15\n\x11VALIDITY_FLAG_CRC\x10\x04\x12\x17\n\x13VALIDITY_FLAG_STALE\x10\x08\x12\x1b\n\x17VALIDITY_FLAG_SATURATED\x10\x10\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'hal_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_VALIDITYFLAG']._serialized_start=337
-  _globals['_VALIDITYFLAG']._serialized_end=502
+  _globals['_VALIDITYFLAG']._serialized_start=435
+  _globals['_VALIDITYFLAG']._serialized_end=600
   _globals['_HEADER']._serialized_start=25
   _globals['_HEADER']._serialized_end=129
   _globals['_IMUSAMPLE']._serialized_start=132
   _globals['_IMUSAMPLE']._serialized_end=334
+  _globals['_TEMPERATURESAMPLE']._serialized_start=336
+  _globals['_TEMPERATURESAMPLE']._serialized_end=432
 # @@protoc_insertion_point(module_scope)

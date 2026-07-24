@@ -53,3 +53,10 @@ message ImuSample {
   double accel_z_m_s2 = 7;
   double temperature_c = 8;
 }
+
+// Single-point temperature sample (e.g. a Jetson thermal zone).
+message TemperatureSample {
+  Header header = 1;
+  double temperature_c = 2;
+  string location = 3; // physical/logical measurement point, e.g. "tj-thermal"
+}
