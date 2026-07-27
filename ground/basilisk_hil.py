@@ -149,6 +149,15 @@ def main() -> int:
             "sockets, nothing to time out): open the resulting .bin in Vizard"
         ),
     )
+    parser.add_argument(
+        "--viz-address",
+        default="localhost",
+        help=(
+            "host Vizard is bound to. Basilisk's default is 0.0.0.0, which is "
+            "a valid BIND address but not a valid DIAL address on macOS/BSD — "
+            "so live streaming silently times out there unless this is set"
+        ),
+    )
     args = parser.parse_args()
 
     # Basilisk imports live here so --help works without bsk installed.
@@ -178,13 +187,16 @@ def main() -> int:
     if args.viz or args.viz_save:
         from Basilisk.utilities import vizSupport
 
-        vizSupport.enableUnityVisualization(
+        viz = vizSupport.enableUnityVisualization(
             sim, "dynTask", sc, liveStream=bool(args.viz), saveFile=args.viz_save
         )
         if args.viz:
+            viz.reqComAddress = args.viz_address
+            viz.pubComAddress = args.viz_address
             print(
-                "[sim] live stream: the SIM CONNECTS OUT to Vizard on 5556 — "
-                "Vizard must already be hosting, or this blocks here"
+                f"[sim] live stream: the SIM CONNECTS OUT to Vizard at "
+                f"{args.viz_address}:5556 — start Vizard's 'Start Visualization' "
+                f"(Receive & Reply) so it is listening"
             )
         else:
             print(f"[sim] recording Vizard playback file: {args.viz_save}")
