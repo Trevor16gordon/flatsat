@@ -132,6 +132,11 @@ def main() -> int:
         help="initial body rates [rad/s], comma-separated",
     )
     parser.add_argument("--report-every", type=float, default=5.0, help="status print period [s]")
+    parser.add_argument(
+        "--viz",
+        action="store_true",
+        help="live-stream to the Vizard 3D visualizer (connect Vizard to tcp://localhost:5556)",
+    )
     args = parser.parse_args()
 
     # Basilisk imports live here so --help works without bsk installed.
@@ -157,6 +162,12 @@ def main() -> int:
     ext.ModelTag = "wheelTorque"
     sc.addDynamicEffector(ext)
     sim.AddModelToTask("dynTask", ext)
+
+    if args.viz:
+        from Basilisk.utilities import vizSupport
+
+        vizSupport.enableUnityVisualization(sim, "dynTask", sc, liveStream=True)
+        print("[sim] Vizard live stream enabled — connect Vizard to tcp://localhost:5556")
 
     session = open_session(args.connect)
     pub = session.declare_publisher(SENSOR_TOPIC)
@@ -209,6 +220,11 @@ def main() -> int:
             delta = next_wake - time.monotonic_ns()
             if delta > 0:
                 time.sleep(delta / 1e9)
+            elif delta < -5 * period_ns:
+                # Fell far behind wall clock (Vizard handshake, laptop nap):
+                # a real-time feed DROPS lost time rather than sprinting a
+                # faster-than-real-time burst at the flight software.
+                next_wake = time.monotonic_ns()
             next_wake += period_ns
     except KeyboardInterrupt:
         print("\n[sim] stopped", flush=True)
