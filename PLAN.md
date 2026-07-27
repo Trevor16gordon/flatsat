@@ -11,7 +11,24 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ## 0. Working status and decision log
 
-### Done (as of 2026-07-24)
+### Done (as of 2026-07-27)
+
+- **Basilisk HIL closed on-box (2026-07-27) — sim spacecraft detumbled by
+  the real flight loop.** Basilisk 2.11.0 now ships prebuilt wheels
+  (`pip install bsk` — the v1.0-era source-build concern is obsolete);
+  installed on the Mac (ground venv) and in a Jetson dev sandbox
+  (validation only — the never-sim-on-flight-computer rule stands for real
+  topology). `ground/basilisk_hil.py`: tumbling rigid spacecraft,
+  wall-clock-paced by our own absolute-deadline stepping (chosen over
+  Basilisk's clock-sync module: we need per-step bus hooks anyway, and it
+  keeps one pacing idiom repo-wide), publishing ImuSample on the fake-IMU
+  topic — ADCS cannot tell sim from synthetic. Closed loop validated:
+  **99 → 14.6 mrad/s in 90 s (τ ≈ I/kp ≈ 40 s as predicted), 8499/8499
+  commands applied.** War story: v1 spun back up after the controller
+  exited (sink held last torque forever) → TorqueSink zeroes on 100 ms
+  stale-command cutoff, verified. Consumer note: protobuf runtime ≥7.35.1
+  required (gencode) despite bsk's conservative ≤7.35.0 cap. Next: same
+  demo cross-machine (Mac sim ↔ Jetson FIFO service over the LAN).
 
 - **A1 software half CLOSED (2026-07-24 evening): FIFO via systemd, 3-way
   measured.** ADCS loop as flatsat-adcs.service (SCHED_FIFO 80, core 3,
