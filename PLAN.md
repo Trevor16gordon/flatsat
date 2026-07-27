@@ -11,8 +11,9 @@ one-radio end to end (framed data at BER 0, BER-vs-SNR waterfall) ·
 target architecture — single `flatsat/` package, actuator layer,
 Basilisk-as-drivers, device-intrinsic vs integration config split, four
 versioning tiers (decision log + `docs/ARCHITECTURE.md`) · migration
-commit 1 landed same day: `flatsat/` package, colocated tests, estimator
-seam, 71 tests · next: commits 2–3, then the telemetry recorder.
+commits 1–2 landed same day: `flatsat/` package, colocated tests,
+estimator seam, actuator layer (93 tests) · next: commit 3
+(Basilisk-as-drivers), then the telemetry recorder.
 
 ---
 
@@ -94,6 +95,22 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Migration commit 2 — actuator layer (2026-07-27).** The write side now
+mirrors the read side: `ActuatorDriver` contract (`apply`/`state`, never
+raises) + `sim_reaction_wheel` (momentum integrates against the wall
+clock, clips+RANGE beyond the torque envelope, SATURATED at the momentum
+rail — envelopes from `config/devices/wheel0.toml`). Generic
+`actuator_daemon` owns the two protections every actuator inherits:
+**stale-command zeroing** (moved from the sim's TorqueSink into the
+flight path where it belongs) and the **mounting projection** (body-frame
+torque → this device's axis; no central mixer). Vehicle file gained
+`[body]` (mass + inertia, the sim-bridge plant source for commit 3) and
+`[[actuators]]` with per-device `mounting`; `config/imu0.toml` moved to
+`config/devices/` per the device-intrinsic split. New `WheelState` +
+`ActuatorHealth` protos; units now generate for actuators
+(`flatsat-wheel0.service`). Six new requirements (FSW-ACT-001…006) all
+test-verified; **93 tests green**.
+
 ### Decision log
 
 | Date | Decision | Rationale / consequence |
@@ -167,10 +184,8 @@ still boxed.
 1. ~~Migration commit 1 — restructure~~ **DONE 2026-07-27** (see §0 Done).
    Remaining hands-on: `sudo ./tools/install-units.sh && sudo systemctl
    restart flatsat.target` (Trevor) and Mac `git pull`.
-2. **Migration commit 2 — actuator layer**: `ActuatorDriver` contract,
-   `sim_reaction_wheel`, generic actuator daemon (stale-command zeroing +
-   mounting projection), `[body]` + `mounting` in the vehicle file,
-   `config/devices/wheel0.toml`, `WheelState` proto.
+2. ~~Migration commit 2 — actuator layer~~ **DONE 2026-07-27** (see §0
+   Done).
 3. **Migration commit 3 — Basilisk as drivers**: `basilisk_imu` +
    `basilisk_reaction_wheel`, delete `sim_gyro`, bridge slimmed to physics
    + truth topics, plant built from the vehicle's physical model. The

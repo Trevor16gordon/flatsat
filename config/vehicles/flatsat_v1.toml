@@ -16,14 +16,20 @@
 # different flight computers.
 
 name = "flatsat-v1"
-description = "Bench flat-sat: simulated gyro + Jetson housekeeping, PD detumble"
+description = "Bench flat-sat: simulated gyro + wheel + Jetson housekeeping, PD detumble"
+
+# Physical model — integration truth, read by flight software AND by the
+# sim bridge to build its plant, so the two cannot disagree by accident.
+[body]
+mass_kg = 10.0
+inertia_kg_m2 = [[0.9, 0.0, 0.0], [0.0, 0.8, 0.0], [0.0, 0.0, 0.6]]
 
 [[sensors]]
 name = "imu0"
 driver = "sim_gyro"          # swap for a hardware driver; nothing else changes
 topic = "hal/imu0/sample"
 rate_hz = 100.0
-spec = "config/imu0.toml"    # device characteristics, shared with the sim
+spec = "config/devices/imu0.toml"    # device characteristics, shared with the sim
 amplitude_rad_s = 0.05
 period_s = 20.0
 
@@ -33,6 +39,19 @@ driver = "jetson_thermal"
 topic = "hal/thermal_tj/sample"
 rate_hz = 1.0
 zone = "tj-thermal"
+
+[[actuators]]
+name = "wheel0"
+driver = "sim_reaction_wheel"          # swap for a hardware driver; nothing else changes
+command_topic = "adcs/wheel_torque"    # body-frame torque from the control loop
+state_topic = "hal/wheel0/state"
+rate_hz = 100.0
+stale_zero_s = 0.1                     # zero the wheel when commands stop
+device = "config/devices/wheel0.toml"  # device-intrinsic envelopes
+
+[actuators.mounting]                   # integration truth: where it points
+position_m = [0.0, 0.0, 0.0]
+axis = [1.0, 0.0, 0.0]                 # spin axis in the body frame
 
 [control]
 strategy = "rate_damping"    # registry key; "pid" is the other one today

@@ -29,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -361,24 +361,7 @@ def main() -> int:
 
     vehicle = load_vehicle(args.vehicle)
     if args.rate is not None:
-        vehicle = VehicleSpec(
-            name=vehicle.name,
-            description=vehicle.description,
-            sensors=vehicle.sensors,
-            control=ControlEntry(
-                strategy=vehicle.control.strategy,
-                objective=vehicle.control.objective,
-                estimator=vehicle.control.estimator,
-                rate_hz=args.rate,
-                input_topic=vehicle.control.input_topic,
-                output_topic=vehicle.control.output_topic,
-                stale_after_s=vehicle.control.stale_after_s,
-                options=vehicle.control.options,
-                objective_options=vehicle.control.objective_options,
-                estimator_options=vehicle.control.estimator_options,
-            ),
-            provenance=vehicle.provenance,
-        )
+        vehicle = replace(vehicle, control=replace(vehicle.control, rate_hz=args.rate))
 
     children: list[subprocess.Popen[bytes]] = []
     if args.spawn_sensors:

@@ -60,3 +60,15 @@ message TemperatureSample {
   double temperature_c = 2;
   string location = 3; // physical/logical measurement point, e.g. "tj-thermal"
 }
+
+// Reaction-wheel state. A wheel has REAL state — speed, stored momentum,
+// applied torque — published on cadence by the actuator daemon so FDIR,
+// the recorder, and momentum management see the device truth, not the
+// command that was sent to it.
+message WheelState {
+  Header header = 1;
+  double speed_rad_s = 2;      // rotor speed about the spin axis
+  double momentum_n_m_s = 3;   // stored angular momentum about the spin axis
+  double torque_n_m = 4;       // torque actually being applied about the spin axis
+  bool saturated = 5;          // momentum at the envelope — torque authority degraded
+}

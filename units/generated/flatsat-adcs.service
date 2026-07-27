@@ -7,7 +7,7 @@
 [Unit]
 Description=ADCS control loop (rate_damping, constant_rate) — flatsat-v1
 PartOf=flatsat.target
-After=flatsat-imu0.service flatsat-thermal_tj.service
+After=flatsat-imu0.service flatsat-thermal_tj.service flatsat-wheel0.service
 
 [Service]
 ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flatsat.apps.control_loop --vehicle config/vehicles/flatsat_v1.toml --duration 0

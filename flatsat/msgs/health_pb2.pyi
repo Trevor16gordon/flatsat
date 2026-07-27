@@ -170,3 +170,46 @@ class SensorHealth(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___SensorHealth: _TypeAlias = SensorHealth  # noqa: Y015
+
+@_typing.final
+class ActuatorHealth(_message.Message):
+    """Health of an actuator daemon over one reporting window."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    DRIVER_FIELD_NUMBER: _builtins.int
+    RATE_HZ_FIELD_NUMBER: _builtins.int
+    WINDOW_CYCLES_FIELD_NUMBER: _builtins.int
+    STALE_ZEROED_CYCLES_FIELD_NUMBER: _builtins.int
+    FLAGGED_CYCLES_FIELD_NUMBER: _builtins.int
+    FLAG_UNION_FIELD_NUMBER: _builtins.int
+    driver: _builtins.str
+    rate_hz: _builtins.float
+    window_cycles: _builtins.int
+    stale_zeroed_cycles: _builtins.int
+    """cycles zeroed for want of a fresh command"""
+    flagged_cycles: _builtins.int
+    """cycles where apply()/state() raised a flag"""
+    flag_union: _builtins.int
+    """bitwise OR of every flag seen in the window"""
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        driver: _builtins.str = ...,
+        rate_hz: _builtins.float = ...,
+        window_cycles: _builtins.int = ...,
+        stale_zeroed_cycles: _builtins.int = ...,
+        flagged_cycles: _builtins.int = ...,
+        flag_union: _builtins.int = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["driver", b"driver", "flag_union", b"flag_union", "flagged_cycles", b"flagged_cycles", "header", b"header", "rate_hz", b"rate_hz", "stale_zeroed_cycles", b"stale_zeroed_cycles", "window_cycles", b"window_cycles"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ActuatorHealth: _TypeAlias = ActuatorHealth  # noqa: Y015

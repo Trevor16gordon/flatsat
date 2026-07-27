@@ -91,7 +91,7 @@ Tuning must not require a code change and redeploy; this is also the seam a
 commandable parameter database plugs into.
 """
 verification = "test"
-evidence = "config_test.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/imu0.toml"
+evidence = "config_test.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/devices/imu0.toml"
 status = "verified"
 
 [[requirement]]

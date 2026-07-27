@@ -172,6 +172,8 @@ def main() -> int:
 
     sensor_defaults = deployment.get("sensor_defaults", {})
     sensor_overrides = deployment.get("sensors", {})
+    actuator_defaults = deployment.get("actuator_defaults", {})
+    actuator_overrides = deployment.get("actuators", {})
     vehicle_rel = args.vehicle.relative_to(REPO_ROOT)
     written: list[str] = []
 
@@ -185,6 +187,27 @@ def main() -> int:
                 "-m",
                 "flatsat.apps.sensor_daemon",
                 "--sensor",
+                name,
+                "--vehicle",
+                str(vehicle_rel),
+            ],
+            deploy=deploy,
+            profile=profile,
+            header=header,
+        )
+        (args.out / f"flatsat-{name}.service").write_text(unit)
+        written.append(f"flatsat-{name}.service")
+
+    for actuator in vehicle.get("actuators", []):
+        name = str(actuator["name"])
+        deploy = {**actuator_defaults, **actuator_overrides.get(name, {})}
+        unit = render_service(
+            unit_name=name,
+            description=f"{name} actuator daemon ({actuator['driver']}) — {vehicle['name']}",
+            exec_args=[
+                "-m",
+                "flatsat.apps.actuator_daemon",
+                "--actuator",
                 name,
                 "--vehicle",
                 str(vehicle_rel),
@@ -214,7 +237,10 @@ def main() -> int:
         deploy=control_deploy,
         profile=profile,
         header=header,
-        after=[str(s["name"]) for s in vehicle.get("sensors", [])],
+        after=[
+            str(entry["name"])
+            for entry in (*vehicle.get("sensors", []), *vehicle.get("actuators", []))
+        ],
     )
     (args.out / "flatsat-adcs.service").write_text(control_unit)
     written.append("flatsat-adcs.service")

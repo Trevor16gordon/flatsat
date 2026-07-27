@@ -8,10 +8,12 @@ it is registered — no test edit required.
 import pytest
 
 from flatsat.core.registry import (
+    ACTUATORS,
     CONTROLLERS,
     DRIVERS,
     ESTIMATORS,
     GUIDANCE,
+    get_actuator_class,
     get_controller_class,
     get_driver_class,
     get_estimator_class,
@@ -62,3 +64,8 @@ def test_registry_module_imports_no_domain() -> None:
     )
     result = subprocess.run([sys.executable, "-c", probe], check=False)
     assert result.returncode == 0, "importing the registry imported a domain module"
+
+
+@pytest.mark.parametrize("name", sorted(ACTUATORS))
+def test_every_registered_actuator_resolves(name: str) -> None:
+    assert callable(get_actuator_class(name).from_config)

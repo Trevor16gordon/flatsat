@@ -186,3 +186,45 @@ class TemperatureSample(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___TemperatureSample: _TypeAlias = TemperatureSample  # noqa: Y015
+
+@_typing.final
+class WheelState(_message.Message):
+    """Reaction-wheel state. A wheel has REAL state — speed, stored momentum,
+    applied torque — published on cadence by the actuator daemon so FDIR,
+    the recorder, and momentum management see the device truth, not the
+    command that was sent to it.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    SPEED_RAD_S_FIELD_NUMBER: _builtins.int
+    MOMENTUM_N_M_S_FIELD_NUMBER: _builtins.int
+    TORQUE_N_M_FIELD_NUMBER: _builtins.int
+    SATURATED_FIELD_NUMBER: _builtins.int
+    speed_rad_s: _builtins.float
+    """rotor speed about the spin axis"""
+    momentum_n_m_s: _builtins.float
+    """stored angular momentum about the spin axis"""
+    torque_n_m: _builtins.float
+    """torque actually being applied about the spin axis"""
+    saturated: _builtins.bool
+    """momentum at the envelope — torque authority degraded"""
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        speed_rad_s: _builtins.float = ...,
+        momentum_n_m_s: _builtins.float = ...,
+        torque_n_m: _builtins.float = ...,
+        saturated: _builtins.bool = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "momentum_n_m_s", b"momentum_n_m_s", "saturated", b"saturated", "speed_rad_s", b"speed_rad_s", "torque_n_m", b"torque_n_m"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___WheelState: _TypeAlias = WheelState  # noqa: Y015

@@ -14,6 +14,13 @@
 memory_max = "256M"
 # no core_role: housekeeping CPUs, keeping the RT core clean
 
+[actuator_defaults]
+memory_max = "256M"
+# no core_role: the daemon's own cadence is not hard-RT; the stale-zero
+# protection makes lateness degrade to the quiet state, not to a hazard
+
+# Per-actuator overrides go in [actuators.<name>], same shape as sensors.
+
 [control]
 rt_policy = "fifo"
 rt_priority = 80

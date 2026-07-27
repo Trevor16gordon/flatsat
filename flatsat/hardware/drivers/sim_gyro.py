@@ -3,7 +3,7 @@
 Interchangeable with a real IMU driver by construction — same ``read()``
 contract, same message, same validity semantics. Truth is generated
 analytically here; the device's noise, saturation, and quantization come
-from the shared spec in ``config/imu0.toml`` via
+from the shared spec in ``config/devices/imu0.toml`` via
 :func:`flatsat.hardware.models.imu.apply_gyro_model`, so this driver and a
 Basilisk-fed feed corrupt truth identically.
 

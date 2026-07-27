@@ -1,0 +1,95 @@
+# Actuator layer: what the actuator daemon and drivers must guarantee.
+#
+# The two protections here (stale-zeroing, mounting projection) are daemon
+# machinery — every actuator inherits them; a driver cannot opt out.
+
+[[requirement]]
+id = "FSW-ACT-001"
+statement = """
+An actuator daemon shall command zero effort when no fresh body-frame
+command has been received within the configured interval.
+"""
+rationale = """
+Learned from the first HIL run: an actuator holding a dead controller's
+last order spun the simulated vehicle back up. The quiet state is the
+default; this protection moved from the sim sink into the flight path
+where it belongs.
+"""
+verification = "test"
+evidence = "actuator_daemon_test.py::test_daemon_zeroes_when_commands_stop"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-002"
+statement = """
+Body-frame torque commands shall be projected through each actuator's own
+mounting geometry before reaching its driver.
+"""
+rationale = """
+The controller speaks the body frame; the device speaks its own axis.
+Per-device projection is what lets wheels be added, re-oriented, or
+removed as config edits, with no central mixer until joint allocation is
+actually needed.
+"""
+verification = "test"
+evidence = "actuator_test.py::test_projection_* and actuator_daemon_test.py::test_daemon_projects_through_mounting"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-003"
+statement = """
+An actuator driver's apply and state readback shall not raise; failures
+shall be reported as validity flags on schedule.
+"""
+rationale = """
+Same flag-and-forward discipline as sensors: silence is indistinguishable
+from process death, which is a different fault with a different response.
+"""
+verification = "test"
+evidence = "actuator_test.py contract tests over every registered actuator driver"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-004"
+statement = """
+An actuator daemon shall publish the device's state on cadence, including
+whether the device is momentum-saturated.
+"""
+rationale = """
+FDIR, momentum management, and the recorder need device truth — what the
+wheel IS doing — not the command that was sent to it.
+"""
+verification = "test"
+evidence = "actuator_daemon_test.py::test_daemon_publishes_wheel_state_on_cadence"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-005"
+statement = """
+A wheel commanded beyond its torque envelope shall clip and flag; a wheel
+at its momentum envelope shall stop applying torque into the rail and
+flag saturated.
+"""
+rationale = """
+The device fake must saturate exactly where the wheel that exists would,
+or every closed-loop result is validated against hardware that cannot be
+built.
+"""
+verification = "test"
+evidence = "sim_reaction_wheel_test.py::test_torque_clips_and_flags_range and ::test_momentum_rails_and_flags_saturated"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-006"
+statement = """
+Actuator daemons shall publish health telemetry per window containing
+cycle counts, stale-zeroed counts, and the union of validity flags
+observed.
+"""
+rationale = """
+A controller crash must be visible in recorded data as rising
+stale-zeroed cycles — the protection engaging is itself telemetry.
+"""
+verification = "test"
+evidence = "actuator_daemon_test.py::test_actuator_daemon_publishes_health"
+status = "verified"

@@ -29,12 +29,17 @@ if TYPE_CHECKING:  # contract types for signatures only — never imported at ru
     from flatsat.control.attitude.controller import AttitudeController
     from flatsat.control.attitude.estimators.estimator import StateEstimator
     from flatsat.control.attitude.guidance import ReferenceSource
+    from flatsat.hardware.actuator import ActuatorDriver
     from flatsat.hardware.sensor import SensorDriver
 
 # name -> "module:ClassName"
 DRIVERS: dict[str, str] = {
     "jetson_thermal": "flatsat.hardware.drivers.jetson_thermal:JetsonThermalDriver",
     "sim_gyro": "flatsat.hardware.drivers.sim_gyro:SimGyroDriver",
+}
+
+ACTUATORS: dict[str, str] = {
+    "sim_reaction_wheel": "flatsat.hardware.drivers.sim_reaction_wheel:SimReactionWheelDriver",
 }
 
 CONTROLLERS: dict[str, str] = {
@@ -81,6 +86,19 @@ def get_driver_class(name: str) -> type[SensorDriver]:
         The driver class (call ``from_config`` to instantiate).
     """
     resolved: type[SensorDriver] = _resolve(DRIVERS, name, "driver")
+    return resolved
+
+
+def get_actuator_class(name: str) -> type[ActuatorDriver]:
+    """Resolve an actuator driver by registry name.
+
+    Args:
+        name: Value of a vehicle file's actuator ``driver`` key.
+
+    Returns:
+        The driver class (call ``from_config`` to instantiate).
+    """
+    resolved: type[ActuatorDriver] = _resolve(ACTUATORS, name, "actuator")
     return resolved
 
 

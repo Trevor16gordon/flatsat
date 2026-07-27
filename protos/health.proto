@@ -62,3 +62,16 @@ message SensorHealth {
   uint64 flagged_samples = 5;  // samples with any validity flag set
   uint32 flag_union = 6;       // bitwise OR of every flag seen in the window
 }
+
+// Health of an actuator daemon over one reporting window.
+message ActuatorHealth {
+  Header header = 1;
+
+  string driver = 2;
+  double rate_hz = 3;
+
+  uint64 window_cycles = 4;
+  uint64 stale_zeroed_cycles = 5; // cycles zeroed for want of a fresh command
+  uint64 flagged_cycles = 6;      // cycles where apply()/state() raised a flag
+  uint32 flag_union = 7;          // bitwise OR of every flag seen in the window
+}
