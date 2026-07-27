@@ -56,8 +56,12 @@ def fixture_two_sessions() -> Iterator[tuple[zenoh.Session, zenoh.Session]]:
 def test_pubsub_delivers_imu_sample(two_sessions: tuple[zenoh.Session, zenoh.Session]) -> None:
     pub_session, sub_session = two_sessions
     received: list[bytes] = []
+    # Test-only topic: production key expressions must never be used here, or
+    # a live daemon (or a HIL sim on another machine) publishes into the test
+    # and the assertions read someone else's data.
+    topic = "test/bus/imu_sample"
     sub = sub_session.declare_subscriber(
-        "hal/imu0/sample", lambda sample: received.append(bytes(sample.payload.to_bytes()))
+        topic, lambda sample: received.append(bytes(sample.payload.to_bytes()))
     )
     time.sleep(0.5)  # let peer discovery + subscription propagate
 
@@ -66,7 +70,7 @@ def test_pubsub_delivers_imu_sample(two_sessions: tuple[zenoh.Session, zenoh.Ses
     msg.header.seq = 1
     msg.header.validity = hal_pb2.VALIDITY_FLAG_VALID
     msg.gyro_z_rad_s = 0.02
-    pub_session.put("hal/imu0/sample", msg.SerializeToString())
+    pub_session.put(topic, msg.SerializeToString())
 
     assert _wait_for(lambda: received), "no message arrived over the bus"
     back = hal_pb2.ImuSample.FromString(received[0])

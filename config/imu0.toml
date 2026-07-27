@@ -1,0 +1,27 @@
+# IMU device specification — ONE source of truth for two consumers.
+#
+# The flight-side driver reads this to know the device's limits and
+# calibration; the simulation's sensor model reads THE SAME file to
+# corrupt physics truth the way this device would. That shared origin is
+# the point: a HIL run must exercise the controller against the sensor
+# that actually exists, not against an unrelated noise constant living in
+# a sim script.
+#
+# Values are placeholder/representative (a consumer MEMS gyro class part)
+# until a physical IMU is on the bench; then they come from its datasheet
+# and, for bias/noise, from bench characterization.
+
+name = "imu0"
+rate_hz = 100.0
+
+# Gyro
+gyro_noise_rad_s = 0.002        # white noise sigma per axis
+gyro_full_scale_rad_s = 4.363   # ±250 °/s — saturates (and flags) beyond
+gyro_lsb_rad_s = 1.33e-4        # quantization step (16-bit over full scale)
+
+# Accelerometer (published but unused by rate damping)
+accel_noise_m_s2 = 0.02
+accel_full_scale_m_s2 = 156.9   # ±16 g
+
+# Housekeeping
+temperature_c = 25.0

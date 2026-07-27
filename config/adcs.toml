@@ -1,0 +1,16 @@
+# ADCS control parameters — DATA, not code.
+#
+# Flight rule (PLAN §5): every tunable is a parameter, never a code edit.
+# This file is the ground-editable source; the loop loads it at startup and
+# echoes the values plus this file's checksum into its telemetry, so any
+# recorded run can be traced back to the exact parameter set that produced
+# it. A commandable parameter database (runtime updates over the link)
+# replaces the file load later — the loop already consumes a params object,
+# so that change does not touch the control code.
+
+rate_hz = 100.0          # control cadence
+kp = 0.02                # proportional gain on body rate [N·m / (rad/s)]
+kd = 0.005               # derivative gain on body rate [N·m / (rad/s²)]
+stale_after_s = 0.05     # input age beyond which a cycle is flagged stale
+sensor_topic = "hal/imu0/sample"
+command_topic = "adcs/wheel_torque"

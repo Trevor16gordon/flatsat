@@ -24,24 +24,10 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol
 
 import zenoh
 
-from flight.msgs import hal_pb2
-
-
-class HalMessage(Protocol):
-    """Structural type of every generated sensor message: has a Header."""
-
-    @property
-    def header(self) -> hal_pb2.Header:
-        """The embedded common envelope (mutable submessage)."""
-        ...
-
-    def SerializeToString(self) -> bytes:  # noqa: N802 — protobuf API name
-        """Serialize to protobuf wire format."""
-        ...
+from flight.hal.publisher import HalMessage, SamplePublisher
 
 
 @dataclass(frozen=True)
@@ -70,8 +56,7 @@ class SensorDaemon(ABC):
             session: Open zenoh session; not owned — caller closes it.
         """
         self.config = config
-        self._pub = session.declare_publisher(config.topic)
-        self._seq = 0
+        self._publisher = SamplePublisher(session, config.topic, config.name)
         self._stop = threading.Event()
 
     @abstractmethod
@@ -88,19 +73,16 @@ class SensorDaemon(ABC):
     def publish_once(self) -> HalMessage:
         """Acquire, stamp, and publish one sample.
 
+        Header stamping is delegated to :class:`SamplePublisher` — the one
+        implementation of the publish contract, shared with every other
+        producer (sim feeds, replay tools).
+
         Returns:
             The published message (header filled), for tests/introspection.
         """
         sample_time_ns = time.time_ns()
         msg, flags = self.read()
-        self._seq += 1
-        msg.header.source = self.config.name
-        msg.header.sample_time_ns = sample_time_ns
-        msg.header.seq = self._seq
-        msg.header.validity = flags
-        msg.header.publish_time_ns = time.time_ns()
-        self._pub.put(msg.SerializeToString())
-        return msg
+        return self._publisher.publish(msg, validity=flags, sample_time_ns=sample_time_ns)
 
     def run(self) -> None:
         """Publish at the configured cadence until :meth:`stop` is called.

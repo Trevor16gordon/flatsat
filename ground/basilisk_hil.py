@@ -39,11 +39,10 @@ import time
 
 import zenoh
 
+from flight.config import load_adcs_params, load_imu_spec
+from flight.hal.publisher import SamplePublisher
+from flight.hal.sensor_model import apply_gyro_model
 from flight.msgs import adcs_pb2, hal_pb2
-
-SENSOR_TOPIC = "hal/imu0/sample"
-COMMAND_TOPIC = "adcs/wheel_torque"
-GYRO_NOISE_RAD_S = 0.002  # matches the fake IMU's noise floor
 
 
 def open_session(connect: str | None) -> zenoh.Session:
@@ -72,11 +71,12 @@ class TorqueSink:
     the final torque and spun the spacecraft back up.)
     """
 
-    def __init__(self, session: zenoh.Session, timeout_s: float = 0.1) -> None:
+    def __init__(self, session: zenoh.Session, topic: str, timeout_s: float = 0.1) -> None:
         """Subscribe to the command topic.
 
         Args:
             session: Open zenoh session.
+            topic: Command topic to subscribe to.
             timeout_s: Command age beyond which the applied torque is zero.
         """
         self._lock = threading.Lock()
@@ -84,7 +84,7 @@ class TorqueSink:
         self._recv_ns = 0
         self._timeout_ns = int(timeout_s * 1e9)
         self.commands_received = 0
-        self._sub = session.declare_subscriber(COMMAND_TOPIC, self._on_command)
+        self._sub = session.declare_subscriber(topic, self._on_command)
 
     def _on_command(self, sample: zenoh.Sample) -> None:
         """Store the newest torque command.
@@ -132,6 +132,7 @@ def main() -> int:
         help="initial body rates [rad/s], comma-separated",
     )
     parser.add_argument("--report-every", type=float, default=5.0, help="status print period [s]")
+    parser.add_argument("--seed", type=int, default=42, help="sensor-noise RNG seed")
     parser.add_argument(
         "--viz",
         action="store_true",
@@ -164,6 +165,9 @@ def main() -> int:
     from Basilisk.simulation import extForceTorque, spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros
 
+    adcs_params = load_adcs_params()
+    imu_spec = load_imu_spec()
+    rng = random.Random(args.seed)
     dt_s = 1.0 / args.rate
     omega0 = [float(v) for v in args.omega0.split(",")]
 
@@ -202,14 +206,15 @@ def main() -> int:
             print(f"[sim] recording Vizard playback file: {args.viz_save}")
 
     session = open_session(args.connect)
-    pub = session.declare_publisher(SENSOR_TOPIC)
-    sink = TorqueSink(session) if args.closed_loop else None
+    publisher = SamplePublisher(session, adcs_params.sensor_topic, imu_spec.name)
+    sink = TorqueSink(session, adcs_params.command_topic) if args.closed_loop else None
 
     sim.InitializeSimulation()
     mode = "CLOSED loop (applying flight torques)" if sink else "open loop (tumble feed only)"
+    for line in imu_spec.describe():
+        print(f"[sim] {line}", flush=True)
     print(f"[sim] {mode} at {args.rate:g} Hz — Ctrl-C to stop", flush=True)
 
-    seq = 0
     sim_t_s = 0.0
     period_ns = int(1_000_000_000 / args.rate)
     next_wake = time.monotonic_ns() + period_ns
@@ -226,18 +231,18 @@ def main() -> int:
 
             state = sc.scStateOutMsg.read()
             omega = state.omega_BN_B
-            seq += 1
+            truth = (float(omega[0]), float(omega[1]), float(omega[2]))
+            # Physics gives truth; the DEVICE SPEC decides what the sensor
+            # reports — same model the flight-side fake IMU and (later) the
+            # real driver use, so HIL exercises the sensor that exists.
+            (gx, gy, gz), flags = apply_gyro_model(truth, imu_spec, rng)
+
             msg = hal_pb2.ImuSample()
-            msg.header.source = "imu0"
-            msg.header.seq = seq
-            msg.header.sample_time_ns = time.time_ns()
-            msg.header.validity = hal_pb2.VALIDITY_FLAG_VALID
-            msg.gyro_x_rad_s = float(omega[0]) + random.gauss(0.0, GYRO_NOISE_RAD_S)
-            msg.gyro_y_rad_s = float(omega[1]) + random.gauss(0.0, GYRO_NOISE_RAD_S)
-            msg.gyro_z_rad_s = float(omega[2]) + random.gauss(0.0, GYRO_NOISE_RAD_S)
-            msg.temperature_c = 25.0
-            msg.header.publish_time_ns = time.time_ns()
-            pub.put(msg.SerializeToString())
+            msg.gyro_x_rad_s = gx
+            msg.gyro_y_rad_s = gy
+            msg.gyro_z_rad_s = gz
+            msg.temperature_c = imu_spec.temperature_c
+            publisher.publish(msg, validity=flags)
 
             now = time.monotonic()
             if now >= next_report:

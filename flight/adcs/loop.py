@@ -28,12 +28,14 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
 import zenoh
 
+from flight.adcs.control import RateDampingGains, rate_damping_torque
+from flight.config import AdcsParams, load_adcs_params
 from flight.msgs import adcs_pb2, hal_pb2
 from flight.rt import describe_actual, pin_to_core, quiesce_gc, try_fifo, try_mlockall
 
@@ -83,36 +85,22 @@ class LoopReport:
 class AdcsLoop:
     """PD rate-damping loop: latest gyro sample in, wheel torque out."""
 
-    def __init__(
-        self,
-        session: zenoh.Session,
-        rate_hz: float,
-        sensor_topic: str = "hal/imu0/sample",
-        command_topic: str = "adcs/wheel_torque",
-        kp: float = 0.02,
-        kd: float = 0.005,
-        stale_after_s: float = 0.05,
-    ) -> None:
-        """Wire the loop to its topics.
+    def __init__(self, session: zenoh.Session, params: AdcsParams) -> None:
+        """Wire the loop to its topics using file-backed parameters.
 
         Args:
             session: Open zenoh session.
-            rate_hz: Control rate.
-            sensor_topic: ImuSample source topic.
-            command_topic: WheelTorqueCommand output topic.
-            kp: Proportional gain on body rate.
-            kd: Derivative gain on body rate.
-            stale_after_s: Input age beyond which a cycle counts as stale.
+            params: Control parameters (rates, gains, topics) with provenance.
         """
-        self._rate_hz = rate_hz
-        self._stale_after_ns = int(stale_after_s * 1e9)
-        self._kp = kp
-        self._kd = kd
-        self._pub = session.declare_publisher(command_topic)
+        self.params = params
+        self._rate_hz = params.rate_hz
+        self._stale_after_ns = int(params.stale_after_s * 1e9)
+        self._gains = RateDampingGains(kp=params.kp, kd=params.kd)
+        self._pub = session.declare_publisher(params.command_topic)
         self._latest: hal_pb2.ImuSample | None = None
         self._latest_recv_ns = 0
         self._lock = threading.Lock()
-        self._sub = session.declare_subscriber(sensor_topic, self._on_sample)
+        self._sub = session.declare_subscriber(params.sensor_topic, self._on_sample)
         self._stop = threading.Event()
         self._prev_rates = (0.0, 0.0, 0.0)
         self._last_torque = (0.0, 0.0, 0.0)
@@ -164,18 +152,12 @@ class AdcsLoop:
         stale = age_ns > self._stale_after_ns
 
         rates = (imu.gyro_x_rad_s, imu.gyro_y_rad_s, imu.gyro_z_rad_s)
-        dt = 1.0 / self._rate_hz
-        cmd = adcs_pb2.WheelTorqueCommand()
-        for axis, (rate, prev) in enumerate(zip(rates, self._prev_rates, strict=True)):
-            torque = -self._kp * rate - self._kd * (rate - prev) / dt
-            if axis == 0:
-                cmd.torque_x_n_m = torque
-            elif axis == 1:
-                cmd.torque_y_n_m = torque
-            else:
-                cmd.torque_z_n_m = torque
+        torque = rate_damping_torque(rates, self._prev_rates, 1.0 / self._rate_hz, self._gains)
         self._prev_rates = rates
-        self._last_torque = (cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m)
+        self._last_torque = torque
+
+        cmd = adcs_pb2.WheelTorqueCommand()
+        cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m = torque
 
         cmd.header.source = "adcs_loop"
         cmd.header.seq = seq
@@ -279,7 +261,12 @@ def main() -> int:
         0 on success; 3 if no sensor data ever arrived.
     """
     parser = argparse.ArgumentParser(description="A1 mock ADCS control loop (bus-first).")
-    parser.add_argument("--rate", type=float, default=100.0, help="control rate [Hz]")
+    parser.add_argument(
+        "--config", type=Path, default=None, help="ADCS parameter file (default: config/adcs.toml)"
+    )
+    parser.add_argument(
+        "--rate", type=float, default=None, help="override the configured control rate [Hz]"
+    )
     parser.add_argument(
         "--duration", type=float, default=30.0, help="run time [s]; 0 = forever (service mode)"
     )
@@ -302,11 +289,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    params = load_adcs_params(args.config)
+    if args.rate is not None:
+        params = replace(params, rate_hz=args.rate)
+
     imu_proc: subprocess.Popen[bytes] | None = None
     if args.spawn_imu:
-        imu_proc = subprocess.Popen(
-            [sys.executable, "-m", "flight.hal.fake_imu", "--rate", "100"], cwd=REPO_ROOT
-        )
+        imu_proc = subprocess.Popen([sys.executable, "-m", "flight.hal.fake_imu"], cwd=REPO_ROOT)
 
     conditions = [
         try_fifo(args.fifo),
@@ -314,13 +303,13 @@ def main() -> int:
         pin_to_core(args.pin),
         quiesce_gc(),
         *describe_actual(),
-        f"control rate {args.rate:g} Hz over the bus (zenoh loopback)",
+        *params.describe(),
     ]
     session = zenoh.open(zenoh.Config())
-    loop = AdcsLoop(session, args.rate)
+    loop = AdcsLoop(session, params)
     try:
         if not loop.wait_for_first_sample():
-            print("no sensor data on hal/imu0/sample — start an IMU or use --spawn-imu")
+            print(f"no sensor data on {params.sensor_topic} — start an IMU or use --spawn-imu")
             return 3
         report_every = args.report_every
         if report_every <= 0 and args.duration <= 0:
