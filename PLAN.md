@@ -3,15 +3,16 @@
 v1.2 — July 2026 · Trevor · single merged plan (architecture + working status)
 
 **Status (2026-07-27): flight-software skeleton flying; architecture v2
-designed, migration pending.** Jetson bring-up complete (PREEMPT_RT live,
-69 µs cyclictest under load) · radio proven one-radio end to end (framed
-data at BER 0, BER-vs-SNR waterfall) · **cross-machine HIL closed**:
-Basilisk on the Mac detumbled by the Jetson's 100 Hz FIFO control loop over
-WiFi · 2026-07-27 design session settled the target architecture — single
-`flatsat/` package, actuator layer, Basilisk-as-drivers, device-intrinsic vs
-integration config split, four versioning tiers (decision log +
-`docs/ARCHITECTURE.md`) · next: the three migration commits, then the
-telemetry recorder.
+migration in progress — commit 1 (restructure) landed.** Jetson bring-up
+complete (PREEMPT_RT live, 69 µs cyclictest under load) · radio proven
+one-radio end to end (framed data at BER 0, BER-vs-SNR waterfall) ·
+**cross-machine HIL closed**: Basilisk on the Mac detumbled by the Jetson's
+100 Hz FIFO control loop over WiFi · 2026-07-27 design session settled the
+target architecture — single `flatsat/` package, actuator layer,
+Basilisk-as-drivers, device-intrinsic vs integration config split, four
+versioning tiers (decision log + `docs/ARCHITECTURE.md`) · migration
+commit 1 landed same day: `flatsat/` package, colocated tests, estimator
+seam, 71 tests · next: commits 2–3, then the telemetry recorder.
 
 ---
 
@@ -76,6 +77,23 @@ the missing-estimator signature, textbook. Lesson: **an actuator must zero
 when commands stop** (TorqueSink 100 ms cutoff). Faster-than-real-time
 campaigns remain a deliberate §10 future extension.
 
+**Migration commit 1 — restructure (2026-07-27).** Single installable
+`flatsat/` package per `docs/ARCHITECTURE.md`: core (bus, config, rt,
+health, registry), hardware (sensor contract, drivers/, models/),
+control/attitude (controller contract + controllers/, guidance,
+estimators/), apps, msgs, sim (`ground/basilisk_hil.py` →
+`flatsat/sim/`). Registry moved into core with TYPE_CHECKING-only contract
+imports (core imports no domain at runtime — pinned by a subprocess test).
+**Estimator seam made explicit**: `StateEstimator` contract +
+`passthrough` (today's behavior as a named, swappable implementation;
+vehicle files default to it, no edit needed). Tests colocate 1:1 as
+`<name>_test.py` beside every module and ship in the package; pytest
+`python_files` + ruff pattern updated; **71 tests green** (was 46 — new
+estimator/registry/driver-level coverage). `deployment.toml` at repo root,
+units at `units/generated/`, `pyproject` gained `[project]` packaging.
+Requirement evidence strings updated to the new file names; traceability
+`--strict` clean.
+
 ### Decision log
 
 | Date | Decision | Rationale / consequence |
@@ -101,10 +119,12 @@ campaigns remain a deliberate §10 future extension.
 
 **Live right now.** Jetson on the RT kernel (`5.15.148-rt-tegra`);
 `flatsat.target` running three composed services (imu0 sim_gyro daemon,
-thermal_tj daemon, ADCS loop at verified FIFO 80 / core 3) — still on the
-v1 layout until migration commit 1 lands and units are reinstalled. Repo
-clean and pushed. Mac (`~/venvs/flatsat-ground`, Basilisk 2.11 + Vizard)
-needs `git pull` before the next HIL run.
+thermal_tj daemon, ADCS loop at verified FIFO 80 / core 3) — the RUNNING
+services still hold the pre-migration code images; after commit 1 the
+units were regenerated for `flatsat.apps.*` and need
+`sudo ./tools/install-units.sh && sudo systemctl restart flatsat.target`
+(Trevor) to pick up the new layout. Mac (`~/venvs/flatsat-ground`,
+Basilisk 2.11 + Vizard) needs `git pull` before the next HIL run.
 
 **Where to start reading:** `README.md` (the end state), then
 `docs/ARCHITECTURE.md` (target layout, contracts, config views, versioning
@@ -112,7 +132,7 @@ tiers), then `config/vehicles/flatsat_v1.toml` (what the spacecraft IS),
 then `requirements/` + `tools/traceability.py` (what it must do and how
 each claim is verified).
 
-**Everyday commands** (module paths change after migration commit 1).
+**Everyday commands.**
 - tests: `~/venvs/flatsat-ml/bin/python -m pytest -q`
 - traceability: `~/venvs/flatsat-ml/bin/python tools/traceability.py`
 - after editing a vehicle/deployment file:
@@ -144,10 +164,9 @@ still boxed.
 
 ### Next up
 
-1. **Migration commit 1 — restructure**: single `flatsat/` package per
-   `docs/ARCHITECTURE.md`; registry moves into core; tests colocate as
-   `<name>_test.py`. Then regen + reinstall units (Trevor: sudo) and Mac
-   `git pull`.
+1. ~~Migration commit 1 — restructure~~ **DONE 2026-07-27** (see §0 Done).
+   Remaining hands-on: `sudo ./tools/install-units.sh && sudo systemctl
+   restart flatsat.target` (Trevor) and Mac `git pull`.
 2. **Migration commit 2 — actuator layer**: `ActuatorDriver` contract,
    `sim_reaction_wheel`, generic actuator daemon (stale-command zeroing +
    mounting projection), `[body]` + `mounting` in the vehicle file,

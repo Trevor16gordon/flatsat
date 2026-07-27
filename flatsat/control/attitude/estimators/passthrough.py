@@ -1,0 +1,62 @@
+"""Passthrough estimator: the measurement IS the estimate.
+
+Today's behavior made explicit. Body rates are read straight off the gyro
+axes; the estimate is valid only when the measurement is fresh and carries
+no acquisition flags. The HIL endgame floor — the loop chasing injected
+gyro noise — is this estimator's signature, and the seam a real filter
+replaces by config edit.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from flatsat.control.attitude.controller import AttitudeState
+from flatsat.control.attitude.estimators.estimator import StateEstimator
+from flatsat.msgs import hal_pb2
+
+
+class PassthroughEstimator(StateEstimator):
+    """Forwards gyro measurements unfiltered as the state estimate."""
+
+    @classmethod
+    def from_config(cls, options: Mapping[str, object]) -> PassthroughEstimator:
+        """Build from vehicle-file estimator options.
+
+        Args:
+            options: Unused — passthrough has nothing to configure.
+
+        Returns:
+            The estimator.
+        """
+        return cls()
+
+    def update(
+        self,
+        measurement: hal_pb2.ImuSample,
+        age_s: float,
+        fresh: bool,
+        dt_s: float,
+    ) -> AttitudeState:
+        """Map the measurement directly onto the state estimate.
+
+        Args:
+            measurement: Latest IMU sample.
+            age_s: Age of the measurement when this step ran.
+            fresh: False when the measurement exceeded the staleness
+                threshold.
+            dt_s: Unused — passthrough carries no dynamics.
+
+        Returns:
+            The estimate: gyro rates verbatim, valid only if fresh and
+            unflagged.
+        """
+        return AttitudeState(
+            body_rates_rad_s=(
+                measurement.gyro_x_rad_s,
+                measurement.gyro_y_rad_s,
+                measurement.gyro_z_rad_s,
+            ),
+            age_s=age_s,
+            valid=fresh and measurement.header.validity == hal_pb2.VALIDITY_FLAG_VALID,
+        )

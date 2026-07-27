@@ -36,7 +36,7 @@ except ModuleNotFoundError:  # Python 3.10
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
-TESTS_DIR = REPO_ROOT / "flight" / "tests"
+TESTS_DIR = REPO_ROOT / "flatsat"  # tests colocate: <name>_test.py beside every module
 TEST_VERIFIED = "test"
 
 
@@ -103,7 +103,7 @@ def collect_markers(tests_dir: Path = TESTS_DIR) -> dict[str, list[str]]:
     import pytest
 
     # Running this file directly puts tools/ on sys.path, not the repo root,
-    # so the test modules' `import flight...` would fail and collect nothing.
+    # so the test modules' `import flatsat...` would fail and collect nothing.
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 

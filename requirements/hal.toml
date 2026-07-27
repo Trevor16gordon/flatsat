@@ -12,7 +12,7 @@ with a different recovery. Flag and forward keeps the failure visible and
 the timeline intact.
 """
 verification = "test"
-evidence = "test_sensor_daemon.py::test_power_gated_zone_flags_comm_but_keeps_publishing — real EAGAIN from a power-gated Jetson CV thermal zone"
+evidence = "sensor_daemon_test.py::test_power_gated_zone_flags_comm_but_keeps_publishing — real EAGAIN from a power-gated Jetson CV thermal zone"
 status = "verified"
 
 [[requirement]]
@@ -23,7 +23,7 @@ starts at 1 and increases strictly monotonically.
 """
 rationale = "Gap and duplicate detection downstream depends on it."
 verification = "test"
-evidence = "test_sensor_daemon.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+evidence = "sensor_daemon_test.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
 status = "verified"
 
 [[requirement]]
@@ -37,7 +37,7 @@ Consumers must be able to distinguish acquisition age from transport delay;
 FDIR staleness rules depend on the difference.
 """
 verification = "test"
-evidence = "test_sensor_daemon.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+evidence = "sensor_daemon_test.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
 status = "verified"
 
 [[requirement]]
@@ -51,7 +51,7 @@ A flagged message carrying a plausible-looking value invites consumers to
 use it. The absence of a value is the honest signal.
 """
 verification = "test"
-evidence = "test_sensor_daemon.py::test_power_gated_zone_flags_comm_but_keeps_publishing"
+evidence = "sensor_daemon_test.py::test_power_gated_zone_flags_comm_but_keeps_publishing"
 status = "verified"
 
 [[requirement]]
@@ -66,7 +66,7 @@ A hardware-in-the-loop run only means something if the simulated sensor is
 the sensor that exists. Duplicated constants drift silently.
 """
 verification = "test"
-evidence = "test_sensor_model.py::test_specs_load_with_provenance and the shared config/imu0.toml consumed by both sim_gyro and ground/basilisk_hil.py"
+evidence = "config_test.py::test_specs_load_with_provenance and the shared config/imu0.toml consumed by both sim_gyro and flatsat/sim/basilisk_hil.py"
 status = "verified"
 
 [[requirement]]
@@ -77,7 +77,7 @@ clipped and flagged as saturated.
 """
 rationale = "A railed sensor reports a bound, not a measurement."
 verification = "test"
-evidence = "test_sensor_model.py::test_saturation_clips_and_flags"
+evidence = "imu_test.py::test_saturation_clips_and_flags"
 status = "verified"
 
 [[requirement]]
@@ -91,5 +91,5 @@ Flag rates are the raw material for FDIR limit checks and the anomaly
 corpus; printed text is unrecordable and unparseable.
 """
 verification = "test"
-evidence = "test_health.py::test_sensor_daemon_publishes_health"
+evidence = "sensor_daemon_test.py::test_sensor_daemon_publishes_health"
 status = "verified"

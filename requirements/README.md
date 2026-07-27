@@ -29,8 +29,7 @@ marking the test:
 
 ```python
 @pytest.mark.verifies("FSW-HAL-001")
-def test_read_failure_does_not_stop_cadence() -> None:
-    ...
+def test_read_failure_does_not_stop_cadence() -> None: ...
 ```
 
 Other methods are for claims a unit test cannot make:

@@ -30,7 +30,7 @@ A relative-sleep loop silently runs slow, corrupting every rate-dependent
 term in the control law.
 """
 verification = "inspection"
-evidence = "flight/apps/control_loop.py::run advances next_wake by exactly one period per cycle; sim feed uses the same pattern (ground/basilisk_hil.py)"
+evidence = "flatsat/apps/control_loop.py::run advances next_wake by exactly one period per cycle; sim feed uses the same pattern (flatsat/sim/basilisk_hil.py)"
 status = "verified"
 
 [[requirement]]
@@ -46,7 +46,7 @@ reality produced a live report claiming SCHED_OTHER while systemd had
 granted FIFO 80 — declare, then verify.
 """
 verification = "test"
-evidence = "test_rt.py::test_describe_actual_reports_live_values; systemd grant confirmed by chrt on the running service (PLAN.md §0, 2026-07-24)"
+evidence = "rt_test.py::test_describe_actual_reports_live_values; systemd grant confirmed by chrt on the running service (PLAN.md §0, 2026-07-24)"
 status = "verified"
 
 [[requirement]]
@@ -77,7 +77,7 @@ waiting for the next broadcast; this is the basis of the mode-distribution
 design.
 """
 verification = "test"
-evidence = "test_zenoh_bus.py::test_late_joiner_learns_mode_via_query"
+evidence = "bus_test.py::test_late_joiner_learns_mode_via_query"
 status = "verified"
 
 [[requirement]]
@@ -91,7 +91,7 @@ Tuning must not require a code change and redeploy; this is also the seam a
 commandable parameter database plugs into.
 """
 verification = "test"
-evidence = "test_sensor_model.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/imu0.toml"
+evidence = "config_test.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/imu0.toml"
 status = "verified"
 
 [[requirement]]
@@ -106,7 +106,7 @@ A recorded run whose parameters cannot be reconstructed is not evidence of
 anything.
 """
 verification = "test"
-evidence = "test_health.py::test_loop_health_carries_provenance_and_counters"
+evidence = "control_loop_test.py::test_loop_health_carries_provenance_and_counters"
 status = "verified"
 
 [[requirement]]
@@ -132,7 +132,7 @@ burst presents the controller with dynamics it will never see in flight and
 invalidates the test.
 """
 verification = "inspection"
-evidence = "ground/basilisk_hil.py paces with absolute deadlines and resyncs (dropping lost time) when it falls more than five periods behind"
+evidence = "flatsat/sim/basilisk_hil.py paces with absolute deadlines and resyncs (dropping lost time) when it falls more than five periods behind"
 status = "verified"
 
 [[requirement]]
@@ -147,7 +147,7 @@ exited spun the simulated vehicle back up. An actuator must not keep flying
 a dead controller's last order.
 """
 verification = "test"
-evidence = "test_hil_contract.py::test_torque_sink_zeroes_when_commands_stop"
+evidence = "basilisk_hil_test.py::test_torque_sink_zeroes_when_commands_stop"
 status = "verified"
 
 [[requirement]]

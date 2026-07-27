@@ -12,7 +12,7 @@ state equals the reference.
 """
 rationale = "A controller that fires at its own setpoint cannot settle."
 verification = "test"
-evidence = "test_control.py::test_every_strategy_is_quiet_at_the_reference (all registered strategies)"
+evidence = "controller_test.py::test_every_strategy_is_quiet_at_the_reference (all registered strategies)"
 status = "verified"
 
 [[requirement]]
@@ -23,7 +23,7 @@ error.
 """
 rationale = "Sign errors are the classic catastrophic control defect."
 verification = "test"
-evidence = "test_control.py::test_every_strategy_opposes_error_and_respects_limits"
+evidence = "controller_test.py::test_every_strategy_opposes_error_and_respects_limits"
 status = "verified"
 
 [[requirement]]
@@ -38,7 +38,7 @@ actuator is validated against hardware that cannot be built, and an
 unreported clip hides the loss of authority from FDIR.
 """
 verification = "test"
-evidence = "test_control.py::test_every_strategy_opposes_error_and_respects_limits"
+evidence = "controller_test.py::test_every_strategy_opposes_error_and_respects_limits"
 status = "verified"
 
 [[requirement]]
@@ -53,7 +53,7 @@ path stops the loop, which is a far worse failure than a missing derivative
 term for one cycle.
 """
 verification = "test"
-evidence = "test_control.py::test_every_strategy_survives_bad_timestep"
+evidence = "controller_test.py::test_every_strategy_survives_bad_timestep"
 status = "verified"
 
 [[requirement]]
@@ -67,7 +67,7 @@ Winding up on stale or flagged data produces a large command the moment
 data returns — turning a sensor dropout into an attitude excursion.
 """
 verification = "test"
-evidence = "test_control.py::test_pid_does_not_integrate_invalid_state"
+evidence = "pid_test.py::test_pid_does_not_integrate_invalid_state"
 status = "verified"
 
 [[requirement]]
@@ -78,7 +78,7 @@ freshly-constructed behavior.
 """
 rationale = "Mode transitions and recovery must not inherit stale history."
 verification = "test"
-evidence = "test_control.py::test_reset_clears_history (all registered strategies)"
+evidence = "controller_test.py::test_reset_clears_history (all registered strategies)"
 status = "verified"
 
 [[requirement]]
@@ -92,7 +92,7 @@ Pins the dynamics numerically: a gain or sign regression fails the suite
 instead of quietly changing how the spacecraft flies.
 """
 verification = "test"
-evidence = "test_control.py::test_detumble_matches_first_order_decay"
+evidence = "rate_damping_test.py::test_detumble_matches_first_order_decay"
 status = "verified"
 
 [[requirement]]
@@ -106,7 +106,7 @@ Detumble, rate hold, pointing, and trajectory following must be selectable
 without a new control loop or a new controller implementation.
 """
 verification = "test"
-evidence = "test_control.py::test_guidance_supplies_the_reference and test_reference_tracking_not_just_damping"
+evidence = "guidance_test.py::test_guidance_supplies_the_reference and rate_damping_test.py::test_reference_tracking_not_just_damping"
 status = "verified"
 
 [[requirement]]
@@ -120,7 +120,7 @@ Actuator commands carry the trustworthiness of their inputs; downstream
 consumers and recorded telemetry must be able to see it.
 """
 verification = "inspection"
-evidence = "flight/apps/control_loop.py::_step sets VALIDITY_FLAG_STALE on the command header; observed live during cross-machine HIL (2026-07-27, ~10% of cycles over WiFi)"
+evidence = "flatsat/apps/control_loop.py::_step sets VALIDITY_FLAG_STALE on the command header; observed live during cross-machine HIL (2026-07-27, ~10% of cycles over WiFi)"
 status = "verified"
 
 [[requirement]]
@@ -136,5 +136,5 @@ tag is what makes a recorded window traceable to the parameters that
 produced it.
 """
 verification = "test"
-evidence = "test_health.py::test_loop_health_carries_provenance_and_counters"
+evidence = "control_loop_test.py::test_loop_health_carries_provenance_and_counters"
 status = "verified"

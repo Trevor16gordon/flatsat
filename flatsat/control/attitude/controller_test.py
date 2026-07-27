@@ -1,0 +1,86 @@
+"""Controller contract tests — run against EVERY registered strategy.
+
+This is what keeps :class:`AttitudeController` an abstraction rather than
+one implementation wearing a base class: a new strategy inherits these
+checks automatically the moment it is registered. Strategy-specific
+numerical tests live beside each law's module.
+"""
+
+import math
+
+import pytest
+
+from flatsat.control.attitude.controller import (
+    AttitudeController,
+    AttitudeReference,
+    AttitudeState,
+    ControlLimits,
+    clip_torque,
+)
+from flatsat.core.registry import CONTROLLERS, get_controller_class
+
+DT = 0.01
+DETUMBLE = AttitudeReference()
+
+# Config that satisfies every registered strategy, so the contract tests
+# below stay valid as strategies are added.
+UNIVERSAL_OPTIONS = {"kp": 0.02, "ki": 0.001, "kd": 0.005, "max_torque_n_m": 1e6}
+
+
+def state(rates: tuple[float, float, float], valid: bool = True) -> AttitudeState:
+    return AttitudeState(body_rates_rad_s=rates, valid=valid)
+
+
+@pytest.mark.parametrize("name", sorted(CONTROLLERS))
+def test_registry_builds_every_strategy(name: str) -> None:
+    controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
+    assert isinstance(controller, AttitudeController)
+    assert controller.describe()
+
+
+@pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-001")
+def test_every_strategy_is_quiet_at_the_reference(name: str) -> None:
+    controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
+    output = controller.update(state((0.0, 0.0, 0.0)), DETUMBLE, DT)
+    assert output.torque_n_m == pytest.approx((0.0, 0.0, 0.0))
+
+
+@pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-002", "FSW-ADCS-003")
+def test_every_strategy_opposes_error_and_respects_limits(name: str) -> None:
+    options = {**UNIVERSAL_OPTIONS, "max_torque_n_m": 1e-4}
+    controller = get_controller_class(name).from_config(options)
+    output = controller.update(state((5.0, 0.0, 0.0)), DETUMBLE, DT)
+    assert output.torque_n_m[0] == pytest.approx(-1e-4)
+    assert output.saturated
+
+
+@pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-004")
+def test_every_strategy_survives_bad_timestep(name: str) -> None:
+    controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
+    output = controller.update(state((0.1, 0.0, 0.0)), DETUMBLE, 0.0)
+    assert all(math.isfinite(v) for v in output.torque_n_m)
+
+
+@pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-006")
+def test_reset_clears_history(name: str) -> None:
+    controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
+    for _ in range(100):
+        controller.update(state((0.3, 0.0, 0.0)), DETUMBLE, DT)
+    controller.reset()
+    fresh = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
+    assert controller.update(state((0.1, 0.0, 0.0)), DETUMBLE, DT).torque_n_m == pytest.approx(
+        fresh.update(state((0.1, 0.0, 0.0)), DETUMBLE, DT).torque_n_m
+    )
+
+
+def test_clip_torque_reports_saturation() -> None:
+    limits = ControlLimits(max_torque_n_m=0.1)
+    clipped = clip_torque((0.5, -0.05, 0.0), limits)
+    assert clipped.torque_n_m == pytest.approx((0.1, -0.05, 0.0))
+    assert clipped.saturated
+    quiet = clip_torque((0.05, 0.0, 0.0), limits)
+    assert not quiet.saturated

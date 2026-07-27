@@ -210,7 +210,7 @@ else
   do_ "pip install numpy<2 + local Jetson wheels"
   "$ML_VENV/bin/pip" install "numpy<2"
   # Flight-software runtime deps. tomli only because the onboard interpreter
-  # is 3.10; 3.11+ has tomllib in the stdlib (flight/config.py falls back).
+  # is 3.10; 3.11+ has tomllib in the stdlib (flatsat/core/config.py falls back).
   "$ML_VENV/bin/pip" install eclipse-zenoh protobuf tomli pytest
   "$ML_VENV/bin/pip" install \
     "$WHEEL_CACHE"/torch-"${TORCH_VERSION}"-*.whl \

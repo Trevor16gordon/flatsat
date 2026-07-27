@@ -1,4 +1,9 @@
-# Repo-wide Python quality configuration.
+# flatsat: packaging + repo-wide Python quality configuration.
+#
+# The `flatsat/` package is the Tier-1 versionable artifact — everything
+# that ships to a flight computer, tests included (an installed release can
+# self-test on target). Deployment today is a git checkout run via -m; the
+# [project] table is what makes the same tree build as one artifact.
 #
 # Enforcement contract (see .pre-commit-config.yaml + CI):
 #   - Every function/method MUST have type annotations on all inputs and the
@@ -7,6 +12,39 @@
 #   - Every module, class, and function MUST have a docstring (ruff D*,
 #     Google convention).
 # Commits that violate these fail at the pre-commit hook; pushes fail in CI.
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flatsat"
+version = "0.1.0"
+description = "Flat-sat flight software: bus-composed daemons, ADCS, HIL bridge"
+requires-python = ">=3.10"
+dependencies = [
+    "eclipse-zenoh",
+    "protobuf",
+    "numpy",
+    "tomli; python_version < '3.11'",
+]
+
+[tool.setuptools.packages.find]
+include = ["flatsat*"]
+
+[tool.setuptools.package-data]
+"flatsat.msgs" = ["*.pyi"]
+
+[tool.pytest.ini_options]
+# Tests colocate: one <name>_test.py beside every module, shipped in the
+# package. Tests must use test-only topic names — a test subscribing to a
+# production key silently reads a live daemon's (or a running HIL sim's)
+# traffic.
+testpaths = ["flatsat"]
+python_files = ["*_test.py"]
+markers = [
+    "verifies(*requirement_ids): this test verifies the given requirement IDs (see requirements/ and tools/traceability.py)",
+]
 
 [tool.ruff]
 line-length = 100
@@ -34,7 +72,7 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 # Tests may skip docstrings-on-every-test verbosity, but not type annotations.
-"**/test_*.py" = ["D100", "D103"]
+"**/*_test.py" = ["D100", "D103"]
 
 [tool.mypy]
 python_version = "3.10"

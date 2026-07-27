@@ -16,10 +16,10 @@ Warmup pings (discovery, JIT, cache) are discarded by sequence number.
 Run under load for the numbers that matter (same torture as the N3 gate):
   stress-ng --cpu 4 --vm 2 --vm-bytes 1G &  +  the GPU matmul loop
 
-Usage:
-  python -m flight.bus_bench                    # spawn echo child + measure
-  python -m flight.bus_bench --count 5000 --rate 500
-  python -m flight.bus_bench --role echo        # responder only (manual pairing)
+Usage (from the repo root):
+  python tools/bus_bench.py                     # spawn echo child + measure
+  python tools/bus_bench.py --count 5000 --rate 500
+  python tools/bus_bench.py --role echo         # responder only (manual pairing)
   sudo ... --fifo 80                            # try SCHED_FIFO on both ends
 
 Exit code 0 = report produced; 4 = excessive loss (>1% pongs missing).
@@ -37,11 +37,14 @@ from pathlib import Path
 import numpy as np
 import zenoh
 
-from flight.msgs import hal_pb2
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))  # allow `python tools/bus_bench.py` from anywhere
+
+from flatsat.msgs import hal_pb2  # noqa: E402 — needs the sys.path bootstrap above
 
 PING_KEY = "bench/ping"
 PONG_KEY = "bench/pong"
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def try_fifo(priority: int | None) -> str:
@@ -190,7 +193,7 @@ def main() -> int:
     if args.role == "ping":
         return run_ping(args.count, args.rate, args.warmup, args.fifo)
 
-    echo_cmd = [sys.executable, "-m", "flight.bus_bench", "--role", "echo"]
+    echo_cmd = [sys.executable, str(Path(__file__).resolve()), "--role", "echo"]
     if args.fifo is not None:
         echo_cmd += ["--fifo", str(args.fifo)]
     echo = subprocess.Popen(echo_cmd, cwd=REPO_ROOT)

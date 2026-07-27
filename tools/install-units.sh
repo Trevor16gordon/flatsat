@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UNITS="$REPO/flight/units/generated"
+UNITS="$REPO/units/generated"
 
 if [[ ! -d "$UNITS" ]]; then
   echo "no generated units at $UNITS — run tools/gen-units.py first" >&2

@@ -2,7 +2,7 @@
 #
 # Sensors are named driver instances; control is a named strategy plus a
 # named objective. Everything here is looked up by name in
-# flight/registry.py, so a different spacecraft is a different file of this
+# flatsat/core/registry.py, so a different spacecraft is a different file of this
 # shape — not different code:
 #
 #   * more/fewer sensors   -> add or remove [[sensors]] entries
@@ -11,7 +11,7 @@
 #   * detumble vs pointing -> change `objective` and its options
 #
 # Deployment concerns (RT priority, core, memory budget) live in
-# flight/deployment.toml; board topology lives in tools/host-profiles/.
+# deployment.toml; board topology lives in tools/host-profiles/.
 # Those are separate on purpose: the same vehicle can be deployed to
 # different flight computers.
 
