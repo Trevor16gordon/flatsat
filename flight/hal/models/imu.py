@@ -1,6 +1,6 @@
 """Sensor models: physics truth -> what a specific device would report.
 
-PURE functions driven by a device spec (``flight.config.ImuSpec``), so the
+PURE functions driven by a device spec (``flight.core.config.ImuSpec``), so the
 simulation corrupts truth using the SAME numbers the flight-side driver
 knows the hardware by. A HIL run is only meaningful if the simulated sensor
 is the sensor that exists; a noise constant living in a sim script is not
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import random
 
-from flight.config import ImuSpec
+from flight.core.config import ImuSpec
 from flight.msgs import hal_pb2
 
 Vec3 = tuple[float, float, float]

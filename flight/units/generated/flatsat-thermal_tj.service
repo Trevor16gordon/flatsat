@@ -5,11 +5,11 @@
 # Do not edit — change an input and regenerate.
 
 [Unit]
-Description=imu0 sensor daemon (sim_gyro) — flatsat-v1
+Description=thermal_tj sensor daemon (jetson_thermal) — flatsat-v1
 PartOf=flatsat.target
 
 [Service]
-ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flight.apps.sensor_daemon --sensor imu0 --vehicle config/vehicles/flatsat_v1.toml
+ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flight.apps.sensor_daemon --sensor thermal_tj --vehicle config/vehicles/flatsat_v1.toml
 WorkingDirectory=/home/trevor/flatsat
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure

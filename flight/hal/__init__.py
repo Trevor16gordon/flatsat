@@ -1,1 +1,1 @@
-"""HAL daemons: one process per device, publishing typed topics (PLAN §4)."""
+"""Hardware abstraction layer: drivers, device models, and their contract."""

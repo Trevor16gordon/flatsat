@@ -1,0 +1,26 @@
+# DEPLOYMENT — how this vehicle's processes run on a flight computer.
+#
+# Separate from the vehicle composition on purpose: the same spacecraft
+# definition can be deployed to different computers with different
+# real-time budgets. Core ROLES here are mapped to physical cores by the
+# host profile (tools/host-profiles/*.env), so nothing in this file is
+# board-specific either.
+#
+# tools/gen-units.py joins vehicle + deployment + host profile into systemd
+# units. A sensor added to the vehicle file needs no entry here — it
+# inherits [sensor_defaults].
+
+[sensor_defaults]
+memory_max = "256M"
+# no core_role: housekeeping CPUs, keeping the RT core clean
+
+[control]
+rt_policy = "fifo"
+rt_priority = 80
+core_role = "rt_core"
+memory_max = "512M"
+
+# Per-sensor overrides go in [sensors.<name>], e.g. a hard-real-time IMU:
+# [sensors.imu0]
+# rt_policy = "fifo"
+# rt_priority = 70

@@ -1,0 +1,98 @@
+"""Name → implementation lookup for drivers, controllers, and guidance.
+
+Composition works by NAME: a vehicle file says ``driver = "sim_gyro"`` or
+``strategy = "pid"``, and this module resolves that to a class. Nothing in
+the applications imports a concrete driver or controller, which is what
+makes "different sensors / different control law / simulated instead of
+real" a configuration change.
+
+Imports are lazy and per-entry on purpose. A flight computer with no CUDA
+must not fail to start a thermal daemon because an ML policy's import
+chain is unavailable — only the strategies a vehicle actually uses get
+imported. This is also the hook for remotely-installed components: a
+deployed package can register additional entries at import time without
+this file changing.
+"""
+
+from __future__ import annotations
+
+import importlib
+from collections.abc import Mapping
+
+from flight.adcs.controller import AttitudeController
+from flight.adcs.guidance import ReferenceSource
+from flight.hal.driver import SensorDriver
+
+# name -> "module:ClassName"
+DRIVERS: dict[str, str] = {
+    "jetson_thermal": "flight.hal.drivers.jetson_thermal:JetsonThermalDriver",
+    "sim_gyro": "flight.hal.drivers.sim_gyro:SimGyroDriver",
+}
+
+CONTROLLERS: dict[str, str] = {
+    "rate_damping": "flight.adcs.controllers.rate_damping:RateDampingController",
+    "pid": "flight.adcs.controllers.pid:PidRateController",
+}
+
+GUIDANCE: dict[str, str] = {
+    "constant_rate": "flight.adcs.guidance:ConstantRateReference",
+}
+
+
+def _resolve(table: Mapping[str, str], key: str, kind: str) -> type:
+    """Import and return the class registered under ``key``.
+
+    Args:
+        table: Registry mapping names to ``module:Class`` targets.
+        key: Registered name from a configuration file.
+        kind: Human-readable category, used in the error message.
+
+    Returns:
+        The registered class.
+
+    Raises:
+        KeyError: If the name is not registered, listing what is.
+    """
+    if key not in table:
+        raise KeyError(f"unknown {kind} {key!r}; registered: {sorted(table)}")
+    module_name, _, class_name = table[key].partition(":")
+    return getattr(importlib.import_module(module_name), class_name)  # type: ignore[no-any-return]
+
+
+def get_driver_class(name: str) -> type[SensorDriver]:
+    """Resolve a sensor driver by registry name.
+
+    Args:
+        name: Value of a vehicle file's ``driver`` key.
+
+    Returns:
+        The driver class (call ``from_config`` to instantiate).
+    """
+    resolved: type[SensorDriver] = _resolve(DRIVERS, name, "driver")
+    return resolved
+
+
+def get_controller_class(name: str) -> type[AttitudeController]:
+    """Resolve a control strategy by registry name.
+
+    Args:
+        name: Value of a vehicle file's ``strategy`` key.
+
+    Returns:
+        The controller class (call ``from_config`` to instantiate).
+    """
+    resolved: type[AttitudeController] = _resolve(CONTROLLERS, name, "controller")
+    return resolved
+
+
+def get_guidance_class(name: str) -> type[ReferenceSource]:
+    """Resolve a guidance/reference source by registry name.
+
+    Args:
+        name: Value of a vehicle file's ``objective`` key.
+
+    Returns:
+        The reference-source class (call ``from_config`` to instantiate).
+    """
+    resolved: type[ReferenceSource] = _resolve(GUIDANCE, name, "guidance")
+    return resolved

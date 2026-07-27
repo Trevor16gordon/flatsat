@@ -1,0 +1,49 @@
+# VEHICLE COMPOSITION — what this spacecraft IS.
+#
+# Sensors are named driver instances; control is a named strategy plus a
+# named objective. Everything here is looked up by name in
+# flight/registry.py, so a different spacecraft is a different file of this
+# shape — not different code:
+#
+#   * more/fewer sensors   -> add or remove [[sensors]] entries
+#   * simulated vs real    -> change `driver` (sim_gyro -> imu_bno055, ...)
+#   * PD vs PID vs ML      -> change `strategy` and its options
+#   * detumble vs pointing -> change `objective` and its options
+#
+# Deployment concerns (RT priority, core, memory budget) live in
+# flight/deployment.toml; board topology lives in tools/host-profiles/.
+# Those are separate on purpose: the same vehicle can be deployed to
+# different flight computers.
+
+name = "flatsat-v1"
+description = "Bench flat-sat: simulated gyro + Jetson housekeeping, PD detumble"
+
+[[sensors]]
+name = "imu0"
+driver = "sim_gyro"          # swap for a hardware driver; nothing else changes
+topic = "hal/imu0/sample"
+rate_hz = 100.0
+spec = "config/imu0.toml"    # device characteristics, shared with the sim
+amplitude_rad_s = 0.05
+period_s = 20.0
+
+[[sensors]]
+name = "thermal_tj"
+driver = "jetson_thermal"
+topic = "hal/thermal_tj/sample"
+rate_hz = 1.0
+zone = "tj-thermal"
+
+[control]
+strategy = "rate_damping"    # registry key; "pid" is the other one today
+objective = "constant_rate"  # guidance source producing the reference
+rate_hz = 100.0
+input_topic = "hal/imu0/sample"
+output_topic = "adcs/wheel_torque"
+stale_after_s = 0.05
+kp = 0.02                    # strategy-specific options follow
+kd = 0.005
+max_torque_n_m = 0.05        # reaction-wheel envelope; commands clip to it
+
+[control.objective_options]
+target_rates_rad_s = [0.0, 0.0, 0.0]   # zero = detumble

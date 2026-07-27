@@ -16,6 +16,7 @@ file read for a bus query and nothing downstream changes.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ try:  # Python 3.11+ (the ground Mac)
 except ModuleNotFoundError:  # Python 3.10 (the onboard interpreter)
     import tomli as tomllib
 
-CONFIG_ROOT = Path(__file__).resolve().parents[1] / "config"
+CONFIG_ROOT = Path(__file__).resolve().parents[2] / "config"
 
 
 @dataclass(frozen=True)
@@ -50,38 +51,99 @@ class Provenance:
 
 
 @dataclass(frozen=True)
-class AdcsParams:
-    """Control-loop parameters.
+class SensorEntry:
+    """One sensor in a vehicle composition.
 
     Attributes:
-        rate_hz: Control cadence in Hz.
-        kp: Proportional gain on body rate.
-        kd: Derivative gain on body rate.
-        stale_after_s: Input age beyond which a cycle is flagged stale.
-        sensor_topic: Topic supplying ImuSample.
-        command_topic: Topic for WheelTorqueCommand output.
+        name: Instance name; becomes the message source and unit name.
+        driver: Registry key naming the driver implementation.
+        topic: Bus key expression the daemon publishes on.
+        rate_hz: Publish cadence.
+        options: Driver-specific settings passed to ``from_config``.
+    """
+
+    name: str
+    driver: str
+    topic: str
+    rate_hz: float
+    options: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class ControlEntry:
+    """The control loop in a vehicle composition.
+
+    Attributes:
+        strategy: Registry key naming the control implementation.
+        objective: Registry key naming the guidance/reference source.
+        rate_hz: Control cadence.
+        input_topic: Topic supplying the state estimate input.
+        output_topic: Topic for actuator commands.
+        stale_after_s: Input age beyond which the estimate is not valid.
+        options: Strategy-specific settings (gains, limits, model paths).
+        objective_options: Guidance-specific settings (targets).
+    """
+
+    strategy: str
+    objective: str
+    rate_hz: float
+    input_topic: str
+    output_topic: str
+    stale_after_s: float
+    options: Mapping[str, object]
+    objective_options: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class VehicleSpec:
+    """What a spacecraft IS: its sensors and how it is flown.
+
+    A different vehicle — more sensors, simulated instead of real, an ML
+    controller instead of PD — is a different file of this shape, not
+    different code.
+
+    Attributes:
+        name: Vehicle identifier.
+        description: Human-readable purpose.
+        sensors: Sensor complement.
+        control: Control loop composition.
         provenance: Source file and checksum.
     """
 
-    rate_hz: float
-    kp: float
-    kd: float
-    stale_after_s: float
-    sensor_topic: str
-    command_topic: str
+    name: str
+    description: str
+    sensors: tuple[SensorEntry, ...]
+    control: ControlEntry
     provenance: Provenance
 
-    def describe(self) -> list[str]:
-        """Render the parameter set for logs/telemetry echo.
+    def sensor(self, name: str) -> SensorEntry:
+        """Look up one sensor entry by name.
+
+        Args:
+            name: Sensor instance name.
 
         Returns:
-            Lines naming every value in effect and its provenance.
+            The matching entry.
+
+        Raises:
+            KeyError: If the vehicle has no such sensor.
+        """
+        for entry in self.sensors:
+            if entry.name == name:
+                return entry
+        raise KeyError(f"vehicle {self.name!r} has no sensor {name!r}")
+
+    def describe(self) -> list[str]:
+        """Render the composition for logs/telemetry echo.
+
+        Returns:
+            Lines naming the vehicle, its provenance, and its complement.
         """
         return [
-            f"params: {self.provenance.describe()}",
-            f"params: rate {self.rate_hz:g} Hz, kp {self.kp:g}, kd {self.kd:g}, "
-            f"stale>{self.stale_after_s * 1000:g} ms",
-            f"params: {self.sensor_topic} -> {self.command_topic}",
+            f"vehicle: {self.name} ({self.provenance.describe()})",
+            f"vehicle: sensors {[s.name for s in self.sensors]}",
+            f"vehicle: control {self.control.strategy} @ {self.control.rate_hz:g} Hz, "
+            f"objective {self.control.objective}",
         ]
 
 
@@ -145,31 +207,64 @@ def _load_toml(path: Path) -> tuple[dict[str, Any], Provenance]:
     return tomllib.loads(raw.decode("utf-8")), Provenance(str(path), checksum)
 
 
-def load_adcs_params(path: Path | None = None) -> AdcsParams:
-    """Load control-loop parameters.
+def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
+    """Load a vehicle composition file.
 
     Args:
-        path: Override file; defaults to ``config/adcs.toml``.
+        path: Override file; defaults to ``config/vehicles/flatsat_v1.toml``.
 
     Returns:
-        The parameter set, with provenance.
+        The composition, with provenance.
 
     Raises:
         KeyError: If a required key is missing (fail loud at startup).
     """
-    data, prov = _load_toml(path or CONFIG_ROOT / "adcs.toml")
-    return AdcsParams(
-        rate_hz=float(data["rate_hz"]),
-        kp=float(data["kp"]),
-        kd=float(data["kd"]),
-        stale_after_s=float(data["stale_after_s"]),
-        sensor_topic=str(data["sensor_topic"]),
-        command_topic=str(data["command_topic"]),
+    target = Path(path) if path else CONFIG_ROOT / "vehicles" / "flatsat_v1.toml"
+    data, prov = _load_toml(target)
+
+    sensors: list[SensorEntry] = []
+    for row in data.get("sensors", []):
+        known = {"name", "driver", "topic", "rate_hz"}
+        sensors.append(
+            SensorEntry(
+                name=str(row["name"]),
+                driver=str(row["driver"]),
+                topic=str(row["topic"]),
+                rate_hz=float(row["rate_hz"]),
+                options={k: v for k, v in row.items() if k not in known},
+            )
+        )
+
+    ctrl = data["control"]
+    known_ctrl = {
+        "strategy",
+        "objective",
+        "rate_hz",
+        "input_topic",
+        "output_topic",
+        "stale_after_s",
+        "objective_options",
+    }
+    control = ControlEntry(
+        strategy=str(ctrl["strategy"]),
+        objective=str(ctrl.get("objective", "constant_rate")),
+        rate_hz=float(ctrl["rate_hz"]),
+        input_topic=str(ctrl["input_topic"]),
+        output_topic=str(ctrl["output_topic"]),
+        stale_after_s=float(ctrl["stale_after_s"]),
+        options={k: v for k, v in ctrl.items() if k not in known_ctrl},
+        objective_options=dict(ctrl.get("objective_options", {})),
+    )
+    return VehicleSpec(
+        name=str(data["name"]),
+        description=str(data.get("description", "")),
+        sensors=tuple(sensors),
+        control=control,
         provenance=prov,
     )
 
 
-def load_imu_spec(path: Path | None = None) -> ImuSpec:
+def load_imu_spec(path: Path | str | None = None) -> ImuSpec:
     """Load an IMU device specification.
 
     Args:
@@ -181,7 +276,7 @@ def load_imu_spec(path: Path | None = None) -> ImuSpec:
     Raises:
         KeyError: If a required key is missing (fail loud at startup).
     """
-    data, prov = _load_toml(path or CONFIG_ROOT / "imu0.toml")
+    data, prov = _load_toml(Path(path) if path else CONFIG_ROOT / "imu0.toml")
     return ImuSpec(
         name=str(data["name"]),
         rate_hz=float(data["rate_hz"]),

@@ -1,21 +1,22 @@
-"""Tests for the shared sensor model and file-backed configuration."""
+"""Tests for the shared sensor model and vehicle composition loading."""
 
 import random
 import statistics
 
 import pytest
 
-from flight.config import load_adcs_params, load_imu_spec
-from flight.hal.sensor_model import apply_gyro_model
+from flight.core.config import load_imu_spec, load_vehicle
+from flight.hal.models.imu import apply_gyro_model
 from flight.msgs import hal_pb2
 
 SPEC = load_imu_spec()
 
 
 def test_specs_load_with_provenance() -> None:
-    params = load_adcs_params()
-    assert params.rate_hz > 0
-    assert params.provenance.checksum and len(params.provenance.checksum) == 12
+    vehicle = load_vehicle()
+    assert vehicle.control.rate_hz > 0
+    assert vehicle.provenance.checksum and len(vehicle.provenance.checksum) == 12
+    assert vehicle.sensor("imu0").driver == "sim_gyro"
     assert SPEC.gyro_noise_rad_s > 0
     assert "imu0" in SPEC.provenance.path
 

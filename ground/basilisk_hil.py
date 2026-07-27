@@ -39,9 +39,9 @@ import time
 
 import zenoh
 
-from flight.config import load_adcs_params, load_imu_spec
-from flight.hal.publisher import SamplePublisher
-from flight.hal.sensor_model import apply_gyro_model
+from flight.core.bus import SamplePublisher
+from flight.core.config import load_imu_spec, load_vehicle
+from flight.hal.models.imu import apply_gyro_model
 from flight.msgs import adcs_pb2, hal_pb2
 
 
@@ -165,7 +165,7 @@ def main() -> int:
     from Basilisk.simulation import extForceTorque, spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros
 
-    adcs_params = load_adcs_params()
+    vehicle = load_vehicle()
     imu_spec = load_imu_spec()
     rng = random.Random(args.seed)
     dt_s = 1.0 / args.rate
@@ -206,8 +206,8 @@ def main() -> int:
             print(f"[sim] recording Vizard playback file: {args.viz_save}")
 
     session = open_session(args.connect)
-    publisher = SamplePublisher(session, adcs_params.sensor_topic, imu_spec.name)
-    sink = TorqueSink(session, adcs_params.command_topic) if args.closed_loop else None
+    publisher = SamplePublisher(session, vehicle.control.input_topic, imu_spec.name)
+    sink = TorqueSink(session, vehicle.control.output_topic) if args.closed_loop else None
 
     sim.InitializeSimulation()
     mode = "CLOSED loop (applying flight torques)" if sink else "open loop (tumble feed only)"

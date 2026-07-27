@@ -1,1 +1,1 @@
-"""ADCS: attitude control processes (A1 mock loop onward)."""
+"""ADCS: attitude control strategies, guidance, and their contracts."""
