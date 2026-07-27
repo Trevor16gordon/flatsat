@@ -1,265 +1,80 @@
 # Flat-Sat Software Architecture & Development Plan
 
-v1.1 — July 2026 · Trevor · single merged plan (architecture + working status)
+v1.2 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status (2026-07-27): flight-software skeleton flying.** Jetson bring-up
-complete (N1–N3; PREEMPT_RT live, 69 µs cyclictest under load) · radio proven
-one-radio end to end (RX, tone, framed data at BER 0, BER-vs-SNR waterfall) ·
-**cross-machine hardware-in-the-loop closed**: Basilisk on the Mac detumbled
-by the Jetson's 100 Hz FIFO control loop over WiFi · repo restructured into
-library/composition/application layers with health telemetry and a
-requirements traceability system · next: telemetry recorder, A1 core
-isolation, ground Pluto unboxing.
+**Status (2026-07-27): flight-software skeleton flying; architecture v2
+designed, migration pending.** Jetson bring-up complete (PREEMPT_RT live,
+69 µs cyclictest under load) · radio proven one-radio end to end (framed
+data at BER 0, BER-vs-SNR waterfall) · **cross-machine HIL closed**:
+Basilisk on the Mac detumbled by the Jetson's 100 Hz FIFO control loop over
+WiFi · 2026-07-27 design session settled the target architecture — single
+`flatsat/` package, actuator layer, Basilisk-as-drivers, device-intrinsic vs
+integration config split, four versioning tiers (decision log +
+`docs/ARCHITECTURE.md`) · next: the three migration commits, then the
+telemetry recorder.
 
 ---
 
 ## 0. Working status and decision log
 
-### Done (as of 2026-07-27)
+### Done (condensed 2026-07-27 — full detail lives in git history)
 
-- **REPO RESTRUCTURED into library / composition / application layers
-  (2026-07-27), + health telemetry + requirements traceability.** Driven by
-  a design review: the old layout mixed contracts, devices, and apps in one
-  folder and had no answer to "what IS a control loop".
-  *Contracts:* `SensorDriver` (`read() -> message + flags`, never raises)
-  and `AttitudeController` (`update(state, reference, dt) -> ControlOutput`)
-  — controllers take a REFERENCE, so detumble/pointing/trajectory are
-  guidance swaps, not different loops. *Implementations:* one module per
-  device (`hal/drivers/`) and per law (`adcs/controllers/`; PID added
-  alongside PD to keep the abstraction honest). *Composition:*
-  `config/vehicles/*.toml` names drivers + strategy + objective, resolved
-  by `flight/registry.py` (lazy per-entry imports — also the hook for
-  remotely-installed components). *Applications:* `apps/sensor_daemon.py`
-  runs ANY driver, `apps/control_loop.py` runs ANY controller.
-  *Deployment* stays separate (`flight/deployment.toml` + host profiles).
-  **Health is now DATA** (`protos/health.proto`): LoopHealth/SensorHealth
-  on `health/<component>` carrying counters, latency percentiles, verified
-  scheduling, and the config checksum — previously printf only.
-  **Requirements system**: 30 requirements in `requirements/*.toml` with
-  verification method + evidence, linked to tests by
-  `@pytest.mark.verifies()`, enforced by `tools/traceability.py --strict`
-  in CI. 46 tests green. See `docs/ARCHITECTURE.md`.
-  Verified by running: composed loop + spawned daemons, PD→PID swap by
-  config edit only. Two bugs found by running it (stale generated unit
-  survived a sensor rename; installer never pruned removed units) — both
-  fixed. **Units reinstalled and services restarted on the composed apps
-  (2026-07-27):** flatsat-{imu0,thermal_tj,adcs} all active, ADCS verified
-  SCHED_FIFO 80 / core 3 by chrt, stale flatsat-thermal-tj.service removed.
-  Live health telemetry confirmed on the bus:
-  `LoopHealth flatsat-v1 cfg=25ff54311346 rate_damping/constant_rate 100Hz
-  sched='SCHED_FIFO priority 80' cpu=3 cycles=6000 stale=0 sat=0 lateness
-  p50=20.0 max=661.7us` and `SensorHealth imu0 driver=sim_gyro 100Hz
-  samples=3000 flagged=0`.
+**Platform (N1–N3, complete 2026-07-24).** JetPack 6.2.1; rootfs on NVMe
+(SD retained as rescue boot); bring-up captured idempotently in
+`tools/jetson-setup.sh` + committed manifests. PREEMPT_RT kernel live
+(`5.15.148-rt-tegra` via NVIDIA's OTA repo) with stock-kernel fallback;
+boot-path gotchas (bootloader reads the SD extlinux + kernel; postinst
+writes the wrong `root=`) captured in `tools/n3-rt-kernel-runbook.md`.
+**Acceptance gate: cyclictest 10 min under sustained CUDA + stress-ng load
+— 69 µs worst-case** (target <~100 µs), no isolation tuning yet. PyTorch
+2.8.0 cu126 in `~/venvs/flatsat-ml` (jetson-ai-lab wheels only — pypi.org
+ships CPU-only torch under the same version string; numpy held <2 for
+gnuradio); CUDA gate passed with gnuradio importable in the same process.
+Quality gates live: ruff ANN/D + mypy strict, pre-commit + CI.
 
-- **CROSS-MACHINE HIL CLOSED (2026-07-27) — the A4 demo, exceeded.** Mac
-  (Basilisk 2.11, wall-clock-paced) ↔ Jetson (flatsat-adcs service,
-  verified SCHED_FIFO 80 on core 3) over WiFi, zenoh multicast discovery
-  worked zero-config. Detumble 78 → ~2 mrad/s in ~3.5 min (real time, 1:1
-  by design — §10 time rule), 100 Hz control with input age typically
-  6–10 ms. WiFi reality visible and HANDLED: periodic 20–90 ms stalls →
-  ~8–12% of cycles ran on stale-flagged inputs, commands self-flagged,
-  loop never destabilized; sim-side 100 ms torque cutoff protected against
-  controller death. Endgame floor ~2–5 mrad/s = the injected gyro noise
-  (2 mrad/s/axis) — controller chasing sensor noise, textbook. Loop RT
-  held during full HIL: lateness p50 26 µs, MAX <500 µs. (A4's original
-  target was a 1 Hz closed loop; this is 100 Hz.) Faster-than-real-time
-  campaigns remain a deliberate §10 future extension (needs external time
-  source in flight software).
+**Radio — one-radio end to end (2026-07-23).** GNU Radio 3.10.1.1 apt +
+gr-iio; flat-sat Pluto enumerated (fw v0.37, reports ad9364; P1 partial).
+RX smoke clean → TX tone loopback through the 30 dB pads (+100 kHz tone,
+65.9 dB above floor, +1 Hz error) → **GMSK framed data at BER 0.00**
+(113/113 frames) → BER-vs-SNR waterfall via calibrated offline AWGN
+(capture archived at `~/flatsat-captures/`, re-sweepable without RF — the
+B2 methodology in miniature). Governing lesson: **zero-IF ⇒ keep signal
+energy off DC** (BER 1.8e-1 → 0.00).
 
-- **Basilisk HIL closed on-box (2026-07-27) — sim spacecraft detumbled by
-  the real flight loop.** Basilisk 2.11.0 now ships prebuilt wheels
-  (`pip install bsk` — the v1.0-era source-build concern is obsolete);
-  installed on the Mac (ground venv) and in a Jetson dev sandbox
-  (validation only — the never-sim-on-flight-computer rule stands for real
-  topology). `ground/basilisk_hil.py`: tumbling rigid spacecraft,
-  wall-clock-paced by our own absolute-deadline stepping (chosen over
-  Basilisk's clock-sync module: we need per-step bus hooks anyway, and it
-  keeps one pacing idiom repo-wide), publishing ImuSample on the fake-IMU
-  topic — ADCS cannot tell sim from synthetic. Closed loop validated:
-  **99 → 14.6 mrad/s in 90 s (τ ≈ I/kp ≈ 40 s as predicted), 8499/8499
-  commands applied.** War story: v1 spun back up after the controller
-  exited (sink held last torque forever) → TorqueSink zeroes on 100 ms
-  stale-command cutoff, verified. Consumer note: protobuf runtime ≥7.35.1
-  required (gencode) despite bsk's conservative ≤7.35.0 cap. Next: same
-  demo cross-machine (Mac sim ↔ Jetson FIFO service over the LAN).
+**Foundation + first services (M1, 2026-07-24).** `protos/` as the single
+source of truth (committed codegen + mypy stubs); zenoh validated on-device
+incl. the §7 latched-mode query pattern; `SensorDaemon` base implements
+contract mechanics once (header stamping, seq, validity, absolute-deadline
+cadence); first real HAL daemon (`jetson_thermal` — flag-and-forward proven
+against real EAGAIN). Bus latency measured under full load: one-way p50
+~170 µs / max <700 µs ⇒ **100–200 Hz control across the bus has ≥10×
+worst-case margin**; bus-first ADCS confirmed.
 
-- **A1 software half CLOSED (2026-07-24 evening): FIFO via systemd, 3-way
-  measured.** ADCS loop as flatsat-adcs.service (SCHED_FIFO 80, core 3,
-  granted by systemd — verified with chrt; in-process reporting now prints
-  verified state, not attempts). Wakeup-lateness MAX per condition, 100 Hz,
-  6000-cycle windows: SCHED_OTHER idle 620 µs / loaded **1699 µs**; FIFO
-  (service) idle **86–207 µs**; FIFO under full GPU+CPU+mem load
-  **124–137 µs** — the equal-priority-preemption tail is gone (13×), load
-  is near-invisible to the loop. Residual ~100 µs tail = idle-state exits +
-  unisolated core; that is the A1 isolation runbook's target (isolcpus/
-  nohz_full/IRQ affinity/idle cap on RT_CORE from the host profile).
-  Observed under load-ramp: 2 stale-input cycles — the NON-RT fake-IMU
-  daemon lagged, not the loop; instrumentation correctly fingers the
-  weakest link (sensor daemons' RT tier is a future table decision).
+**Real-time control loop (A1 software half, closed 2026-07-24).** 100 Hz PD
+loop as a systemd service with **verified** SCHED_FIFO 80 / core 3:
+wakeup-lateness MAX under full GPU+CPU+mem load **124–137 µs** (vs 1699 µs
+SCHED_OTHER — the equal-priority-preemption tail SCHED_FIFO exists to
+remove, removed). Residual ~100 µs tail = the A1 isolation pass's target.
+Orchestration: config → `tools/gen-units.py` → committed units; systemd
+grants RT/affinity/memory declaratively; Restart= is FDIR Tier-1 for free.
 
-- **Process orchestration (2026-07-24): table → systemd, placement via host
-  profile.** *(Superseded 2026-07-27: `flight/processes.toml` was replaced by
-  `config/vehicles/*.toml` + `flight/deployment.toml` — see the
-  restructure entry below.)* The process table was the single source of
-  truth (module, args, RT policy/priority, core ROLE, memory budget);
-  `tools/host-profiles/jetson-orin-nano.env` = placement truth (RT_CORE=3,
-  housekeeping 0-2,4-5 — the SAME file the A1 isolation cmdline must use);
-  `tools/gen-units.py` compiles both into committed systemd units +
-  `flatsat.target`. systemd grants FIFO/affinity/MemoryMax declaratively —
-  flight code stays unprivileged; Restart=on-failure = FDIR Tier-1 for
-  free. Install (sudo): `tools/install-units.sh`. Declare-then-verify rule
-  adopted: profiles state placement, processes assert it at startup
-  (assertion hook still TODO in SensorDaemon/loop).
+**Architecture v1 + traceability (2026-07-27).** Library / composition /
+application layers; contracts (`SensorDriver`, `AttitudeController` taking
+a REFERENCE); vehicles as `config/vehicles/*.toml` resolved by registry;
+**health as protobuf telemetry** (LoopHealth/SensorHealth with config
+checksum, live on the bus); **requirements traceability** (30 requirements
+with verification methods, linked to tests, `--strict` in CI); 46 tests
+green; PD→PID swap by config edit verified live.
 
-- **A1 (software half) — first closed control loop over the bus,
-  instrumented (2026-07-24).** *(Paths superseded by the 2026-07-27
-  restructure: fake_imu → `flight/hal/drivers/sim_gyro.py`, loop →
-  `flight/apps/control_loop.py`.)* `flight/hal/fake_imu.py` (synthetic gyro in
-  the Basilisk seam slot) → `flight/adcs/loop.py`: PD rate damping at
-  100 Hz, absolute-deadline cadence, GC quiesced, mlockall (works
-  unprivileged here), `WheelTorqueCommand` out every cycle (`adcs.proto`;
-  stale-input commands flag themselves). Cyclictest-style self-measurement.
-  Baseline, SCHED_OTHER, sensor→bus→loop→bus: idle lateness p50 95 /
-  max 620 µs; under N3-grade load p50 78 / p99 95 / **MAX 1699 µs — a
-  single equal-priority preemption spike, the precise thing SCHED_FIFO
-  exists to remove**. 0/1999 cycles missed or stale; worst case ~2.2 ms of
-  the 10 ms budget with no privileges and no isolation. Remaining A1 (needs
-  Trevor/sudo): rerun `--fifo 80 --pin N` under load, then the isolation
-  pass (isolcpus/nohz_full/IRQ affinity, idle-state cap per the
-  cpu_dma_latency lesson) → target < ~100 µs, artifact = before/after vs
-  this baseline and cyclictest's 69 µs.
-
-- **Bus latency measured (2026-07-24) — the transport-tail question closed
-  with data.** `flight/bus_bench.py` (echo + paced pinger, protobuf payloads
-  over zenoh loopback TCP, warmup discarded, SCHED_OTHER — no sudo): one-way
-  idle p50 193 µs / max 686 µs (n=1000); under the full N3 load (CUDA matmul
-  + stress-ng 4cpu+2vm) p50 167 µs / p99.9 322 µs / max 542 µs (n=2000, zero
-  loss). Load IMPROVES tails (idle-state/clock-ramp exit penalties dominate
-  when quiescent). Verdict: a 100–200 Hz control path can cross the bus with
-  ≥10× worst-case margin — bus-first ADCS confirmed as default; §4's
-  single-pinned-process consolidation stays an unneeded escape hatch.
-  Standing caveats: loopback only (cross-machine adds the NIC), and rerun
-  with `--fifo` under sudo if tails ever matter at SCHED_FIFO tiers.
-
-- **M1 foundation layer (2026-07-24).** `protos/` established as the single
-  source of truth for inter-service interfaces (decision: protobuf schemas;
-  Python codegen + mypy stubs committed via `tools/gen-protos.sh`; generated
-  files gate-exempt, consumers fully checked via stubs; C++ codegen deferred
-  to first consumer ~M2; pydantic deferred to config edges). `hal.proto`:
-  Header (§4 contract: timestamps, monotonic seq, validity word — semantics
-  sharpened after review: acquisition facts only, operational normality is
-  FDIR L1's job) + ImuSample + TemperatureSample. `mode.proto`: SystemMode +
-  latched ModeState. Zenoh 1.9.0 validated on-device: pub/sub with protobuf
-  payloads AND the §7 latched-mode query pattern (late joiner learns mode
-  immediately) — first running evidence for the §13 Zenoh-vs-ROS2 call.
-  `SensorDaemon` base implements contract mechanics once (header stamping,
-  seq, validity propagation, drift-free absolute-deadline cadence); adding a
-  sensor = SensorConfig + a read() that must not raise. **First real HAL
-  daemon live: `flight/hal/jetson_thermal.py`** — tj-thermal at ~48 °C over
-  the bus, sample→publish ~400 µs; power-gated cv* zones publish COMM-flagged
-  on cadence (flag-and-forward proven against real EAGAIN). War story
-  recorded in code: sysfs EAGAIN evades OSError via Python text IO
-  (TypeError) and buffered binary IO (silent None) — raw os.read is the
-  honest path. 8 integration/unit tests green on-device.
-
-- **N3 COMPLETE (2026-07-24) — PREEMPT_RT kernel live, gate passed.**
-  Installed via NVIDIA's rt-kernel OTA repo (`5.15.148-rt-tegra`, build
-  36.4.0-20241014 against BSP r36.4.7). Boot-path discovery confirmed on
-  hardware: bootloader reads the SD APP partition's extlinux.conf + kernel
-  (with `root=/dev/nvme0n1p1`), NOT the NVMe's — apt installs required
-  manual sync to SD (runbook stages 3–4). Postinst trap confirmed and fixed:
-  its generated entry wrote `root=/dev/mmcblk0p1` (would have booted the
-  stale SD rootfs). Fallback preserved: stock `primary` entry + its own
-  initrd untouched on SD; RT entry has separate Image.real-time +
-  initrd.real-time; rescue = serial console boot menu or SD-card edit on
-  the Mac. Verified under RT: `/sys/kernel/realtime`=1, CONFIG_PREEMPT_RT=y,
-  nvgpu loaded, zero failed units, full N2b CUDA gate re-passed.
-  **Acceptance gate: cyclictest 10 min, SMP, prio 95, under sustained CUDA
-  4096² matmul + stress-ng (4 cpu + 2 vm×1GB): worst-case 69 µs (per-core
-  max 69/39/45/56/48/48, avg 5–10 µs) — beats the <~100 µs target with NO
-  isolation tuning.** This is the A1 "before" baseline; isolcpus/nohz_full/
-  IRQ affinity remain A1 work. Install captured idempotently in
-  jetson-setup.sh (boot sync deliberately manual, script warns + points at
-  `tools/n3-rt-kernel-runbook.md`).
-
-- **N1 complete.** JetPack 6.2.1 flashed to microSD (board firmware was already
-  36.4.3 — no JP5.1.3 detour needed). Headless oem-config over USB-C serial,
-  WiFi via `nmcli` (installer WiFi tool fails — skip via Ethernet-DHCP-timeout
-  trick), `avahi-daemon` → `ssh trevor@jetson.local`, jtop. Hostname: `jetson`.
-- **Storage.** 500 GB NVMe (Fanxiang S690Q) in M.2; rootfs migrated on-device
-  (GPT + ext4 → rsync → `root=/dev/nvme0n1p1` in extlinux.conf). SD retained as
-  rescue boot (flip `root=` back to `mmcblk0p1` to recover).
-- **Reproducibility.** `tools/jetson-setup.sh` — idempotent bring-up (state
-  checks skip completed work); dpkg/pip/kernel manifests dumped to
-  `tools/setup-manifests/` and committed. Full reset ≈ 1 hr reflash.
-- **N2, radio half.** GNU Radio 3.10.1.1 + libiio 0.23 + libad9361 via apt;
-  gr-iio `fmcomms2` Pluto blocks verified importable.
-- **Repo + GitHub.** `Trevor16gordon/flatsat` (private), gh CLI authenticated,
-  git+gh install captured in setup script.
-- **Quality gates.** ruff (ANN: all function inputs/outputs typed; D:
-  docstrings mandatory) + mypy (`disallow_untyped_defs`) + pre-commit hooks +
-  CI re-run. Untyped or undocumented Python cannot be committed.
-- **P1 partial.** Flat-sat Pluto enumerates over USB (`usb:1.4.5`) and IP
-  (`192.168.2.1` / `pluto.local`); fw v0.37; driver already reports
-  `ad9361-phy,model: ad9364` (extended-range unlock effectively present).
-  Physical state: TX→30 dB pads→RX looped on the flat-sat unit, on the Jetson.
-- **RX smoke test PASSED (2026-07-23).** `radio/pluto_smoke_test.py` (RX-only,
-  never transmits) run with Trevor's go-ahead after the constructor was
-  rewritten to the verified in-tree gr-iio 3.10 API (introspected on-device:
-  `fmcomms2_source_fc32(uri, ch_en, buffer_size)` + setters; no bandwidth
-  setter — RF filter follows sample rate). Result at 915 MHz / 2.084 MSa/s /
-  40 dB gain, URI auto-detected `usb:1.4.5`: 262,144 IQ samples captured;
-  mean power −65.7 dBFS, peak |amp| 0.002 (no saturation), DC offset ~0
-  (rfdc/bbdc working), dominant FFT bin at DC (residual LO leakage — normal
-  for zero-IF with no signal present). Clean noise floor, no dominant tone
-  ⇒ expected result with TX silent. Receive path confirmed alive. Benign
-  first-run `vmcircbuf` factory warnings from GNU Radio; ignorable.
-- **TX loopback tone test PASSED (2026-07-23)** — first RF transmission of
-  the project, run with Trevor's per-instance go-ahead, 30 dB pads confirmed
-  inline. `radio/pluto_tx_loopback_test.py` (gated on `--transmit`; TX
-  attenuation forced to 89.75 dB on every exit path): cos tone at LO+100 kHz,
-  amp 0.5, 20 dB TX atten, 30 dB RX gain, 915 MHz, 2.084 MSa/s. Result:
-  dominant bin +100.00 kHz (offset error +1 Hz), tone 65.9 dB above median
-  floor, mean power −52.3 dBFS (vs −65.7 RX-only baseline), peak |amp| 0.0044
-  — no saturation. TX and RX paths both verified end-to-end through the pads.
-  Note: received level ran well below the survey link budget (≈−49 dBm
-  predicted at RX) — enormous margins either way; calibrate absolute levels
-  only if/when a baseline needs them. Benign TX underrun chars (`UUU`) at
-  flowgraph teardown.
-- **Data loopback PASSED (2026-07-23) — first real data over RF.**
-  `radio/pluto_data_loopback_test.py` (GMSK via stock gmsk_mod/gmsk_demod,
-  framed 64-bit access code + 64-byte payload, 260.5 kbaud at LO+250 kHz):
-  113/113 frames bit-perfect, payload BER 0.00 over 57,856 bits, message
-  recovered verbatim. Run 1 failed (BER 1.8e-1) with the signal centered at
-  baseband DC — on a shared-LO zero-IF loopback the RX LO leakage +
-  AD936x DC-correction loops sit mid-signal. Lesson recorded for all future
-  waveforms on this hardware: **keep signal energy off DC** (digital offset
-  tune: rotate up on TX, xlating-LPF down on RX; envelope unchanged).
-  Diagnosis method that worked: identical chain back-to-back in software
-  (BER 0) exonerated the modem before touching RF again.
-- **SNR sweep PASSED (2026-07-23) — first BER-vs-SNR waterfall.**
-  `radio/pluto_snr_sweep_test.py`: one TX capture (same GMSK link), then
-  calibrated AWGN added offline in 15 stages, each re-demodulated. Real
-  capture: clean ≥30 dB; BER 5.2e-5 at 20 dB; 2.4e-3 at 15 dB; 1.9e-2 at
-  12 dB; frame sync collapses below ~5 dB; dead at 4 dB. Synthetic (pure
-  software) capture ran ~2 dB better at the same SNRs — the measured
-  implementation penalty of real hardware (phase noise, residual DC, capture
-  noise floor). Capture archived at
-  `~/flatsat-captures/loopback_gmsk_915MHz_20260723.npz` — re-sweep any
-  ladder offline via `--load`, no RF. This is the B2 methodology in miniature
-  (there: real attenuator sweeps + two radios; the offline-AWGN trick stays
-  useful for controlled comparisons).
-- **N2b complete (2026-07-23).** PyTorch 2.8.0 (CUDA 12.6 build) +
-  torchvision 0.23.0 in `~/venvs/flatsat-ml` (`--system-site-packages`),
-  wheels from `pypi.jetson-ai-lab.io/jp6/cu126` (the `.dev` mirror is dead)
-  downloaded `--no-deps` and installed from local files — pypi.org ships a
-  CPU-only torch under the identical version string, so index mixing is
-  never allowed to resolve torch. numpy held at 1.21.5 (<2) for the system
-  gnuradio bindings. Acceptance gate `tools/verify_torch_cuda.py` PASSED:
-  CUDA build, Orin GPU (compute 8.7), GPU matmul matches CPU, gnuradio
-  3.10.1.1 imports alongside torch in one process (B5 prerequisite).
-  Implemented idempotently in `jetson-setup.sh`; venv captured in manifests.
-- **Repo restructured + plans merged** (this document) — pushed to GitHub.
+**HIL closed, on-box and cross-machine (2026-07-27) — A4 exceeded.**
+Basilisk 2.11 on the Mac ↔ Jetson FIFO service over WiFi, zero-config zenoh
+discovery: **detumble 78 → ~2 mrad/s in ~3.5 min at 100 Hz** (A4's target
+was 1 Hz). WiFi stalls visible and handled — stale-flagged inputs,
+self-flagged commands, loop never destabilized; RT held through it all
+(lateness p50 26 µs, MAX <500 µs). Endgame floor = the injected gyro noise:
+the missing-estimator signature, textbook. Lesson: **an actuator must zero
+when commands stop** (TorqueSink 100 ms cutoff). Faster-than-real-time
+campaigns remain a deliberate §10 future extension.
 
 ### Decision log
 
@@ -274,31 +89,39 @@ isolation, ground Pluto unboxing.
 | 2026-07-27 | **Requirements carry an explicit verification method**; test-verified ones are linked to tests by marker and enforced in CI. Analysis/inspection/demonstration are named as such. | Turns measurements already made (cyclictest, BER, bus latency) into an auditable spec. Calling a 10-minute load campaign a unit test would be worse than naming the method. |
 | 2026-07-27 | **Basilisk clock-sync module NOT used**; the HIL feed paces itself with the same absolute-deadline pattern as the flight loops. | The bridge must hook every step anyway (read state, publish, ingest torque); one pacing idiom repo-wide. Lost time is dropped, never replayed — a faster-than-real burst would present the controller with dynamics it will never see. |
 | 2026-07-24 | **ADCS language: Python first, C++ only when measurement demands it.** Port trigger is a number, not a feeling: worst-case loop lateness under adversarial load exceeding ~5% of the period, or a rate target beyond Python's floor (~1 kHz / sub-100 µs). | 100–200 Hz has ms-scale budget; disciplined Python (prealloc, gc frozen, mlockall, FIFO) holds ~100–300 µs jitter on the RT kernel. The bus-topic seam makes the later port invisible to the rest of the system; hard-RT tier belongs to the STM32 judge anyway. Jitter harness runs from day one so the before/after is free. |
+| 2026-07-27 | **Architecture v2: one installable package `flatsat/`** — `flight/`, `ground/`, and `hal` dissolve into core / hardware / control / comms / mode / telemetry / apps / msgs / sim. `cpp/` and `cdh/` (F´) created on first consumer, never before. Full layout: `docs/ARCHITECTURE.md`. | The package IS the Tier-1 versionable artifact; where code runs is deployment's decision, not the tree's. Self-describing imports. |
+| 2026-07-27 | **Versioning is four tiers**: (0) board image via A/B rootfs; (1) FSW release, one artifact; (2) components installed via registry; (3) config. Safe mode's survival law ships in Tier 1, never Tier 2. | Hot-swap mechanism is uniform; authority is gated (shadow → measured → authorized). C1 is one traversal of Tier 2. Mixed-language releases favor a container as the eventual release format. |
+| 2026-07-27 | **Actuator layer mirrors the sensor layer**: `ActuatorDriver` contract; generic actuator daemon owns stale-command zeroing + mounting projection. Controller publishes body-frame torque; no central mixer until joint allocation is actually needed. | The wheel was configured but nothing consumed its commands flight-side; the TorqueSink protection moves into the flight path where it belongs. |
+| 2026-07-27 | **Physical truth splits device-intrinsic vs integration.** `config/devices/*.toml` = datasheet envelopes + per-serial measured calibration; vehicle file = `[body]` mass/inertia + per-device `mounting` (later: `[power]`, bus-topology fields). A view exists only when a consumer exists. | Designed vs discovered knowledge kept separate; flight uses nominal ⊕ calibration. Five views named (mechanical, electrical, data, thermal, compute); three deferred with named future consumers. |
+| 2026-07-27 | **Basilisk shows up as drivers** (`basilisk_imu`, `basilisk_reaction_wheel`); `sim_gyro` deleted; the bridge slims to physics + truth topics and builds its plant FROM the vehicle's physical model. | Kills the stop-the-daemon HIL footgun; flight-clock timestamps, health continuity, and staleness handling stay in the daemon machinery (§10's time rule actually honored). Sim/flight mismatch impossible by construction; deliberate `truth_overrides` later = robustness campaigns. |
+| 2026-07-27 | **FDIR lives at `control/health/`** — same sense-decide-act shape as attitude control, plant = the system. **ML gets no silo**: runtime in `core/inference.py`; models register into existing registries (controller / detector / modem). | One pattern everywhere: contract → named implementations → thin app. ML is never architecturally special, which is what makes the promotion gate enforceable. |
+| 2026-07-27 | **Tests colocate**: one `<name>_test.py` beside every module, 1:1. | pytest `python_files` + ruff pattern updates; tests ship in the Tier-1 artifact → an installed release can self-test on target. |
 
-### Session handoff (2026-07-27, end of day)
+### Current state (2026-07-27, post-design session)
 
-**Live state right now.** Jetson on the RT kernel (`5.15.148-rt-tegra`),
+**Live right now.** Jetson on the RT kernel (`5.15.148-rt-tegra`);
 `flatsat.target` running three composed services (imu0 sim_gyro daemon,
-thermal_tj daemon, ADCS loop at FIFO 80 on core 3). Repo clean and pushed.
-Mac has Basilisk 2.11 + Vizard working in `~/venvs/flatsat-ground`; it
-needs `git pull` before the next HIL run (basilisk_hil.py changed in the
-restructure — it now reads the vehicle config and the shared sensor model).
+thermal_tj daemon, ADCS loop at verified FIFO 80 / core 3) — still on the
+v1 layout until migration commit 1 lands and units are reinstalled. Repo
+clean and pushed. Mac (`~/venvs/flatsat-ground`, Basilisk 2.11 + Vizard)
+needs `git pull` before the next HIL run.
 
-**Where to start reading:** `docs/ARCHITECTURE.md` (layering, the two
-contracts, composition, build vs remote-install paths), then
-`config/vehicles/flatsat_v1.toml` (what the spacecraft IS), then
-`requirements/` + `tools/traceability.py` (what it must do and how each
-claim is verified).
+**Where to start reading:** `README.md` (the end state), then
+`docs/ARCHITECTURE.md` (target layout, contracts, config views, versioning
+tiers), then `config/vehicles/flatsat_v1.toml` (what the spacecraft IS),
+then `requirements/` + `tools/traceability.py` (what it must do and how
+each claim is verified).
 
-**Everyday commands.**
-- tests: `~/venvs/flatsat-ml/bin/python -m pytest flight/tests/ -q` (46)
+**Everyday commands** (module paths change after migration commit 1).
+- tests: `~/venvs/flatsat-ml/bin/python -m pytest -q`
 - traceability: `~/venvs/flatsat-ml/bin/python tools/traceability.py`
 - after editing a vehicle/deployment file:
   `~/venvs/flatsat-ml/bin/python tools/gen-units.py` then
   `sudo ./tools/install-units.sh && sudo systemctl restart flatsat.target`
 - after editing a `.proto`: `./tools/gen-protos.sh` (bindings are committed)
-- HIL: Mac `python -m ground.basilisk_hil --closed-loop [--viz]`, Jetson
-  `sudo systemctl stop flatsat-imu0` first so two publishers don't fight.
+- HIL: Mac `python -m flatsat.sim.basilisk_hil --closed-loop [--viz]` —
+  after migration commit 3, no services need stopping (Basilisk is a
+  driver swap, not a topic squatter).
 
 **Gotchas learned the hard way (all encoded in code/tests now).**
 - sysfs EAGAIN evades `except OSError` through Python's text and buffered
@@ -313,33 +136,47 @@ claim is verified).
 - Report VERIFIED scheduling state, not what the process requested.
 
 **Known gaps, deliberately open.** No telemetry recorder (health messages
-are published but nothing archives them — this is the next obvious build).
+flow; nothing archives them). No estimator (the ~2 mrad/s detumble floor is
+gyro noise the controller chases). No mode manager, no fault injection.
 Config has no proto schema, so parameters cannot be uplinked yet. No
-packaged/versioned build artifact (deployment is a git checkout). No mode
-manager, no fault injection, no estimator (the ~2 mrad/s detumble floor is
-the gyro noise the controller chases). Second Pluto still boxed.
+packaged Tier-1 artifact (deployment is a git checkout). Second Pluto
+still boxed.
 
 ### Next up
 
-1. **Telemetry recorder** (software only, highest leverage): subscribe to
+1. **Migration commit 1 — restructure**: single `flatsat/` package per
+   `docs/ARCHITECTURE.md`; registry moves into core; tests colocate as
+   `<name>_test.py`. Then regen + reinstall units (Trevor: sudo) and Mac
+   `git pull`.
+2. **Migration commit 2 — actuator layer**: `ActuatorDriver` contract,
+   `sim_reaction_wheel`, generic actuator daemon (stale-command zeroing +
+   mounting projection), `[body]` + `mounting` in the vehicle file,
+   `config/devices/wheel0.toml`, `WheelState` proto.
+3. **Migration commit 3 — Basilisk as drivers**: `basilisk_imu` +
+   `basilisk_reaction_wheel`, delete `sim_gyro`, bridge slimmed to physics
+   + truth topics, plant built from the vehicle's physical model. The
+   default vehicle file selects the basilisk_* drivers (one file serves
+   bench and HIL — only the Mac's presence differs); `sim_reaction_wheel`
+   stays registered as the local-only alternative. Expected bench behavior
+   with no Mac: imu0 publishes validity-flagged samples, commands
+   self-flag, the wheel zeroes — that is correct quiet-state behavior,
+   not a bug.
+4. **Telemetry recorder** (highest leverage after migration): subscribe to
    `hal/**`, `adcs/**`, `health/**`, write time-series to disk with
-   rotation. Everything downstream — regression comparison, FDIR inputs,
-   the ML corpus — is blocked on it. Health messages already flow; nothing
-   keeps them.
-2. **A1 core isolation** (sudo + reboot session, N3-style runbook):
+   rotation. Regression comparison, FDIR inputs, and the ML corpus are all
+   blocked on it.
+5. **A1 core isolation** (sudo + reboot session, N3-style runbook):
    isolcpus/nohz_full/IRQ affinity/idle-state cap on RT_CORE from the host
    profile, then re-run the cyclictest gate and the loop's own report
    against the recorded baselines (69 µs cyclictest; loop FIFO-under-load
    MAX 124–137 µs).
-3. **Unbox ground Pluto** (Trevor, ~10 min): record serial into the §2 role
+6. **Unbox ground Pluto** (Trevor, ~10 min): record serial into the §2 role
    table; resolve the two-Pluto identity collision (both default to
    192.168.2.1) before any two-radio work.
-4. **P3 proper**: BPSK/framing over the loopback, then the two-radio link
-   once the ground Pluto is enumerated and firmware aligned (v0.39 both —
-   decision log). Zero-IF lesson applies: keep signal energy off DC.
-5. **Mode manager** (§7): the latched `sys/mode` pattern is proven in
-   tests; making it a real service with broadcast+ack is the next flight
-   organ after the recorder.
+7. **P3 + mode manager**: BPSK/framing over the loopback (zero-IF lesson
+   applies), graduating proven PHY into `flatsat/comms/`; then the latched
+   `sys/mode` pattern as a real service with broadcast+ack (§7), the next
+   flight organ after the recorder.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
@@ -742,29 +579,36 @@ teaches more than it costs. **Added 2026-07-23:** GNU Radio version skew
 before any cross-machine BER baseline — either pin the Mac to 3.10.1.1 or
 upgrade both ends together.
 
-## 14. Repository layout
+## 14. Repository layout (target — architecture v2, migration in progress)
 
 ```
-flatsat/
-├── PLAN.md                  # this document — architecture + status + decisions
-├── docs/ARCHITECTURE.md     # repo layering, contracts, build vs remote-install
-├── protos/                  # CONTRACTS: hal, adcs, mode, health (source of truth)
-├── config/                  # data, not code
-│   ├── vehicles/*.toml      #   COMPOSITION: which drivers + which strategy
-│   └── imu0.toml            #   device spec, shared by driver and sim model
-├── requirements/*.toml      # requirements + verification method + evidence
-├── flight/                  # onboard segment
-│   ├── core/                #   bus, config loading, RT hygiene, health helpers
-│   ├── hal/                 #   SensorDriver contract, drivers/, sensor models/
-│   ├── adcs/                #   AttitudeController contract, controllers/, guidance
-│   ├── apps/                #   generic executables: sensor_daemon, control_loop
-│   ├── msgs/                #   generated protobuf bindings (committed)
-│   ├── tests/               #   unit + integration, markers cite requirement IDs
-│   ├── registry.py          #   name -> implementation, lazy imports
-│   ├── deployment.toml      #   RT policy / core role / memory, per component
-│   └── units/generated/     #   systemd units (generated, committed)
-├── ground/                  # ground segment (Mac): basilisk_hil.py
-├── radio/                   # PHY: smoke test, TX loopback, data link, SNR sweep
-└── tools/                   # gen-protos, gen-units, install-units, traceability,
-                             # bus_bench, host-profiles/, n3-rt-kernel-runbook.md
+flatsat/                       # repo root
+├── PLAN.md                    # this document — architecture + status + decisions
+├── README.md                  # the end state, for humans arriving cold
+├── docs/ARCHITECTURE.md       # package layout, contracts, config views, versioning tiers
+├── flatsat/                   # THE package — the Tier-1 versionable artifact
+│   ├── core/                  #   framework: bus, config, rt, health, registry (+inference later)
+│   ├── hardware/              #   sensor.py + actuator.py contracts, drivers/, models/
+│   ├── control/attitude/      #   controller contract + controllers/, estimators/
+│   ├── control/health/        #   (future, M4) FDIR: rules, arbiter, responses, detectors/
+│   ├── comms/                 #   (future, P3) modem contract, phy/, framing/, link
+│   ├── mode/                  #   (future) system state machine — imports core only
+│   ├── telemetry/             #   (future) recorder
+│   ├── apps/                  #   thin generic executables: daemons + control loop
+│   ├── msgs/                  #   generated protobuf bindings (committed)
+│   └── sim/                   #   Basilisk bridge — the universe-fake, never on flight computer
+├── config/                    # data, not code
+│   ├── vehicles/*.toml        #   WHAT a spacecraft IS: composition + [body] + mounting (+[power] later)
+│   └── devices/*.toml         #   device-intrinsic: datasheet envelopes + per-serial calibration
+├── deployment.toml            # RT policy / core role / memory, per component
+├── protos/                    # wire contracts: hal, adcs, mode, health (source of truth)
+├── requirements/*.toml        # requirements + verification method + evidence
+├── radio/                     # experiments bench — proven code GRADUATES into flatsat/comms/
+├── tools/                     # gen-protos, gen-units, install-units, traceability,
+│                              #   bus_bench, host-profiles/, n3-rt-kernel-runbook.md
+├── cdh/                       # (future, M2) F´ deployment — own build system, bus bridge
+└── cpp/                       # (future) created by the first measured port trigger, not before
 ```
+
+Tests colocate with the code they test: one `<name>_test.py` beside every
+module, 1:1 — no separate tests/ tree.

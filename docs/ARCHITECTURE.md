@@ -4,143 +4,189 @@ How the code is organized and why. The rule everything follows: **libraries
 know nothing about deployment, applications know nothing about devices or
 control math, and composition happens in configuration.**
 
-## The four layers
+> Status: this describes the **target** architecture settled in the
+> 2026-07-27 design session. Code migration is in progress — see PLAN.md §0
+> for what has landed.
+
+## The package
+
+`flatsat/` is one installable Python package — the **Tier-1 versionable
+artifact**. Everything that ships to a flight computer lives inside it;
+everything outside it is data, contracts, or tooling.
 
 ```
-protos/            CONTRACTS       wire format between every process (source of truth)
-flight/core        FRAMEWORK       bus, config loading, real-time hygiene
-flight/hal         DEVICES         SensorDriver contract + one module per device
-flight/adcs        STRATEGIES      AttitudeController contract + one module per law
-flight/apps        APPLICATIONS    generic executables that compose the above
-config/vehicles    COMPOSITION     which drivers + which strategy = this spacecraft
-flight/deployment  DEPLOYMENT      RT priority, core role, memory budget
-tools/host-profiles  TOPOLOGY      which physical core a role maps to on this board
+flatsat/
+├── core/                  # framework: bus, config, rt, health, registry
+│   └── inference.py       #   (future) ONNX runtime, A/B model slots
+├── hardware/
+│   ├── sensor.py          # SensorDriver contract + daemon mechanics
+│   ├── actuator.py        # ActuatorDriver contract + stale-zeroing + mounting projection
+│   ├── drivers/           # jetson_thermal, sim_reaction_wheel, basilisk_imu, basilisk_reaction_wheel
+│   └── models/            # noise/bias physics shared by fake devices and the sim feed
+├── control/
+│   ├── attitude/
+│   │   ├── controller.py  # AttitudeController contract (+ reference sources, until one is time-varying)
+│   │   ├── controllers/   # rate_damping, pid, (ml_policy later)
+│   │   └── estimators/    # passthrough today; EKF later
+│   └── health/            # (future, M4) FDIR: rules, arbiter, responses, detectors/
+├── comms/                 # (future, when P3 graduates) modem contract, phy/, framing/, link
+├── mode/                  # (future) system state machine — imports core ONLY
+├── telemetry/             # (future) recorder
+├── apps/                  # thin generic executables: sensor_daemon, actuator_daemon, control_loop
+├── msgs/                  # generated protobuf bindings (committed, gate-exempt)
+└── sim/                   # Basilisk bridge — the universe-fake; never on the flight computer
 ```
 
-A dependency may only point *up* that list. A driver never imports an
-application; an application never imports a concrete driver (it resolves one
-through `flight/registry.py`); nothing in `flight/` reads a host profile.
+Directories marked *(future)* are names reserved by design and created only
+when their first real code lands — never as empty scaffolding.
 
-## The two contracts that matter
+**Import rule:** every domain may import `core`; `core` imports no domain.
+Dependencies only point up the layering: a driver never imports an
+application; an application never imports a concrete driver — it resolves
+one by name through `core/registry.py` (lazy `module:Class` indirection, so
+a board without CUDA can run a thermal daemon, and so remotely-installed
+components can register new names).
 
-**`SensorDriver`** (`flight/hal/driver.py`) — owns access to one device and
-answers `read() -> (message, validity flags)`. It knows nothing about the
-bus, cadence, or consumers; `flight/apps/sensor_daemon.py` supplies all of
-that. This is why a simulated device and a real one are interchangeable, and
-why `read()` must never raise (an acquisition failure is a flag on a
-publishable message — flag and forward).
+Outside the package: `config/` (data), `protos/` (wire contracts),
+`requirements/` (verified spec), `deployment.toml` + `tools/host-profiles/`
+(where and how things run), `radio/` (experiments bench), and — on first
+consumer, not before — `cdh/` (the F´ deployment, own build system) and
+`cpp/` (when a measured trigger demands a port).
 
-**`AttitudeController`** (`flight/adcs/controller.py`) —
-`update(state, reference, dt) -> torque`. Every strategy answers this: PD,
-PID, LQR, an ML policy. Two decisions make it durable:
+## The contracts
 
-- It takes a **reference**, not just a measurement. Detumble is "track zero
-  rate"; pointing and trajectory following are different `ReferenceSource`
-  implementations (`flight/adcs/guidance.py`) feeding the same controller
-  interface — not different control loops.
-- It is as **pure** as the strategy allows: numbers in, numbers out, no bus,
-  no clock. Stateful strategies keep state internal and expose `reset()`.
-  That is what makes a law unit-testable, Monte-Carlo-able, and replayable
-  against recorded telemetry with none of the flight plumbing.
+One pattern everywhere: **contract → named implementations → thin generic
+app.** The registry mediates.
 
-Both are looked up **by name** in `flight/registry.py`, with per-entry lazy
-imports so a board without CUDA can still run a thermal daemon.
+**`SensorDriver`** (`hardware/sensor.py`) — owns one device, answers
+`read() -> (message, validity flags)`, never raises: an acquisition failure
+is a flag on a publishable message (flag and forward). Knows nothing about
+the bus or cadence — `apps/sensor_daemon.py` supplies that.
 
-## Composition: what a different spacecraft looks like
+**`ActuatorDriver`** (`hardware/actuator.py`) — the write-side twin:
+`apply(command) -> flags` (never raises) plus `state() -> message` (a wheel
+has real state: speed, momentum, saturation). `apps/actuator_daemon.py`
+supplies the bus, cadence, and two protections every actuator inherits:
+**stale-command zeroing** (an actuator must zero when commands stop) and the
+**mounting projection** (see below).
 
-`config/vehicles/flatsat_v1.toml` declares the sensor complement and how the
-vehicle is flown. Every variation you would expect is an edit to that file:
+**`AttitudeController`** (`control/attitude/controller.py`) —
+`update(state, reference, dt) -> torque`, in the **body frame**. It takes a
+reference, so detumble / pointing / trajectory are objective swaps, not
+different loops. Pure: numbers in, numbers out, no bus, no clock; stateful
+laws expose `reset()`. Reference-source code lives beside the contract until
+the first time-varying objective (e.g. ground-target pointing) earns it a
+module of its own.
 
-| Want | Change |
-|---|---|
-| More or fewer sensors | add/remove `[[sensors]]` entries |
-| Simulated instead of real | `driver = "sim_gyro"` → `driver = "imu_bno055"` |
-| PID instead of PD | `strategy = "pid"` plus its gains |
-| ML policy instead of PID | `strategy = "ml_policy"` plus a model path |
-| Pointing instead of detumble | `objective` + `objective_options` |
-| A different flight computer | a different host profile; vehicle unchanged |
-| Harder real-time for a sensor | a `[sensors.<name>]` block in `deployment.toml` |
+**`StateEstimator`** (`control/attitude/estimators/`) — measurements in,
+state estimate out; sits between sensor topics and the controller. Starts as
+`passthrough` (today's behavior made explicit); a real filter is a config
+swap.
 
-Deployment is deliberately *not* in the vehicle file: the same spacecraft
-definition must be deployable to different computers, so RT policy and
-memory budgets live in `flight/deployment.toml` (portable across boards) and
-physical core numbers live in `tools/host-profiles/*.env` (per board).
-`tools/gen-units.py` joins all three into systemd units.
+**FDIR** (`control/health/`, future) — the same sense-decide-act shape with
+the *system* as the plant: the limit checker estimates health, the arbiter
+decides, the responses actuate (restart daemon / reconfigure / request Safe
+— FDIR is a client of mode authority, never the owner).
 
-## Applications are generic
+**`Modem`** (`comms/modem.py`, future) — payload bytes ⇄ RF. Stock GNU
+Radio blocks, a hand-built PHY, and a learned receiver are peer
+implementations under identical framing — which is what makes the
+learned-vs-classical comparison honest.
 
-Two executables serve the whole vehicle:
+**ML gets no silo.** Runtime machinery (ONNX sessions, A/B slots, version
+stamping) is framework → `core/inference.py`. The models themselves register
+into existing registries: an ML controller is a controller, an anomaly
+scorer is a detector, a learned receiver is a modem — same limits, same
+validity rules, same promotion gate as anything hand-written.
 
-- `flight/apps/sensor_daemon.py --sensor imu0` runs **any** driver.
-- `flight/apps/control_loop.py` runs **any** controller against **any**
-  reference source.
+## Configuration: device-intrinsic vs integration
 
-Adding a sensor or a control law adds a library module and a config entry —
-never a new copy of a cadence loop. Both apps do real-time hygiene the same
-way (absolute-deadline cadence, GC quiesced, verified scheduling reported)
-and instrument themselves with the same percentile report shape as
-`cyclictest` and `tools/bus_bench.py`.
+Two kinds of physical truth, split by where the knowledge comes from:
 
-## Builds and remote-installable components
+**`config/devices/*.toml` — device-intrinsic** (true of the unit no matter
+which spacecraft it's bolted to). A *datasheet* section — torque/momentum
+envelopes, max update rate, noise characteristics, temp limits, power draw
+(designed knowledge) — and a *calibration* section — measured deviations for
+this serial number: scale factors, biases, actual-vs-nominal alignment
+(discovered knowledge, updated by calibration campaigns, never by editing
+the design).
 
-Two distinct delivery paths, and the layering above is what keeps them apart:
+**`config/vehicles/*.toml` — integration** (true of this build of this
+spacecraft). Composition (which drivers, strategies, topics, rates), plus
+the physical model: a `[body]` section (mass, inertia tensor) and a
+`mounting` entry per device (position + orientation in the body frame).
 
-**Pre-flight build.** The contract bindings and unit files are *generated
-artifacts committed to the repo* (`flight/msgs/*_pb2.py` via
-`tools/gen-protos.sh`, `flight/units/generated/*` via `tools/gen-units.py`),
-so a flight computer needs no protoc and no code generation at deploy time.
-The pre-flight build step is: regenerate, run the gates and the test suite,
-commit. Future work is to package that into a versioned, immutable artifact
-(wheel or container) rather than a git checkout, so deployments are
-identified by version and can be rolled back as a unit.
+Five system views exist conceptually — mechanical, electrical, data,
+thermal, compute — and **a view gets a home only when something consumes
+it**. Mechanical is consumed now (mounting projection, sim plant). Compute
+already exists (`deployment.toml` + host profiles). Electrical (`[power]`:
+sources, lines, per-line budgets) arrives with mode-manager load shedding /
+A6; data topology (`bus = "i2c0"` per device) arrives with FDIR's
+common-cause table; thermal stays per-device datasheet limits.
 
-**Remote install and reconfiguration.** Three levels, cheapest first:
+**The command chain** ties it together: controller outputs body-frame
+torque → each actuator daemon projects it through *its own* mounting
+geometry (no central mixer until joint allocation — saturation
+redistribution, null space — is actually needed) → the driver applies its
+internal calibration → hardware. Sensors run the mirror chain inward. Flight
+software always uses **nominal ⊕ calibration**.
 
-1. **Reconfigure** — change gains, rates, thresholds, or the objective by
-   replacing a config file. No code moves; the loop echoes the file's
-   checksum into telemetry so any recorded run traces to its exact
-   parameters. This is the level a commandable parameter database plugs
-   into: swap the file read in `flight/core/config.py` for a bus query and
-   nothing downstream changes.
-2. **Re-compose** — change *which* strategy or driver runs by editing the
-   vehicle file and restarting the affected unit. Still no new code.
-3. **Install new components** — upload a package that registers additional
-   entries in the driver/controller/guidance registries at import time. The
-   registry's lazy `module:Class` indirection is what makes this possible
-   without touching flight code; an uploaded ML policy is a controller like
-   any other, selected by name, running under the same limits and validity
-   rules as a hand-written law.
+## Simulation: two different fakes
 
-Level 3 is the milestone-C1 path (train on the ground, uplink over RF,
-activate in a B slot, roll back on regression) and needs the file-transfer,
-A/B slot, and signature machinery that does not exist yet. The seams are in
-place so that work does not require restructuring.
+- **Device fakes** are ordinary drivers (`sim_*` prefix) running on the
+  flight computer — open-loop synthetic signals, no external dependencies.
+- **The universe fake** is `sim/basilisk_hil.py`: Basilisk physics on the
+  ground machine, closed-loop — it consumes actuator commands, integrates
+  dynamics, and feeds back the result. Never runs on the flight computer.
+
+Basilisk shows up to the flight software **as drivers** (`basilisk_imu`,
+`basilisk_reaction_wheel`): the ordinary daemons run them, so flight-clock
+timestamps, sequence numbers, staleness flags, and health telemetry all stay
+intact during HIL — no stopping services, no topic squatting. The bridge
+builds its plant *from the vehicle file's* `[body]` + mounting and applies
+the shared `hardware/models/` corruption, so sim and flight cannot disagree
+about the spacecraft by accident. Deliberate disagreement (a `truth_overrides`
+block: "actual inertia 8% higher than believed") is the future
+robustness-campaign knob.
+
+## Versioning: four tiers
+
+| Tier | What | Mechanism |
+|---|---|---|
+| 0 | Board image (OS, RT kernel) | A/B rootfs + overlayroot (A5, M7) |
+| 1 | FSW release: this package, one artifact | Deployed/rolled back as a unit; version in telemetry |
+| 2 | Installed components | Registry registration; B-slot, activate by command, rollback on regression (the C1 path) |
+| 3 | Configuration | File (later: parameter database); checksum echoed in telemetry |
+
+The mechanism is uniform; the **authority is gated**: Safe mode's survival
+law ships in Tier 1 and is never selected from Tier 2. New components run in
+shadow, post numbers, then get promoted — trust is earned by measurement.
 
 ## Requirements and verification
 
-`requirements/*.toml` declares what the system must do, each entry carrying a
-stable ID, a rationale, a **verification method**, and the evidence that
-discharges it. Tests cite requirements with `@pytest.mark.verifies("ID")`,
-and `tools/traceability.py` cross-references the two, failing CI (`--strict`)
-on an unverified test-verified requirement or a test citing an unknown ID.
-
-Methods are distinguished honestly: `test` (an automated assertion),
-`analysis` (a measurement campaign — the cyclictest and bus-latency numbers),
-`inspection` (a property visible in code or config), `demonstration` (an
-operator-witnessed run). Calling a 10-minute load campaign a unit test would
-be worse than naming the method.
+`requirements/*.toml` declares what the system must do — stable ID,
+rationale, **verification method**, evidence. Tests cite requirements with
+`@pytest.mark.verifies("ID")`; `tools/traceability.py --strict` fails CI on
+an unverified test-verified requirement or an unknown ID. Methods are named
+honestly: `test`, `analysis` (measurement campaigns), `inspection`,
+`demonstration`.
 
 ## Testing
 
-- **Pure/unit** — control strategies and sensor models, no bus or hardware.
-  Includes contract tests parameterized over *every registered strategy*, so
-  a new controller inherits them automatically.
-- **Integration** — composed daemons publishing on a real bus, including
-  real hardware faults (a power-gated thermal zone that EAGAINs proves
-  flag-and-forward against something real).
-- **Hardware-in-the-loop** — `ground/basilisk_hil.py` runs a simulated
-  spacecraft on the ground host and closes the loop through the flight
-  computer over the network.
+Tests colocate: **one `<name>_test.py` beside every module**, 1:1. Contract
+tests parameterize over every registered implementation, so a new controller
+or driver inherits them automatically. Integration tests live beside the app
+they exercise; the HIL contract test lives in `sim/`. Tests ship inside the
+Tier-1 artifact — an installed release can self-test on the flight computer.
 
-Tests must use test-only topic names. A test that subscribes to a production
-key will silently read a live daemon's — or a running HIL sim's — traffic.
+Tests must use test-only topic names: a test subscribing to a production key
+silently reads a live daemon's — or a running HIL sim's — traffic.
+
+## Languages
+
+Python first; C++ only when measurement demands it (the port trigger is a
+number — see the decision log). The bus + protos are the language-neutral
+contract, so a C++ control loop is just another executable publishing the
+same messages, selected by deployment, invisible to the rest of the system.
+F´ (the C&DH spine, M2) lives in `cdh/` with its own build system, bridged
+to the bus by a single component.
