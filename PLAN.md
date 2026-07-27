@@ -13,6 +13,36 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-27)
 
+- **REPO RESTRUCTURED into library / composition / application layers
+  (2026-07-27), + health telemetry + requirements traceability.** Driven by
+  a design review: the old layout mixed contracts, devices, and apps in one
+  folder and had no answer to "what IS a control loop".
+  *Contracts:* `SensorDriver` (`read() -> message + flags`, never raises)
+  and `AttitudeController` (`update(state, reference, dt) -> ControlOutput`)
+  — controllers take a REFERENCE, so detumble/pointing/trajectory are
+  guidance swaps, not different loops. *Implementations:* one module per
+  device (`hal/drivers/`) and per law (`adcs/controllers/`; PID added
+  alongside PD to keep the abstraction honest). *Composition:*
+  `config/vehicles/*.toml` names drivers + strategy + objective, resolved
+  by `flight/registry.py` (lazy per-entry imports — also the hook for
+  remotely-installed components). *Applications:* `apps/sensor_daemon.py`
+  runs ANY driver, `apps/control_loop.py` runs ANY controller.
+  *Deployment* stays separate (`flight/deployment.toml` + host profiles).
+  **Health is now DATA** (`protos/health.proto`): LoopHealth/SensorHealth
+  on `health/<component>` carrying counters, latency percentiles, verified
+  scheduling, and the config checksum — previously printf only.
+  **Requirements system**: 30 requirements in `requirements/*.toml` with
+  verification method + evidence, linked to tests by
+  `@pytest.mark.verifies()`, enforced by `tools/traceability.py --strict`
+  in CI. 46 tests green. See `docs/ARCHITECTURE.md`.
+  Verified by running: composed loop + spawned daemons, PD→PID swap by
+  config edit only, LoopHealth observed on the bus. Two bugs found by
+  running it (stale generated unit survived a sensor rename; installer
+  never pruned removed units) — both fixed.
+  ⚠ **Installed units in /etc/systemd/system are STALE** (point at deleted
+  modules): run `sudo ./tools/install-units.sh && sudo systemctl restart
+  flatsat.target` before relying on the services.
+
 - **CROSS-MACHINE HIL CLOSED (2026-07-27) — the A4 demo, exceeded.** Mac
   (Basilisk 2.11, wall-clock-paced) ↔ Jetson (flatsat-adcs service,
   verified SCHED_FIFO 80 on core 3) over WiFi, zenoh multicast discovery
@@ -60,8 +90,10 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
   weakest link (sensor daemons' RT tier is a future table decision).
 
 - **Process orchestration (2026-07-24): table → systemd, placement via host
-  profile.** `flight/processes.toml` = the single process source of truth
-  (module, args, RT policy/priority, core ROLE, memory budget);
+  profile.** *(Superseded 2026-07-27: `flight/processes.toml` was replaced by
+  `config/vehicles/*.toml` + `flight/deployment.toml` — see the
+  restructure entry below.)* The process table was the single source of
+  truth (module, args, RT policy/priority, core ROLE, memory budget);
   `tools/host-profiles/jetson-orin-nano.env` = placement truth (RT_CORE=3,
   housekeeping 0-2,4-5 — the SAME file the A1 isolation cmdline must use);
   `tools/gen-units.py` compiles both into committed systemd units +
@@ -72,7 +104,9 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
   (assertion hook still TODO in SensorDaemon/loop).
 
 - **A1 (software half) — first closed control loop over the bus,
-  instrumented (2026-07-24).** `flight/hal/fake_imu.py` (synthetic gyro in
+  instrumented (2026-07-24).** *(Paths superseded by the 2026-07-27
+  restructure: fake_imu → `flight/hal/drivers/sim_gyro.py`, loop →
+  `flight/apps/control_loop.py`.)* `flight/hal/fake_imu.py` (synthetic gyro in
   the Basilisk seam slot) → `flight/adcs/loop.py`: PD rate damping at
   100 Hz, absolute-deadline cadence, GC quiesced, mlockall (works
   unprivileged here), `WheelTorqueCommand` out every cycle (`adcs.proto`;
