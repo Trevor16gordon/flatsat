@@ -17,6 +17,20 @@ if [[ ! -d "$UNITS" ]]; then
   exit 1
 fi
 
+# Remove installed units this vehicle no longer declares — a renamed or
+# deleted sensor must not leave a running process for hardware the
+# spacecraft does not have. Stop and disable before unlinking.
+for installed in /etc/systemd/system/flatsat-*.service; do
+  [[ -e "$installed" ]] || continue
+  name="$(basename "$installed")"
+  if [[ ! -f "$UNITS/$name" ]]; then
+    echo "removing stale unit $name"
+    systemctl stop "$name" 2>/dev/null || true
+    systemctl disable "$name" 2>/dev/null || true
+    rm -f "$installed"
+  fi
+done
+
 install -m 644 "$UNITS"/flatsat-*.service "$UNITS"/flatsat.target /etc/systemd/system/
 systemctl daemon-reload
 

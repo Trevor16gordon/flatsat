@@ -233,7 +233,16 @@ def main() -> int:
     )
     (args.out / "flatsat.target").write_text(target)
 
-    for name in [*written, "flatsat.target"]:
+    # Prune units this vehicle no longer declares. Without this, renaming or
+    # removing a sensor leaves a stale unit behind that install-units.sh
+    # happily deploys — a process for a device the spacecraft does not have.
+    keep = {*written, "flatsat.target"}
+    for path in sorted(args.out.glob("flatsat*")):
+        if path.name not in keep:
+            path.unlink()
+            print(f"pruned {path.relative_to(REPO_ROOT)} (not in {args.vehicle.name})")
+
+    for name in sorted(keep):
         print(f"wrote {(args.out / name).relative_to(REPO_ROOT)}")
     return 0
 
