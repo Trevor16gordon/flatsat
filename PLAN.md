@@ -2,10 +2,14 @@
 
 v1.1 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status: Jetson bring-up COMPLETE (N1–N3).** N3 PREEMPT_RT live, gate passed
-untuned (69 µs worst-case under load) · P1 partially complete (flat-sat Pluto
-verified TX+RX+data through pad loopback; firmware update deferred) · repo +
-quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
+**Status (2026-07-27): flight-software skeleton flying.** Jetson bring-up
+complete (N1–N3; PREEMPT_RT live, 69 µs cyclictest under load) · radio proven
+one-radio end to end (RX, tone, framed data at BER 0, BER-vs-SNR waterfall) ·
+**cross-machine hardware-in-the-loop closed**: Basilisk on the Mac detumbled
+by the Jetson's 100 Hz FIFO control loop over WiFi · repo restructured into
+library/composition/application layers with health telemetry and a
+requirements traceability system · next: telemetry recorder, A1 core
+isolation, ground Pluto unboxing.
 
 ---
 
@@ -36,12 +40,16 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
   `@pytest.mark.verifies()`, enforced by `tools/traceability.py --strict`
   in CI. 46 tests green. See `docs/ARCHITECTURE.md`.
   Verified by running: composed loop + spawned daemons, PD→PID swap by
-  config edit only, LoopHealth observed on the bus. Two bugs found by
-  running it (stale generated unit survived a sensor rename; installer
-  never pruned removed units) — both fixed.
-  ⚠ **Installed units in /etc/systemd/system are STALE** (point at deleted
-  modules): run `sudo ./tools/install-units.sh && sudo systemctl restart
-  flatsat.target` before relying on the services.
+  config edit only. Two bugs found by running it (stale generated unit
+  survived a sensor rename; installer never pruned removed units) — both
+  fixed. **Units reinstalled and services restarted on the composed apps
+  (2026-07-27):** flatsat-{imu0,thermal_tj,adcs} all active, ADCS verified
+  SCHED_FIFO 80 / core 3 by chrt, stale flatsat-thermal-tj.service removed.
+  Live health telemetry confirmed on the bus:
+  `LoopHealth flatsat-v1 cfg=25ff54311346 rate_damping/constant_rate 100Hz
+  sched='SCHED_FIFO priority 80' cpu=3 cycles=6000 stale=0 sat=0 lateness
+  p50=20.0 max=661.7us` and `SensorHealth imu0 driver=sim_gyro 100Hz
+  samples=3000 flagged=0`.
 
 - **CROSS-MACHINE HIL CLOSED (2026-07-27) — the A4 demo, exceeded.** Mac
   (Basilisk 2.11, wall-clock-paced) ↔ Jetson (flatsat-adcs service,
@@ -261,22 +269,77 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 | 2026-07-23 | **Pluto firmware stays v0.37** for now; v0.39 upgrade deferred to just before comparative baselines. | Unit is modern + already reports ad9364; flashing is the riskiest Pluto op — defer until it buys something. P1 exit amended accordingly. |
 | 2026-07-23 | **Serial→role assignment.** `104473b04a06000602001c00dd1f84cfaa` = **flat-sat radio** (on the Jetson). Second unit = **ground radio** (eventually on the Mac). | Recorded per §2; ground segment on Mac is future work — both radios live on the Jetson until the ground segment stands up. |
 | 2026-07-23 | **Repo layout by architecture segment** (`flight/`, `ground/`, `radio/`, `tools/`); plans merged into this single PLAN.md. | Mirrors the two-segment architecture from day one. |
+| 2026-07-27 | **Repo layered library / composition / application**; a spacecraft is a config file (`config/vehicles/*.toml`) resolved by name through a registry, not a code path. | Answers "different flight computer + N sensors + PID vs ML control" by composition. Deployment (RT/memory/core) and host topology stay separate so one vehicle definition deploys to different boards. Registry indirection is also the hook for remotely-installed components. |
+| 2026-07-27 | **Health is telemetry, not printf** (`protos/health.proto`), tagged with config checksum. | Recorder, FDIR, regression comparison, and the ML corpus all need the loop's own vitals as data; a window whose parameters can't be reconstructed is not evidence. |
+| 2026-07-27 | **Requirements carry an explicit verification method**; test-verified ones are linked to tests by marker and enforced in CI. Analysis/inspection/demonstration are named as such. | Turns measurements already made (cyclictest, BER, bus latency) into an auditable spec. Calling a 10-minute load campaign a unit test would be worse than naming the method. |
+| 2026-07-27 | **Basilisk clock-sync module NOT used**; the HIL feed paces itself with the same absolute-deadline pattern as the flight loops. | The bridge must hook every step anyway (read state, publish, ingest torque); one pacing idiom repo-wide. Lost time is dropped, never replayed — a faster-than-real burst would present the controller with dynamics it will never see. |
 | 2026-07-24 | **ADCS language: Python first, C++ only when measurement demands it.** Port trigger is a number, not a feeling: worst-case loop lateness under adversarial load exceeding ~5% of the period, or a rate target beyond Python's floor (~1 kHz / sub-100 µs). | 100–200 Hz has ms-scale budget; disciplined Python (prealloc, gc frozen, mlockall, FIFO) holds ~100–300 µs jitter on the RT kernel. The bus-topic seam makes the later port invisible to the rest of the system; hard-RT tier belongs to the STM32 judge anyway. Jitter harness runs from day one so the before/after is free. |
+
+### Session handoff (2026-07-27, end of day)
+
+**Live state right now.** Jetson on the RT kernel (`5.15.148-rt-tegra`),
+`flatsat.target` running three composed services (imu0 sim_gyro daemon,
+thermal_tj daemon, ADCS loop at FIFO 80 on core 3). Repo clean and pushed.
+Mac has Basilisk 2.11 + Vizard working in `~/venvs/flatsat-ground`; it
+needs `git pull` before the next HIL run (basilisk_hil.py changed in the
+restructure — it now reads the vehicle config and the shared sensor model).
+
+**Where to start reading:** `docs/ARCHITECTURE.md` (layering, the two
+contracts, composition, build vs remote-install paths), then
+`config/vehicles/flatsat_v1.toml` (what the spacecraft IS), then
+`requirements/` + `tools/traceability.py` (what it must do and how each
+claim is verified).
+
+**Everyday commands.**
+- tests: `~/venvs/flatsat-ml/bin/python -m pytest flight/tests/ -q` (46)
+- traceability: `~/venvs/flatsat-ml/bin/python tools/traceability.py`
+- after editing a vehicle/deployment file:
+  `~/venvs/flatsat-ml/bin/python tools/gen-units.py` then
+  `sudo ./tools/install-units.sh && sudo systemctl restart flatsat.target`
+- after editing a `.proto`: `./tools/gen-protos.sh` (bindings are committed)
+- HIL: Mac `python -m ground.basilisk_hil --closed-loop [--viz]`, Jetson
+  `sudo systemctl stop flatsat-imu0` first so two publishers don't fight.
+
+**Gotchas learned the hard way (all encoded in code/tests now).**
+- sysfs EAGAIN evades `except OSError` through Python's text and buffered
+  IO layers — use raw `os.read`.
+- Zero-IF: never put signal energy at the LO frequency (BER 1.8e-1 → 0).
+- An actuator must zero when commands stop, or it keeps flying a dead
+  controller's last order.
+- Vizard is the CLIENT'S peer: the sim dials out, and Basilisk's default
+  `0.0.0.0` is undialable on macOS — pass `--viz-address localhost`.
+- Tests must use test-only topics; a production key silently reads live
+  daemon or HIL traffic.
+- Report VERIFIED scheduling state, not what the process requested.
+
+**Known gaps, deliberately open.** No telemetry recorder (health messages
+are published but nothing archives them — this is the next obvious build).
+Config has no proto schema, so parameters cannot be uplinked yet. No
+packaged/versioned build artifact (deployment is a git checkout). No mode
+manager, no fault injection, no estimator (the ~2 mrad/s detumble floor is
+the gyro noise the controller chases). Second Pluto still boxed.
 
 ### Next up
 
-1. Unbox ground Pluto (Trevor, ~10 min): record serial into §2 role table;
-   confront the two-Pluto identity collision (both default to
-   usb 192.168.2.1) before any two-radio work.
-2. M1 seam work (no hardware needed): Zenoh evaluation (pub/sub + latched
-   `sys/mode` smoke test) and the HAL daemon message contract as typed code
-   (sample/publish timestamps, validity word, sequence number) + one
-   fake-sensor daemon.
-3. P3 proper: BPSK/framing over the loopback, then two-radio link once the
-   ground Pluto is enumerated and firmware aligned (v0.39 both — decision
-   log). Zero-IF lesson applies: keep signal energy off DC.
-4. A1 (later): core isolation (isolcpus/nohz_full/IRQ affinity) + re-run
-   the cyclictest gate against the 69 µs untuned baseline.
+1. **Telemetry recorder** (software only, highest leverage): subscribe to
+   `hal/**`, `adcs/**`, `health/**`, write time-series to disk with
+   rotation. Everything downstream — regression comparison, FDIR inputs,
+   the ML corpus — is blocked on it. Health messages already flow; nothing
+   keeps them.
+2. **A1 core isolation** (sudo + reboot session, N3-style runbook):
+   isolcpus/nohz_full/IRQ affinity/idle-state cap on RT_CORE from the host
+   profile, then re-run the cyclictest gate and the loop's own report
+   against the recorded baselines (69 µs cyclictest; loop FIFO-under-load
+   MAX 124–137 µs).
+3. **Unbox ground Pluto** (Trevor, ~10 min): record serial into the §2 role
+   table; resolve the two-Pluto identity collision (both default to
+   192.168.2.1) before any two-radio work.
+4. **P3 proper**: BPSK/framing over the loopback, then the two-radio link
+   once the ground Pluto is enumerated and firmware aligned (v0.39 both —
+   decision log). Zero-IF lesson applies: keep signal energy off DC.
+5. **Mode manager** (§7): the latched `sys/mode` pattern is proven in
+   tests; making it a real service with broadcast+ack is the next flight
+   organ after the recorder.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
@@ -684,14 +747,24 @@ upgrade both ends together.
 ```
 flatsat/
 ├── PLAN.md                  # this document — architecture + status + decisions
-├── README.md
-├── pyproject.toml           # ruff + mypy quality contract
-├── .pre-commit-config.yaml  # commit-time enforcement
-├── .github/workflows/       # CI re-running the same hooks
-├── tools/                   # bring-up + host tooling
-│   ├── jetson-setup.sh      #   idempotent Jetson bring-up
-│   └── setup-manifests/     #   versioned known-good system snapshots
-├── radio/                   # shared PHY: flowgraphs, smoke tests, modem work
-├── flight/                  # onboard segment: HAL daemons, services, link svc
-└── ground/                  # ground segment (Mac): modem, GDS, mission ctl
+├── docs/ARCHITECTURE.md     # repo layering, contracts, build vs remote-install
+├── protos/                  # CONTRACTS: hal, adcs, mode, health (source of truth)
+├── config/                  # data, not code
+│   ├── vehicles/*.toml      #   COMPOSITION: which drivers + which strategy
+│   └── imu0.toml            #   device spec, shared by driver and sim model
+├── requirements/*.toml      # requirements + verification method + evidence
+├── flight/                  # onboard segment
+│   ├── core/                #   bus, config loading, RT hygiene, health helpers
+│   ├── hal/                 #   SensorDriver contract, drivers/, sensor models/
+│   ├── adcs/                #   AttitudeController contract, controllers/, guidance
+│   ├── apps/                #   generic executables: sensor_daemon, control_loop
+│   ├── msgs/                #   generated protobuf bindings (committed)
+│   ├── tests/               #   unit + integration, markers cite requirement IDs
+│   ├── registry.py          #   name -> implementation, lazy imports
+│   ├── deployment.toml      #   RT policy / core role / memory, per component
+│   └── units/generated/     #   systemd units (generated, committed)
+├── ground/                  # ground segment (Mac): basilisk_hil.py
+├── radio/                   # PHY: smoke test, TX loopback, data link, SNR sweep
+└── tools/                   # gen-protos, gen-units, install-units, traceability,
+                             # bus_bench, host-profiles/, n3-rt-kernel-runbook.md
 ```
