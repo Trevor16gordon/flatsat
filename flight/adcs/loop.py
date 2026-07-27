@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import math
 import subprocess
 import sys
 import threading
@@ -114,6 +115,8 @@ class AdcsLoop:
         self._sub = session.declare_subscriber(sensor_topic, self._on_sample)
         self._stop = threading.Event()
         self._prev_rates = (0.0, 0.0, 0.0)
+        self._last_torque = (0.0, 0.0, 0.0)
+        self.samples_received = 0
 
     def _on_sample(self, sample: zenoh.Sample) -> None:
         """Store the latest sensor sample (subscriber thread).
@@ -125,6 +128,7 @@ class AdcsLoop:
         with self._lock:
             self._latest = msg
             self._latest_recv_ns = time.monotonic_ns()
+            self.samples_received += 1
 
     def wait_for_first_sample(self, timeout_s: float = 5.0) -> bool:
         """Block until the first sensor sample arrives.
@@ -171,6 +175,7 @@ class AdcsLoop:
             else:
                 cmd.torque_z_n_m = torque
         self._prev_rates = rates
+        self._last_torque = (cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m)
 
         cmd.header.source = "adcs_loop"
         cmd.header.seq = seq
@@ -180,11 +185,31 @@ class AdcsLoop:
         self._pub.put(cmd.SerializeToString())
         return stale
 
+    def print_status(self) -> None:
+        """Print a one-line live status: rates, input freshness, torque out."""
+        with self._lock:
+            imu = self._latest
+            age_ms = (time.monotonic_ns() - self._latest_recv_ns) / 1e6
+            rx = self.samples_received
+        if imu is None:
+            print("[adcs] no sensor data yet", flush=True)
+            return
+        omega = (imu.gyro_x_rad_s, imu.gyro_y_rad_s, imu.gyro_z_rad_s)
+        mag_mrad = 1000.0 * math.sqrt(sum(w * w for w in omega))
+        tx, ty, tz = self._last_torque
+        print(
+            f"[adcs] |omega|={mag_mrad:7.2f} mrad/s  "
+            f"torque=({tx:+.2e},{ty:+.2e},{tz:+.2e}) N·m  "
+            f"input age {age_ms:6.1f} ms  samples rx {rx}",
+            flush=True,
+        )
+
     def run(
         self,
         duration_s: float,
         report_every_s: float = 0.0,
         conditions: list[str] | None = None,
+        status_every_s: float = 0.0,
     ) -> LoopReport:
         """Run the loop and return the self-measurement.
 
@@ -195,6 +220,8 @@ class AdcsLoop:
                 interval — bounds memory for indefinite runs and streams
                 percentiles into the journal.
             conditions: RT-hygiene state strings echoed on every report.
+            status_every_s: If > 0, print a one-line live status (rates,
+                input age, torque) at this interval.
 
         Returns:
             The report covering the final (possibly partial) interval.
@@ -205,6 +232,8 @@ class AdcsLoop:
         end_ns = now + int(duration_s * 1e9) if duration_s > 0 else None
         report_ns = int(report_every_s * 1e9) if report_every_s > 0 else None
         next_report = now + report_ns if report_ns else None
+        status_ns = int(status_every_s * 1e9) if status_every_s > 0 else None
+        next_status = now + status_ns if status_ns else None
         next_wake = now + period_ns
         seq = 0
         while not self._stop.is_set():
@@ -222,6 +251,10 @@ class AdcsLoop:
             report.cycles += 1
             report.stale_cycles += int(stale)
             next_wake += period_ns
+
+            if next_status is not None and status_ns is not None and woke >= next_status:
+                self.print_status()
+                next_status += status_ns
 
             if next_report is not None and report_ns is not None and woke >= next_report:
                 report.print_summary()
@@ -256,6 +289,12 @@ def main() -> int:
         default=0.0,
         help="print+reset the jitter report at this interval [s] (bounds memory; 0 = only at end)",
     )
+    parser.add_argument(
+        "--status-every",
+        type=float,
+        default=5.0,
+        help="print a live status line (rates, input age, torque) at this interval [s]; 0 = off",
+    )
     parser.add_argument("--fifo", type=int, default=None, help="SCHED_FIFO priority to attempt")
     parser.add_argument("--pin", type=int, default=None, help="CPU core to pin to")
     parser.add_argument(
@@ -286,7 +325,12 @@ def main() -> int:
         report_every = args.report_every
         if report_every <= 0 and args.duration <= 0:
             report_every = 60.0  # service mode must bound memory
-        report = loop.run(args.duration, report_every_s=report_every, conditions=conditions)
+        report = loop.run(
+            args.duration,
+            report_every_s=report_every,
+            conditions=conditions,
+            status_every_s=args.status_every,
+        )
         report.print_summary()
     finally:
         loop.close()
