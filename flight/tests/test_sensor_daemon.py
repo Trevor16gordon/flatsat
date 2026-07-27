@@ -69,6 +69,7 @@ def test_every_registered_driver_resolves(name: str) -> None:
     assert callable(get_driver_class(name).from_config)
 
 
+@pytest.mark.verifies("FSW-HAL-002", "FSW-HAL-003")
 def test_sim_gyro_driver_publishes_contract_compliant_samples() -> None:
     entry = SensorEntry(
         name="test_imu",
@@ -112,6 +113,7 @@ def test_readable_zone_publishes_valid_samples() -> None:
 
 
 @pytest.mark.skipif(not THERMAL_ROOT.exists(), reason="no thermal sysfs (not on target)")
+@pytest.mark.verifies("FSW-HAL-001", "FSW-HAL-004")
 def test_power_gated_zone_flags_comm_but_keeps_publishing() -> None:
     entry = SensorEntry(
         name="test_cv0",

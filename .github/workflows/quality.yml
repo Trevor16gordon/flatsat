@@ -17,3 +17,17 @@ jobs:
         with:
           python-version: "3.10"   # match onboard Python
       - uses: pre-commit/action@v3.0.1
+
+  traceability:
+    # Requirements must stay linked to their verification. Fails on an
+    # unverified test-verified requirement or a test citing an unknown ID.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install test deps
+        run: pip install pytest tomli protobuf numpy eclipse-zenoh
+      - name: Check requirements traceability
+        run: python tools/traceability.py --strict

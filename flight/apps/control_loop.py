@@ -37,9 +37,11 @@ import zenoh
 
 from flight.adcs.controller import AttitudeController, AttitudeState
 from flight.adcs.guidance import ReferenceSource
+from flight.core.bus import SamplePublisher
 from flight.core.config import ControlEntry, VehicleSpec, load_vehicle
+from flight.core.health import health_topic, percentiles
 from flight.core.rt import describe_actual, pin_to_core, quiesce_gc, try_fifo, try_mlockall
-from flight.msgs import adcs_pb2, hal_pb2
+from flight.msgs import adcs_pb2, hal_pb2, health_pb2
 from flight.registry import get_controller_class, get_guidance_class
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +66,33 @@ class LoopReport:
     stale_cycles: int = 0
     saturated_cycles: int = 0
     conditions: list[str] = field(default_factory=list)
+
+    def to_proto(self, loop: ControlLoop, environment: str, affinity: str) -> health_pb2.LoopHealth:
+        """Render this window as a LoopHealth message.
+
+        Args:
+            loop: The loop that produced the window (for composition
+                provenance).
+            environment: Verified scheduling policy/priority string.
+            affinity: Verified CPU affinity string.
+
+        Returns:
+            The health message, unstamped (the publisher fills the header).
+        """
+        msg = health_pb2.LoopHealth()
+        msg.vehicle = loop.vehicle_name
+        msg.config_checksum = loop.config_checksum
+        msg.strategy = loop.entry.strategy
+        msg.objective = loop.entry.objective
+        msg.rate_hz = loop.entry.rate_hz
+        msg.scheduling = environment
+        msg.cpu_affinity = affinity
+        msg.window_cycles = self.cycles
+        msg.stale_cycles = self.stale_cycles
+        msg.saturated_cycles = self.saturated_cycles
+        msg.wakeup_lateness_us.CopyFrom(percentiles(self.wakeup_lateness_us))
+        msg.exec_time_us.CopyFrom(percentiles(self.exec_time_us))
+        return msg
 
     def print_summary(self) -> None:
         """Print the percentile report (same shape as cyclictest/bus_bench)."""
@@ -98,6 +127,8 @@ class ControlLoop:
         entry: ControlEntry,
         controller: AttitudeController,
         guidance: ReferenceSource,
+        vehicle_name: str = "",
+        config_checksum: str = "",
     ) -> None:
         """Wire the loop to its topics, strategy, and objective.
 
@@ -106,8 +137,14 @@ class ControlLoop:
             entry: Control composition (rates, topics, thresholds).
             controller: Strategy computing torque.
             guidance: Source of the reference to track.
+            vehicle_name: Composition name, echoed into health telemetry.
+            config_checksum: Composition checksum, echoed into health
+                telemetry so a recorded window traces to its parameters.
         """
         self.entry = entry
+        self.vehicle_name = vehicle_name
+        self.config_checksum = config_checksum
+        self._health = SamplePublisher(session, health_topic("adcs"), "adcs_loop")
         self._controller = controller
         self._guidance = guidance
         self._stale_after_ns = int(entry.stale_after_s * 1e9)
@@ -119,6 +156,8 @@ class ControlLoop:
         self._stop = threading.Event()
         self._last_torque = (0.0, 0.0, 0.0)
         self.samples_received = 0
+        self.scheduling = ""
+        self.cpu_affinity = ""
 
     def _on_sample(self, sample: zenoh.Sample) -> None:
         """Store the latest sensor sample (subscriber thread).
@@ -254,9 +293,18 @@ class ControlLoop:
                 next_status += status_ns
             if next_report is not None and report_ns is not None and woke >= next_report:
                 report.print_summary()
+                self.publish_health(report)
                 report = LoopReport(conditions=report.conditions)
                 next_report += report_ns
         return report
+
+    def publish_health(self, report: LoopReport) -> None:
+        """Publish one window of loop health on the bus.
+
+        Args:
+            report: The window to publish.
+        """
+        self._health.publish(report.to_proto(self, self.scheduling, self.cpu_affinity))
 
     def stop(self) -> None:
         """Request the loop to exit (thread-safe)."""
@@ -280,7 +328,14 @@ def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
     entry = vehicle.control
     controller = get_controller_class(entry.strategy).from_config(entry.options)
     guidance = get_guidance_class(entry.objective).from_config(entry.objective_options)
-    return ControlLoop(session, entry, controller, guidance)
+    return ControlLoop(
+        session,
+        entry,
+        controller,
+        guidance,
+        vehicle_name=vehicle.name,
+        config_checksum=vehicle.provenance.checksum,
+    )
 
 
 def main() -> int:
@@ -339,12 +394,15 @@ def main() -> int:
         session.close()
         return 2
 
+    verified = describe_actual()
+    loop.scheduling = verified[0].removeprefix("verified: ")
+    loop.cpu_affinity = verified[1].removeprefix("verified: affinity cpus ")
     conditions = [
         try_fifo(args.fifo),
         try_mlockall(),
         pin_to_core(args.pin),
         quiesce_gc(),
-        *describe_actual(),
+        *verified,
         *vehicle.describe(),
         *loop._controller.describe(),  # noqa: SLF001 — echoing configuration
         *loop._guidance.describe(),  # noqa: SLF001 — echoing configuration

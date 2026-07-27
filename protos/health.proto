@@ -1,0 +1,64 @@
+// Process health telemetry — the system's own vital signs, as DATA.
+//
+// Previously these numbers existed only as printf into the journal:
+// unparseable, unrecordable, invisible to FDIR, useless for regression
+// analysis. A flight system's own timing and validity statistics are
+// telemetry like any other measurement, so they are messages.
+//
+// Every field here is something a later consumer needs: the recorder
+// archives it, FDIR limit-checks it (jitter climbing, stale ratio rising),
+// the anomaly corpus learns from it, and a regression test compares runs.
+// Config provenance travels WITH the numbers so a recorded window can
+// always be traced to the parameters that produced it.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "hal.proto";
+
+// Distribution summary of a per-cycle measurement over one window.
+message Percentiles {
+  double p50 = 1;
+  double p99 = 2;
+  double p99_9 = 3;
+  double max = 4;
+  uint64 count = 5;
+}
+
+// Health of a control loop over one reporting window.
+message LoopHealth {
+  Header header = 1;
+
+  // Composition provenance: what was flying, configured by what.
+  string vehicle = 2;
+  string config_checksum = 3;
+  string strategy = 4;
+  string objective = 5;
+  double rate_hz = 6;
+
+  // Execution environment actually in force (verified, not requested).
+  string scheduling = 7;    // e.g. "SCHED_FIFO priority 80"
+  string cpu_affinity = 8;  // e.g. "3"
+
+  // Window counters.
+  uint64 window_cycles = 9;
+  uint64 stale_cycles = 10;      // ran on an input older than the threshold
+  uint64 saturated_cycles = 11;  // command clipped by the actuator envelope
+
+  // Timing distributions, microseconds.
+  Percentiles wakeup_lateness_us = 12;
+  Percentiles exec_time_us = 13;
+}
+
+// Health of a sensor daemon over one reporting window.
+message SensorHealth {
+  Header header = 1;
+
+  string driver = 2;
+  double rate_hz = 3;
+
+  uint64 window_samples = 4;
+  uint64 flagged_samples = 5;  // samples with any validity flag set
+  uint32 flag_union = 6;       // bitwise OR of every flag seen in the window
+}

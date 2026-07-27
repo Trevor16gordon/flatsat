@@ -116,6 +116,20 @@ activate in a B slot, roll back on regression) and needs the file-transfer,
 A/B slot, and signature machinery that does not exist yet. The seams are in
 place so that work does not require restructuring.
 
+## Requirements and verification
+
+`requirements/*.toml` declares what the system must do, each entry carrying a
+stable ID, a rationale, a **verification method**, and the evidence that
+discharges it. Tests cite requirements with `@pytest.mark.verifies("ID")`,
+and `tools/traceability.py` cross-references the two, failing CI (`--strict`)
+on an unverified test-verified requirement or a test citing an unknown ID.
+
+Methods are distinguished honestly: `test` (an automated assertion),
+`analysis` (a measurement campaign — the cyclictest and bus-latency numbers),
+`inspection` (a property visible in code or config), `demonstration` (an
+operator-witnessed run). Calling a 10-minute load campaign a unit test would
+be worse than naming the method.
+
 ## Testing
 
 - **Pure/unit** — control strategies and sensor models, no bus or hardware.

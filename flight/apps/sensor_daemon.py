@@ -27,7 +27,9 @@ import zenoh
 
 from flight.core.bus import SamplePublisher
 from flight.core.config import SensorEntry, load_vehicle
+from flight.core.health import health_topic
 from flight.hal.driver import SensorDriver
+from flight.msgs import health_pb2
 from flight.registry import get_driver_class
 
 
@@ -45,21 +47,62 @@ class SensorDaemon:
         self.entry = entry
         self._driver = driver
         self._publisher = SamplePublisher(session, entry.topic, entry.name)
+        self._health = SamplePublisher(session, health_topic(entry.name), entry.name)
         self._stop = threading.Event()
+        self._window_samples = 0
+        self._flagged_samples = 0
+        self._flag_union = 0
 
     def publish_once(self) -> None:
         """Acquire, stamp, and publish one sample."""
         sample_time_ns = time.time_ns()
         msg, flags = self._driver.read()
         self._publisher.publish(msg, validity=flags, sample_time_ns=sample_time_ns)
+        self._window_samples += 1
+        if flags:
+            self._flagged_samples += 1
+            self._flag_union |= flags
 
-    def run(self) -> None:
-        """Publish at the configured cadence until :meth:`stop` is called."""
+    def publish_health(self) -> health_pb2.SensorHealth:
+        """Publish and reset this window's acquisition statistics.
+
+        Flag counts are the honest record of how the device actually
+        behaved — a zone that EAGAINs half the time, a gyro that rails —
+        which is exactly what FDIR limit-checks and the anomaly corpus
+        learn from. Printing them would throw that away.
+
+        Returns:
+            The published message, for tests and introspection.
+        """
+        msg = health_pb2.SensorHealth()
+        msg.driver = self.entry.driver
+        msg.rate_hz = self.entry.rate_hz
+        msg.window_samples = self._window_samples
+        msg.flagged_samples = self._flagged_samples
+        msg.flag_union = self._flag_union
+        self._window_samples = 0
+        self._flagged_samples = 0
+        self._flag_union = 0
+        return self._health.publish(msg)  # type: ignore[return-value]
+
+    def run(self, health_every_s: float = 30.0) -> None:
+        """Publish at the configured cadence until :meth:`stop` is called.
+
+        Args:
+            health_every_s: Interval between SensorHealth publications;
+                <= 0 disables health reporting.
+        """
         period_ns = int(1_000_000_000 / self.entry.rate_hz)
+        health_ns = int(health_every_s * 1e9) if health_every_s > 0 else None
         next_wake = time.monotonic_ns() + period_ns
+        next_health = next_wake + health_ns if health_ns else None
         while not self._stop.is_set():
             self.publish_once()
-            delta_ns = next_wake - time.monotonic_ns()
+            now = time.monotonic_ns()
+            if next_health is not None and health_ns is not None and now >= next_health:
+                self.publish_health()
+                next_health += health_ns
+            delta_ns = next_wake - now
             if delta_ns > 0:
                 self._stop.wait(delta_ns / 1e9)
             next_wake += period_ns

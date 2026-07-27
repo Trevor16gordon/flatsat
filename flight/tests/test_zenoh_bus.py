@@ -80,6 +80,7 @@ def test_pubsub_delivers_imu_sample(two_sessions: tuple[zenoh.Session, zenoh.Ses
     sub.undeclare()
 
 
+@pytest.mark.verifies("FSW-BUS-002")
 def test_late_joiner_learns_mode_via_query(
     two_sessions: tuple[zenoh.Session, zenoh.Session],
 ) -> None:

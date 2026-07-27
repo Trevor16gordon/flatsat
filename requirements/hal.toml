@@ -1,0 +1,95 @@
+# Hardware abstraction layer: what a sensor daemon must guarantee.
+
+[[requirement]]
+id = "FSW-HAL-001"
+statement = """
+A sensor driver's read failure shall not interrupt the publishing cadence;
+the daemon shall publish a message on schedule with an acquisition flag set.
+"""
+rationale = """
+Silence is indistinguishable from process death, which is a different fault
+with a different recovery. Flag and forward keeps the failure visible and
+the timeline intact.
+"""
+verification = "test"
+evidence = "test_sensor_daemon.py::test_power_gated_zone_flags_comm_but_keeps_publishing — real EAGAIN from a power-gated Jetson CV thermal zone"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-002"
+statement = """
+Every published sensor message shall carry a per-source sequence number that
+starts at 1 and increases strictly monotonically.
+"""
+rationale = "Gap and duplicate detection downstream depends on it."
+verification = "test"
+evidence = "test_sensor_daemon.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-003"
+statement = """
+Every published sensor message shall carry a sample timestamp and a publish
+timestamp, with publish time not earlier than sample time.
+"""
+rationale = """
+Consumers must be able to distinguish acquisition age from transport delay;
+FDIR staleness rules depend on the difference.
+"""
+verification = "test"
+evidence = "test_sensor_daemon.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-004"
+statement = """
+A daemon shall not report a measured value alongside an acquisition-failure
+flag.
+"""
+rationale = """
+A flagged message carrying a plausible-looking value invites consumers to
+use it. The absence of a value is the honest signal.
+"""
+verification = "test"
+evidence = "test_sensor_daemon.py::test_power_gated_zone_flags_comm_but_keeps_publishing"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-005"
+statement = """
+The simulated sensor model and the flight-side driver shall derive device
+characteristics (noise, full-scale range, quantization) from one shared
+specification.
+"""
+rationale = """
+A hardware-in-the-loop run only means something if the simulated sensor is
+the sensor that exists. Duplicated constants drift silently.
+"""
+verification = "test"
+evidence = "test_sensor_model.py::test_specs_load_with_provenance and the shared config/imu0.toml consumed by both sim_gyro and ground/basilisk_hil.py"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-006"
+statement = """
+A sensor reading beyond the device's full-scale range shall be reported
+clipped and flagged as saturated.
+"""
+rationale = "A railed sensor reports a bound, not a measurement."
+verification = "test"
+evidence = "test_sensor_model.py::test_saturation_clips_and_flags"
+status = "verified"
+
+[[requirement]]
+id = "FSW-HAL-007"
+statement = """
+Each sensor daemon shall publish acquisition health telemetry containing
+sample counts and the union of validity flags observed in the window.
+"""
+rationale = """
+Flag rates are the raw material for FDIR limit checks and the anomaly
+corpus; printed text is unrecordable and unparseable.
+"""
+verification = "test"
+evidence = "test_health.py::test_sensor_daemon_publishes_health"
+status = "verified"

@@ -1,0 +1,191 @@
+# Platform: real-time behavior, bus transport, configuration, simulation.
+#
+# Several of these are verified by ANALYSIS — measurement campaigns whose
+# results live in PLAN.md §0 rather than in an assertion. That is the honest
+# classification: a 10-minute cyclictest run under GPU load is not a unit
+# test, and pretending otherwise would be worse than naming the method.
+
+[[requirement]]
+id = "FSW-RT-001"
+statement = """
+Under combined CPU, memory, and GPU load, kernel scheduling latency for a
+real-time task shall remain below 100 microseconds worst case.
+"""
+rationale = """
+Sets the floor for every control deadline on this computer; if the OS cannot
+promise it, no amount of application care recovers it.
+"""
+verification = "analysis"
+evidence = "cyclictest 10 min, SMP, prio 95, under CUDA 4096^2 matmul + stress-ng (4 cpu, 2 vm x 1GB): worst case 69 us across 6 cores (PLAN.md §0, 2026-07-24)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-RT-002"
+statement = """
+The control loop shall hold its commanded cadence using absolute deadlines,
+so scheduling lateness does not accumulate as drift.
+"""
+rationale = """
+A relative-sleep loop silently runs slow, corrupting every rate-dependent
+term in the control law.
+"""
+verification = "inspection"
+evidence = "flight/apps/control_loop.py::run advances next_wake by exactly one period per cycle; sim feed uses the same pattern (ground/basilisk_hil.py)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-RT-003"
+statement = """
+Real-time scheduling policy, priority, and CPU affinity shall be granted by
+the deployment layer, and the process shall report the values actually in
+force rather than those requested.
+"""
+rationale = """
+Flight code should not need privileges. Reporting requests instead of
+reality produced a live report claiming SCHED_OTHER while systemd had
+granted FIFO 80 — declare, then verify.
+"""
+verification = "test"
+evidence = "test_rt.py::test_describe_actual_reports_live_values; systemd grant confirmed by chrt on the running service (PLAN.md §0, 2026-07-24)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-BUS-001"
+statement = """
+Inter-process message transport shall deliver a control-rate message with
+worst-case one-way latency under 1 millisecond on the flight computer under
+load.
+"""
+rationale = """
+Determines whether a 100 Hz control path can cross process boundaries at
+all; the alternative is consolidating sensors and control into one process
+and losing crash isolation.
+"""
+verification = "analysis"
+evidence = "tools/bus_bench.py, 2000 pings at 200 Hz under CUDA + stress-ng load: p50 167 us, p99.9 322 us, max 542 us, zero loss (PLAN.md §0, 2026-07-24)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-BUS-002"
+statement = """
+A process joining after a state broadcast shall be able to obtain the
+current system mode on demand.
+"""
+rationale = """
+Restarted or late-starting apps must not act on an unknown mode while
+waiting for the next broadcast; this is the basis of the mode-distribution
+design.
+"""
+verification = "test"
+evidence = "test_zenoh_bus.py::test_late_joiner_learns_mode_via_query"
+status = "verified"
+
+[[requirement]]
+id = "FSW-CFG-001"
+statement = """
+Control parameters, device specifications, and vehicle composition shall be
+loaded from configuration files, not embedded in code.
+"""
+rationale = """
+Tuning must not require a code change and redeploy; this is also the seam a
+commandable parameter database plugs into.
+"""
+verification = "test"
+evidence = "test_sensor_model.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/imu0.toml"
+status = "verified"
+
+[[requirement]]
+id = "FSW-CFG-002"
+statement = """
+Every loaded parameter set shall carry the identity and checksum of its
+source file, and processes shall report it at startup and in health
+telemetry.
+"""
+rationale = """
+A recorded run whose parameters cannot be reconstructed is not evidence of
+anything.
+"""
+verification = "test"
+evidence = "test_health.py::test_loop_health_carries_provenance_and_counters"
+status = "verified"
+
+[[requirement]]
+id = "FSW-CFG-003"
+statement = """
+Changing the sensor complement or the control strategy of a vehicle shall
+require configuration changes only, with no change to application code.
+"""
+rationale = "This is the composition property the architecture exists to provide."
+verification = "demonstration"
+evidence = "PD -> PID swap performed by editing only the vehicle file, loop ran unchanged (2026-07-27); units regenerate from the vehicle file with no edit to gen-units.py"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SIM-001"
+statement = """
+The simulation shall advance at wall-clock rate when hardware is in the
+loop, and shall never replay accumulated time faster than real time.
+"""
+rationale = """
+The flight software's cadence comes from its own clock; a faster-than-real
+burst presents the controller with dynamics it will never see in flight and
+invalidates the test.
+"""
+verification = "inspection"
+evidence = "ground/basilisk_hil.py paces with absolute deadlines and resyncs (dropping lost time) when it falls more than five periods behind"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SIM-002"
+statement = """
+A simulated actuator shall revert to zero effort when no fresh command has
+been received within a bounded interval.
+"""
+rationale = """
+Discovered the hard way: holding the last command after the controller
+exited spun the simulated vehicle back up. An actuator must not keep flying
+a dead controller's last order.
+"""
+verification = "test"
+evidence = "test_hil_contract.py::test_torque_sink_zeroes_when_commands_stop"
+status = "verified"
+
+[[requirement]]
+id = "FSW-RADIO-001"
+statement = """
+Any script capable of transmitting RF shall refuse to run without an
+explicit transmit acknowledgement argument.
+"""
+rationale = "Prevents an accidental invocation from radiating."
+verification = "inspection"
+evidence = "radio/pluto_tx_loopback_test.py, radio/pluto_data_loopback_test.py, radio/pluto_snr_sweep_test.py all return exit code 1 without --transmit"
+status = "verified"
+
+[[requirement]]
+id = "FSW-RADIO-002"
+statement = """
+A transmitting script shall drive the transmitter to maximum attenuation on
+every exit path, including error paths.
+"""
+rationale = """
+The Pluto's DMA can continue replaying a stale buffer after a flowgraph
+stops; leaving the process must leave the radio quiet.
+"""
+verification = "inspection"
+evidence = "silence_tx() invoked after capture, on stage failure, and before analysis in every transmitting script; observed in run logs (PLAN.md §0)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-RADIO-003"
+statement = """
+Signal energy on the single-radio loopback path shall be offset from the
+local-oscillator frequency.
+"""
+rationale = """
+Zero-IF LO leakage and the AD936x DC-correction loops sit at baseband
+centre; a signal placed there is corrupted (measured: BER 1.8e-1 at DC
+versus 0 at +250 kHz).
+"""
+verification = "analysis"
+evidence = "GMSK data loopback run 1 vs run 2 (PLAN.md §0, 2026-07-23): 0/40 frames clean at DC, 113/113 clean and BER 0.00 offset-tuned"
+status = "verified"

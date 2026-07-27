@@ -63,6 +63,7 @@ def test_derivative_term_exact() -> None:
     assert torque[0] == pytest.approx(-0.02 * 0.1 - 0.005 * (0.1 / DT))
 
 
+@pytest.mark.verifies("FSW-ADCS-008")
 def test_reference_tracking_not_just_damping() -> None:
     """At the target rate the error is zero, so the command is zero."""
     reference = AttitudeReference(body_rates_rad_s=(0.05, 0.0, 0.0))
@@ -72,6 +73,7 @@ def test_reference_tracking_not_just_damping() -> None:
     assert torque[0] == pytest.approx(0.0, abs=1e-12)
 
 
+@pytest.mark.verifies("FSW-ADCS-007")
 def test_detumble_matches_first_order_decay() -> None:
     """Integrating a rigid axis under the PD law reproduces exp(-t/tau).
 
@@ -119,6 +121,7 @@ def test_pid_integral_is_clamped() -> None:
     assert abs(ctrl.update(state((1.0, 0.0, 0.0)), DETUMBLE, DT).torque_n_m[0]) <= 0.5 + 1e-9
 
 
+@pytest.mark.verifies("FSW-ADCS-005")
 def test_pid_does_not_integrate_invalid_state() -> None:
     """A stale estimate must not charge the integrator and fire later."""
     ctrl = PidRateController(kp=0.0, ki=1.0, kd=0.0, limits=GENEROUS)
@@ -138,6 +141,7 @@ def test_registry_builds_every_strategy(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-001")
 def test_every_strategy_is_quiet_at_the_reference(name: str) -> None:
     controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
     output = controller.update(state((0.0, 0.0, 0.0)), DETUMBLE, DT)
@@ -145,6 +149,7 @@ def test_every_strategy_is_quiet_at_the_reference(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-002", "FSW-ADCS-003")
 def test_every_strategy_opposes_error_and_respects_limits(name: str) -> None:
     options = {**UNIVERSAL_OPTIONS, "max_torque_n_m": 1e-4}
     controller = get_controller_class(name).from_config(options)
@@ -154,6 +159,7 @@ def test_every_strategy_opposes_error_and_respects_limits(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-004")
 def test_every_strategy_survives_bad_timestep(name: str) -> None:
     controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
     output = controller.update(state((0.1, 0.0, 0.0)), DETUMBLE, 0.0)
@@ -161,6 +167,7 @@ def test_every_strategy_survives_bad_timestep(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", sorted(CONTROLLERS))
+@pytest.mark.verifies("FSW-ADCS-006")
 def test_reset_clears_history(name: str) -> None:
     controller = get_controller_class(name).from_config(UNIVERSAL_OPTIONS)
     for _ in range(100):
@@ -172,6 +179,7 @@ def test_reset_clears_history(name: str) -> None:
     )
 
 
+@pytest.mark.verifies("FSW-ADCS-008")
 def test_guidance_supplies_the_reference() -> None:
     detumble = ConstantRateReference.from_config({})
     assert detumble.reference_at(0.0).body_rates_rad_s == (0.0, 0.0, 0.0)

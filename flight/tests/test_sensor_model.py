@@ -12,6 +12,7 @@ from flight.msgs import hal_pb2
 SPEC = load_imu_spec()
 
 
+@pytest.mark.verifies("FSW-HAL-005", "FSW-CFG-001")
 def test_specs_load_with_provenance() -> None:
     vehicle = load_vehicle()
     assert vehicle.control.rate_hz > 0
@@ -34,6 +35,7 @@ def test_valid_flags_when_in_range() -> None:
     assert flags == hal_pb2.VALIDITY_FLAG_VALID
 
 
+@pytest.mark.verifies("FSW-HAL-006")
 def test_saturation_clips_and_flags() -> None:
     beyond = SPEC.gyro_full_scale_rad_s * 2.0
     rates, flags = apply_gyro_model((beyond, 0.0, 0.0), SPEC, random.Random(7))

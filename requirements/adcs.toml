@@ -1,0 +1,140 @@
+# Attitude determination and control: what any control strategy must do.
+#
+# Note the pattern: most of these are stated over ALL registered strategies,
+# not one law. The contract tests are parameterized over the registry, so a
+# newly added controller is held to them automatically.
+
+[[requirement]]
+id = "FSW-ADCS-001"
+statement = """
+A control strategy shall command zero actuator effort when the estimated
+state equals the reference.
+"""
+rationale = "A controller that fires at its own setpoint cannot settle."
+verification = "test"
+evidence = "test_control.py::test_every_strategy_is_quiet_at_the_reference (all registered strategies)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-002"
+statement = """
+A control strategy shall command torque that opposes the state-to-reference
+error.
+"""
+rationale = "Sign errors are the classic catastrophic control defect."
+verification = "test"
+evidence = "test_control.py::test_every_strategy_opposes_error_and_respects_limits"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-003"
+statement = """
+Commanded torque shall be clipped to the configured actuator envelope, and
+clipping shall be reported.
+"""
+rationale = """
+Real reaction wheels saturate. A controller validated against an unlimited
+actuator is validated against hardware that cannot be built, and an
+unreported clip hides the loss of authority from FDIR.
+"""
+verification = "test"
+evidence = "test_control.py::test_every_strategy_opposes_error_and_respects_limits"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-004"
+statement = """
+A control strategy shall produce a finite command when given a non-positive
+time step.
+"""
+rationale = """
+A degenerate dt must degrade the law, not raise: an exception in the control
+path stops the loop, which is a far worse failure than a missing derivative
+term for one cycle.
+"""
+verification = "test"
+evidence = "test_control.py::test_every_strategy_survives_bad_timestep"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-005"
+statement = """
+A stateful control strategy shall not accumulate integral state from
+estimates marked invalid.
+"""
+rationale = """
+Winding up on stale or flagged data produces a large command the moment
+data returns — turning a sensor dropout into an attitude excursion.
+"""
+verification = "test"
+evidence = "test_control.py::test_pid_does_not_integrate_invalid_state"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-006"
+statement = """
+A control strategy shall expose a reset that returns it to its
+freshly-constructed behavior.
+"""
+rationale = "Mode transitions and recovery must not inherit stale history."
+verification = "test"
+evidence = "test_control.py::test_reset_clears_history (all registered strategies)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-007"
+statement = """
+The rate-damping law applied to a rigid axis shall produce first-order decay
+with time constant tau = (I + kd)/kp within 5%.
+"""
+rationale = """
+Pins the dynamics numerically: a gain or sign regression fails the suite
+instead of quietly changing how the spacecraft flies.
+"""
+verification = "test"
+evidence = "test_control.py::test_detumble_matches_first_order_decay"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-008"
+statement = """
+The control objective shall be supplied by a guidance reference source
+independent of the control strategy.
+"""
+rationale = """
+Detumble, rate hold, pointing, and trajectory following must be selectable
+without a new control loop or a new controller implementation.
+"""
+verification = "test"
+evidence = "test_control.py::test_guidance_supplies_the_reference and test_reference_tracking_not_just_damping"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-009"
+statement = """
+A command computed from a stale estimate shall be published with a staleness
+flag set.
+"""
+rationale = """
+Actuator commands carry the trustworthiness of their inputs; downstream
+consumers and recorded telemetry must be able to see it.
+"""
+verification = "inspection"
+evidence = "flight/apps/control_loop.py::_step sets VALIDITY_FLAG_STALE on the command header; observed live during cross-machine HIL (2026-07-27, ~10% of cycles over WiFi)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-010"
+statement = """
+The control loop shall publish health telemetry per window containing cycle
+count, stale-input count, saturation count, and timing distributions, tagged
+with the configuration checksum in force.
+"""
+rationale = """
+Regression comparison and FDIR both need these as data; the configuration
+tag is what makes a recorded window traceable to the parameters that
+produced it.
+"""
+verification = "test"
+evidence = "test_health.py::test_loop_health_carries_provenance_and_counters"
+status = "verified"
