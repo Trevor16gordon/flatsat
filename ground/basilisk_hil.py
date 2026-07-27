@@ -135,7 +135,19 @@ def main() -> int:
     parser.add_argument(
         "--viz",
         action="store_true",
-        help="live-stream to the Vizard 3D visualizer (connect Vizard to tcp://localhost:5556)",
+        help=(
+            "live-stream to Vizard. NOTE: the SIM is the client — start Vizard "
+            "first in its hosting/'Direct Communication' mode on port 5556, "
+            "then run this; the sim blocks until Vizard answers"
+        ),
+    )
+    parser.add_argument(
+        "--viz-save",
+        default=None,
+        help=(
+            "record a Vizard playback file instead of live streaming (no "
+            "sockets, nothing to time out): open the resulting .bin in Vizard"
+        ),
     )
     args = parser.parse_args()
 
@@ -163,11 +175,19 @@ def main() -> int:
     sc.addDynamicEffector(ext)
     sim.AddModelToTask("dynTask", ext)
 
-    if args.viz:
+    if args.viz or args.viz_save:
         from Basilisk.utilities import vizSupport
 
-        vizSupport.enableUnityVisualization(sim, "dynTask", sc, liveStream=True)
-        print("[sim] Vizard live stream enabled — connect Vizard to tcp://localhost:5556")
+        vizSupport.enableUnityVisualization(
+            sim, "dynTask", sc, liveStream=bool(args.viz), saveFile=args.viz_save
+        )
+        if args.viz:
+            print(
+                "[sim] live stream: the SIM CONNECTS OUT to Vizard on 5556 — "
+                "Vizard must already be hosting, or this blocks here"
+            )
+        else:
+            print(f"[sim] recording Vizard playback file: {args.viz_save}")
 
     session = open_session(args.connect)
     pub = session.declare_publisher(SENSOR_TOPIC)
