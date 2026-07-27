@@ -13,6 +13,21 @@ quality gates live · next: ground Pluto unboxing / M1 seam work / P3.
 
 ### Done (as of 2026-07-27)
 
+- **CROSS-MACHINE HIL CLOSED (2026-07-27) — the A4 demo, exceeded.** Mac
+  (Basilisk 2.11, wall-clock-paced) ↔ Jetson (flatsat-adcs service,
+  verified SCHED_FIFO 80 on core 3) over WiFi, zenoh multicast discovery
+  worked zero-config. Detumble 78 → ~2 mrad/s in ~3.5 min (real time, 1:1
+  by design — §10 time rule), 100 Hz control with input age typically
+  6–10 ms. WiFi reality visible and HANDLED: periodic 20–90 ms stalls →
+  ~8–12% of cycles ran on stale-flagged inputs, commands self-flagged,
+  loop never destabilized; sim-side 100 ms torque cutoff protected against
+  controller death. Endgame floor ~2–5 mrad/s = the injected gyro noise
+  (2 mrad/s/axis) — controller chasing sensor noise, textbook. Loop RT
+  held during full HIL: lateness p50 26 µs, MAX <500 µs. (A4's original
+  target was a 1 Hz closed loop; this is 100 Hz.) Faster-than-real-time
+  campaigns remain a deliberate §10 future extension (needs external time
+  source in flight software).
+
 - **Basilisk HIL closed on-box (2026-07-27) — sim spacecraft detumbled by
   the real flight loop.** Basilisk 2.11.0 now ships prebuilt wheels
   (`pip install bsk` — the v1.0-era source-build concern is obsolete);
