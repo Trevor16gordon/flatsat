@@ -1,0 +1,79 @@
+// Artifact uplink — the C1 deployment path, as wire contracts.
+//
+// A new model, a new component, or a new configuration reaches the
+// spacecraft as ordinary bus messages that happen to arrive over RF:
+// one manifest, then chunks, then (separately, later, and only by
+// ground authority) an activation command. Nothing here executes
+// anything — the receiver STAGES bytes and verifies them; activation
+// switches a slot pointer; the consumer picks the new slot up when it
+// next starts. Trust is earned by measurement, so the sequence is
+// deliberately three commands, not one.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "flatsat/msgs/hal.proto";
+
+// What an artifact is and how to know it arrived intact.
+enum ArtifactKind {
+  ARTIFACT_KIND_UNSPECIFIED = 0;
+  ARTIFACT_KIND_CONFIG = 1;     // Tier 3: a .txtpb parameter set
+  ARTIFACT_KIND_COMPONENT = 2;  // Tier 2: an installable component
+  ARTIFACT_KIND_MODEL = 3;      // Tier 2: ML weights + feature spec
+}
+
+message ArtifactManifest {
+  Header header = 1;
+  string name = 2;          // logical artifact name, e.g. "ml_policy"
+  string version = 3;       // uplinked version, e.g. "2026-07-28a"
+  ArtifactKind kind = 4;
+  uint64 size_bytes = 5;
+  string sha256 = 6;        // hex digest of the complete artifact
+  uint32 chunk_count = 7;
+}
+
+message ArtifactChunk {
+  Header header = 1;
+  string name = 2;
+  string version = 3;
+  uint32 index = 4;
+  bytes data = 5;
+}
+
+// Ground command over the artifact slots. Activation is gated:
+// ground_authority is required, and the flight side additionally
+// refuses while the system is Safe — you do not hot-swap components
+// during a safing event. Rollback carries no such gate: reverting to
+// the last known-good slot is a toward-safety action.
+message ArtifactControl {
+  Header header = 1;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_ACTIVATE = 1;
+    ACTION_ROLLBACK = 2;
+  }
+  Action action = 2;
+  string name = 3;
+  string version = 4;       // activate: which staged version; rollback: ignored
+  bool ground_authority = 5;
+  string reason = 6;
+}
+
+// Per-artifact slot state, persisted so a reboot knows what is live.
+message ArtifactSlots {
+  string name = 1;
+  string active_version = 2;    // empty = nothing activated yet
+  string previous_version = 3;  // rollback target; empty = nothing to revert to
+  fixed64 activated_time_ns = 4;
+}
+
+// Uplink service telemetry: what is staged, what is live, what failed.
+message UplinkStatus {
+  Header header = 1;
+  repeated string staged = 2;        // "name@version" fully received and verified
+  repeated ArtifactSlots slots = 3;
+  uint64 receiving = 4;              // artifacts with chunks still arriving
+  uint64 rejected_checksum = 5;      // completed transfers whose digest disagreed
+  uint64 refused_activations = 6;    // activation attempts blocked by the gates
+}

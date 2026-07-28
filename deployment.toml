@@ -50,3 +50,9 @@ memory_max = "128M"
 memory_max = "256M"
 # no core_role: the link is store-and-forward housekeeping; the RT core
 # stays clean. Restart= gives the radio path FDIR tier 1 for free.
+
+[uplink]
+memory_max = "256M"
+# no core_role: staging and verifying artifacts is housekeeping. Nothing
+# uplinked is executed here — activation moves a pointer consumers read
+# at their next start.

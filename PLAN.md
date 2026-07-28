@@ -98,6 +98,34 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Comms + C1 uplink (2026-07-28) — remote data and reprogramming over
+the SDR path.** `flatsat/comms/` layers the link the same way everything
+else is layered — contracts, named implementations, oneof-selected
+config, registry-resolved: **Modem** (SDR-agnostic: `loopback` with
+frame-loss/BER knobs for CI and campaigns, `pluto_gmsk` carrying the
+proven baseline and the zero-IF lesson as a default), **Framer**
+(CCSDS-style sync+length+CRC-32; corrupt frames dropped and counted,
+resync from mid-garbage, a corrupted length cannot stall the deframer),
+and **Link** (segmentation so one bad frame costs one segment;
+reassembly that never delivers partial messages; contact windows so
+traffic queues between passes, bounded). `apps/link_service` carries an
+explicit topic ALLOWLIST — the middleware is never tunneled over the
+space link (§6's two-bus rule), and PLAN's correctness test is now an
+executable requirement: the spacecraft keeps working with the link
+dead. **RF safety is structural**: a modem that can radiate refuses to
+transmit without `transmit_ack` in config, flags the refusal, and says
+so at startup — proven by test on a machine with no radio.
+**C1 path**: `comms/uplink.py` reassembles manifest+chunks and stages
+ONLY on a sha256 match; `comms/slots.py` holds A/B slots where the
+mechanism is uniform and the authority is gated — activation needs
+ground authority AND is refused in SAFE, rollback needs neither and
+works in any mode, slot state survives a restart. Nothing uplinked is
+ever executed: activation moves a pointer consumers read at next start.
+`apps/uplink_send` is the three-verb operator tool (send / activate /
+rollback). End-to-end test: a model crosses the link, verifies, stages,
+activates by authorized command, and rolls back. FSW-LINK-001…007 +
+FSW-UPL-001…007; **218 tests, 73 requirements**.
+
 **FDIR + ground commanding (2026-07-28) — M4's core landed, thresholds
 measured not invented.** `flatsat/control/health/`: declarative limit
 rules as protos in the vehicle file (flag-ratio and silence checks —

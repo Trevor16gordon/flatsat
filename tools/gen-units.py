@@ -266,6 +266,17 @@ def main() -> int:
         (args.out / "flatsat-link.service").write_text(link_unit)
         written.append("flatsat-link.service")
 
+        uplink_unit = render_service(
+            unit_name="uplink",
+            description=f"artifact uplink service (C1 path) — {vehicle.name}",
+            exec_args=["-m", "flatsat.apps.uplink_service"],
+            deploy=deployment.get("uplink", {}),
+            profile=profile,
+            header=header,
+        )
+        (args.out / "flatsat-uplink.service").write_text(uplink_unit)
+        written.append("flatsat-uplink.service")
+
     if len(vehicle.fdir.rules) > 0:
         fdir_unit = render_service(
             unit_name="fdir",

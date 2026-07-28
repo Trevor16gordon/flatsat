@@ -1,0 +1,25 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# UPLINK TEST VEHICLE — the C1 deployment path over the link stack, on a
+# loopback channel with no radio. The downlink allowlist here carries the
+# ARTIFACT topics, which is how an uplinked model reaches the flight bus.
+
+name: "test-uplink"
+description: "C1 path test vehicle: artifact topics over a loopback link"
+
+control {
+  rate_hz: 10
+  input_topic: "test/uplink/hal/imu0/sample"
+  output_topic: "test/uplink/adcs/torque"
+  stale_after_s: 0.5
+  rate_damping { kp: 0.02 kd: 0.005 max_torque_n_m: 0.05 }
+}
+
+comms {
+  downlink_topics: ["uplink/artifact/**"]
+  segment_bytes: 512
+  queue_limit: 5000
+  loopback { channel: "test/uplink/channel" seed: 23 }
+  ccsds { max_payload_bytes: 2048 }
+}

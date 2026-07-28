@@ -1,0 +1,103 @@
+# Artifact uplink: the C1 deployment path.
+#
+# "Redeploy an ML model over the RF link with rollback" is the project's
+# converging milestone. These requirements are what make that safe
+# rather than merely possible: arrival is not trust, activation is a
+# separate authorized act, and reverting is always available.
+
+[[requirement]]
+id = "FSW-UPL-001"
+statement = """
+An artifact uplinked as a manifest plus chunks shall be reassembled and
+staged byte-identically to the source.
+"""
+rationale = "A model that arrived subtly wrong is worse than one that never arrived."
+verification = "test"
+evidence = "uplink_test.py::test_chunked_artifact_stages_byte_exact; uplink_service_test.py::test_artifact_crosses_the_link_and_stages (over the link stack)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-002"
+statement = """
+An artifact whose assembled bytes do not match the manifest digest and
+size shall be discarded and counted, never written to the staging area;
+an incomplete transfer shall never be staged.
+"""
+rationale = """
+The link corrupts and truncates by nature. Unverified bytes must not
+reach a place from which anything could later activate them.
+"""
+verification = "test"
+evidence = "uplink_test.py::test_corrupted_artifact_is_rejected_not_staged and ::test_truncated_artifact_never_completes"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-003"
+statement = """
+Activation of a staged artifact shall require ground authority; arrival
+over the link shall never itself activate anything.
+"""
+rationale = """
+Tier-2 authority is gated even though the mechanism is uniform: bytes
+that reached the spacecraft have proven only that the radio works.
+"""
+verification = "test"
+evidence = "slots_test.py::test_activation_requires_ground_authority; uplink_service_test.py::test_unauthorized_activation_is_refused_over_the_link"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-004"
+statement = """
+Activation shall be refused while the system is in Safe mode.
+"""
+rationale = """
+Safe mode's survival law ships in Tier 1 and is never displaced by an
+uplinked component; hot-swapping during a safing event is precisely
+when you least want new code.
+"""
+verification = "test"
+evidence = "slots_test.py::test_activation_refused_in_safe"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-005"
+statement = """
+Only a version that was received AND verified shall be eligible for
+activation.
+"""
+rationale = "Closes the gap between 'a version was named' and 'those bytes are here and intact'."
+verification = "test"
+evidence = "slots_test.py::test_unstaged_version_cannot_be_activated"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-006"
+statement = """
+Rollback shall restore the previously active version, shall require no
+authority, and shall be available in any mode; slot state shall survive
+a restart.
+"""
+rationale = """
+Reverting to the last known-good version is a toward-safety action, so
+it is never gated — the same asymmetry as mode transitions. Persisted
+state is what lets a rebooted spacecraft know what is actually live.
+"""
+verification = "test"
+evidence = "slots_test.py::test_rollback_restores_the_previous_version, ::test_rollback_needs_no_authority_and_works_in_safe, ::test_slot_state_survives_a_restart; uplink_service_test.py::test_activate_then_rollback_over_the_link"
+status = "verified"
+
+[[requirement]]
+id = "FSW-UPL-007"
+statement = """
+The uplink receiver shall not execute, import, or otherwise act upon a
+received artifact; activation shall move a pointer that consumers read
+at their next start.
+"""
+rationale = """
+The RF path must not be a code-execution path. Making activation a
+pointer move means a bad artifact costs a restart, not a running
+system, and keeps the blast radius of the link inside the file system.
+"""
+verification = "inspection"
+evidence = "flatsat/comms/uplink.py writes bytes and never imports them; flatsat/comms/slots.py copies files and updates ArtifactSlots state; uplink_service_test.py::test_artifact_crosses_the_link_and_stages asserts arrival activates nothing"
+status = "verified"
