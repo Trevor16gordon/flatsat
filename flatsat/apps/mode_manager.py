@@ -8,7 +8,7 @@ lands in Safe — the boot policy is the default path, not a handler.
 
 Usage:
   python -m flatsat.apps.mode_manager
-  python -m flatsat.apps.mode_manager --vehicle other.toml
+  python -m flatsat.apps.mode_manager --vehicle other.txtpb
 """
 
 from __future__ import annotations

@@ -95,6 +95,14 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Proto tree unified (2026-07-28).** Wire-contract protos moved from
+`protos/` into `flatsat/msgs/` beside their bindings: ONE codegen
+mechanism for every schema (repo-root import path, colocated output, no
+import-rewrite postprocessing), and cross-imports between wire and
+config schemas now work — `ModeHealth.mode` is properly typed as
+`SystemMode` (wire-compatible: enum and int32 are both varints). The
+package now carries every schema it speaks and is configured by.
+
 **Config-as-protos rewrite (2026-07-28).** All config schemas moved into
 colocated protos; every config file is now a strictly-parsed `.txtpb`
 (vehicle, devices, missions). Driver/strategy/estimator selection via
@@ -704,13 +712,12 @@ flatsat/                       # repo root
 │   ├── mode/                  #   (future) system state machine — imports core only
 │   ├── telemetry/             #   (future) recorder
 │   ├── apps/                  #   thin generic executables: daemons + control loop
-│   ├── msgs/                  #   generated protobuf bindings (committed)
+│   ├── msgs/                  #   wire-contract protos + committed bindings (config protos sit beside their owners)
 │   └── sim/                   #   Basilisk bridge — the universe-fake, never on flight computer
 ├── config/                    # data, not code
 │   ├── vehicles/*.toml        #   WHAT a spacecraft IS: composition + [body] + mounting (+[power] later)
 │   └── devices/*.toml         #   device-intrinsic: datasheet envelopes + per-serial calibration
 ├── deployment.toml            # RT policy / core role / memory, per component
-├── protos/                    # wire contracts: hal, adcs, mode, health (source of truth)
 ├── requirements/*.toml        # requirements + verification method + evidence
 ├── radio/                     # experiments bench — proven code GRADUATES into flatsat/comms/
 ├── tools/                     # gen-protos, gen-units, install-units, traceability,

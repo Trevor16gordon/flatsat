@@ -1,47 +1,34 @@
 #!/usr/bin/env bash
-# Regenerate Python protobuf bindings + mypy stubs from protos/.
+# Regenerate Python protobuf bindings + mypy stubs for every schema.
 #
-# protos/*.proto are the single source of truth for inter-service interfaces.
-# Generated files (flatsat/msgs/*_pb2.py + .pyi) are COMMITTED so CI and fresh
-# clones need no protoc; re-run this script after any .proto change and commit
-# the result. Generated files are excluded from ruff/mypy gates (pyproject +
-# pre-commit hook excludes) — hand-written code importing them is still fully
+# Protos are the single source of truth for BOTH inter-service wire
+# contracts (flatsat/msgs/*.proto) and configuration schemas (colocated
+# with their owners: flatsat/vehicle.proto, flatsat/hardware/devices.proto,
+# per-driver options, ...). All compile with the repo root as the import
+# path, so imports read `import "flatsat/msgs/hal.proto";` and bindings
+# land NEXT TO their proto with correct package-absolute imports — no
+# postprocessing.
+#
+# Generated files are COMMITTED so CI and fresh clones need no protoc;
+# re-run this script after any .proto change and commit the result (the
+# CI proto-drift job fails if you forget). Generated files are excluded
+# from ruff/mypy gates — hand-written code importing them is still fully
 # checked via the .pyi stubs.
 #
-# C++ codegen is deliberately deferred until a C++ consumer exists (~M2, the
-# F´ bridge): same .proto files, add --cpp_out here when that day comes.
+# C++ codegen is deliberately deferred until a C++ consumer exists (~M2,
+# the F´ bridge): same .proto files, add --cpp_out here when that day comes.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="${FLATSAT_ML_VENV:-$HOME/venvs/flatsat-ml}"
-OUT="$REPO/flatsat/msgs"
 
-mkdir -p "$OUT"
-"$VENV/bin/python" -m grpc_tools.protoc -I "$REPO/protos" \
-  --plugin=protoc-gen-mypy="$VENV/bin/protoc-gen-mypy" \
-  --python_out="$OUT" \
-  --mypy_out="$OUT" \
-  "$REPO"/protos/*.proto
-
-# CONFIG schemas live COLOCATED with their owners (flatsat/**/*.proto) and
-# generate colocated bindings: a proto at flatsat/hardware/devices.proto
-# yields flatsat/hardware/devices_pb2.py right next to it, with correct
-# package-absolute imports — no sed needed. Config files (config/*.txtpb)
-# are textproto instances of these schemas; the editor resolves them via
-# their `# proto-file:` headers.
-CONFIG_PROTOS=$(find "$REPO/flatsat" -name '*.proto' | sort)
+PROTOS=$(find "$REPO/flatsat" -name '*.proto' | sort)
 "$VENV/bin/python" -m grpc_tools.protoc -I "$REPO" \
   --plugin=protoc-gen-mypy="$VENV/bin/protoc-gen-mypy" \
   --python_out="$REPO" \
   --mypy_out="$REPO" \
-  $CONFIG_PROTOS
+  $PROTOS
 
-# protoc emits flat sibling imports (`import hal_pb2`) that assume the output
-# dir is on sys.path; rewrite them package-relative so the modules work as
-# flatsat.msgs.* without path hacks.
-sed -i -E 's/^import ([a-z0-9_]+_pb2) as/from flatsat.msgs import \1 as/' "$OUT"/*_pb2.py
-sed -i -E 's/^import ([a-z0-9_]+_pb2)$/from flatsat.msgs import \1/' "$OUT"/*_pb2.pyi
-
-echo "generated into $OUT:"
-ls -la "$OUT"
+echo "generated bindings for:"
+echo "$PROTOS" | sed "s|$REPO/||"

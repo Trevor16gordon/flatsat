@@ -16,11 +16,12 @@ always be traced to the parameters that produced it.
 """
 
 from collections import abc as _abc
+from flatsat.msgs import hal_pb2 as _hal_pb2
+from flatsat.msgs import mode_pb2 as _mode_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf.internal import containers as _containers
 import builtins as _builtins
-import hal_pb2 as _hal_pb2
 import sys
 import typing as _typing
 
@@ -271,8 +272,7 @@ class ModeHealth(_message.Message):
     REJECTED_REQUESTS_FIELD_NUMBER: _builtins.int
     SAFE_ENTRIES_FIELD_NUMBER: _builtins.int
     MISSING_ACKS_FIELD_NUMBER: _builtins.int
-    mode: _builtins.int
-    """current SystemMode (numeric; mode.proto)"""
+    mode: _mode_pb2.SystemMode.ValueType
     mode_seq: _builtins.int
     transitions: _builtins.int
     """accepted transitions since start"""
@@ -290,7 +290,7 @@ class ModeHealth(_message.Message):
         self,
         *,
         header: _hal_pb2.Header | None = ...,
-        mode: _builtins.int = ...,
+        mode: _mode_pb2.SystemMode.ValueType = ...,
         mode_seq: _builtins.int = ...,
         transitions: _builtins.int = ...,
         rejected_requests: _builtins.int = ...,

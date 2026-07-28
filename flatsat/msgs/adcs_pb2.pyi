@@ -9,10 +9,10 @@ the INPUTS the command was computed from (a command computed from stale
 sensor data says so, rather than pretending).
 """
 
+from flatsat.msgs import hal_pb2 as _hal_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 import builtins as _builtins
-import hal_pb2 as _hal_pb2
 import sys
 import typing as _typing
 

@@ -11,10 +11,10 @@ consumes these topics directly — only drivers do. Truth is exactly what
 a robustness campaign later perturbs on purpose (truth_overrides).
 """
 
+from flatsat.msgs import hal_pb2 as _hal_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 import builtins as _builtins
-import hal_pb2 as _hal_pb2
 import sys
 import typing as _typing
 

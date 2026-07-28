@@ -9,7 +9,7 @@ syntax = "proto3";
 
 package flatsat.v1;
 
-import "hal.proto";
+import "flatsat/msgs/hal.proto";
 
 // Reaction-wheel torque command, body frame, SI units.
 message WheelTorqueCommand {

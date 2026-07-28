@@ -9,7 +9,7 @@ vitals are telemetry like everything else's.
 
 Usage:
   python -m flatsat.apps.telemetry_recorder
-  python -m flatsat.apps.telemetry_recorder --vehicle other.toml
+  python -m flatsat.apps.telemetry_recorder --vehicle other.txtpb
 """
 
 from __future__ import annotations

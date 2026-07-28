@@ -11,7 +11,7 @@ syntax = "proto3";
 
 package flatsat.v1;
 
-import "hal.proto";
+import "flatsat/msgs/hal.proto";
 
 // Rigid-body truth from the physics engine, one message per sim step.
 message TruthState {

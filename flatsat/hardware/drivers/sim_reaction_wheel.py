@@ -3,7 +3,7 @@
 Interchangeable with a hardware wheel driver by construction — same
 ``apply``/``state`` contract, same message, same validity semantics. The
 device physics live in the shared :class:`~flatsat.hardware.models.wheel.
-WheelModel`, driven by the spec in ``config/devices/*.toml``, so this
+WheelModel`, driven by the spec in ``config/devices/*.txtpb``, so this
 fake and the Basilisk-fed one saturate exactly where the wheel that
 exists would.
 

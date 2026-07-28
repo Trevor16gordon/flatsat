@@ -212,7 +212,7 @@ class ModeManager:
         missing = self.missing_acks()
         with self._lock:
             msg = health_pb2.ModeHealth()
-            msg.mode = int(self._machine.mode)
+            msg.mode = self._machine.mode
             msg.mode_seq = self._machine.mode_seq
             msg.transitions = self._machine.transitions
             msg.rejected_requests = self._machine.rejected_requests

@@ -17,7 +17,7 @@ and installed by tools/install-units.sh.
 
 Usage:
   ~/venvs/flatsat-ml/bin/python tools/gen-units.py
-  ... --vehicle config/vehicles/other.toml --profile tools/host-profiles/x.env
+  ... --vehicle config/vehicles/other.txtpb --profile tools/host-profiles/x.env
 """
 
 from __future__ import annotations

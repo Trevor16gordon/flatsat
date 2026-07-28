@@ -47,11 +47,15 @@ one by name through `core/registry.py` (lazy `module:Class` indirection, so
 a board without CUDA can run a thermal daemon, and so remotely-installed
 components can register new names).
 
-Outside the package: `config/` (data), `protos/` (wire contracts),
-`requirements/` (verified spec), `deployment.toml` + `tools/host-profiles/`
-(where and how things run), `radio/` (experiments bench), and — on first
-consumer, not before — `cdh/` (the F´ deployment, own build system) and
-`cpp/` (when a measured trigger demands a port).
+Outside the package: `config/` (data — textproto instances of the proto
+schemas), `requirements/` (verified spec), `deployment.toml` +
+`tools/host-profiles/` (where and how things run), `radio/` (experiments
+bench), and — on first consumer, not before — `cdh/` (the F´ deployment,
+own build system) and `cpp/` (when a measured trigger demands a port).
+Proto schemas live INSIDE the package, colocated with their owners: wire
+contracts in `flatsat/msgs/*.proto`, config schemas beside the code they
+configure. One `tools/gen-protos.sh` run generates every binding next to
+its proto; the same files feed C++ when that consumer arrives.
 
 ## The contracts
 

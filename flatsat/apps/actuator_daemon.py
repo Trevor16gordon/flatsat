@@ -24,7 +24,7 @@ exactly one period), so scheduling lateness never accumulates into drift.
 
 Usage:
   python -m flatsat.apps.actuator_daemon --actuator wheel0
-  python -m flatsat.apps.actuator_daemon --actuator wheel0 --vehicle other.toml
+  python -m flatsat.apps.actuator_daemon --actuator wheel0 --vehicle other.txtpb
 """
 
 from __future__ import annotations

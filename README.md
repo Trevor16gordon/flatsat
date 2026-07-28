@@ -70,7 +70,7 @@ CI.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Package layout, contracts, config views, versioning tiers |
 | `flatsat/` | The package — everything that ships to a flight computer |
 | `config/` | Vehicles (what a spacecraft IS) and devices (datasheets + calibration) |
-| `protos/` | Wire contracts between every process — source of truth |
+| `flatsat/**/*.proto` | ALL schemas — wire contracts (`flatsat/msgs/`) and config (colocated with owners) — source of truth |
 | `requirements/` | Requirements with verification methods, enforced in CI |
 | `radio/` | RF experiments bench — proven code graduates into `flatsat/comms/` |
 | `tools/` | Setup, codegen, unit generation, traceability, benchmarks, host profiles |

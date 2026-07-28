@@ -12,7 +12,7 @@ exactly one period), so scheduling lateness never accumulates into drift.
 
 Usage:
   python -m flatsat.apps.sensor_daemon --sensor imu0
-  python -m flatsat.apps.sensor_daemon --sensor thermal_tj --vehicle other.toml
+  python -m flatsat.apps.sensor_daemon --sensor thermal_tj --vehicle other.txtpb
 """
 
 from __future__ import annotations

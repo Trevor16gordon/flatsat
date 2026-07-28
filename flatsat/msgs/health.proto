@@ -15,7 +15,8 @@ syntax = "proto3";
 
 package flatsat.v1;
 
-import "hal.proto";
+import "flatsat/msgs/hal.proto";
+import "flatsat/msgs/mode.proto";
 
 // Distribution summary of a per-cycle measurement over one window.
 message Percentiles {
@@ -91,7 +92,7 @@ message RecorderHealth {
 message ModeHealth {
   Header header = 1;
 
-  int32 mode = 2;                 // current SystemMode (numeric; mode.proto)
+  SystemMode mode = 2;
   uint64 mode_seq = 3;
   uint64 transitions = 4;         // accepted transitions since start
   uint64 rejected_requests = 5;   // requests refused (authority, matrix, dwell)

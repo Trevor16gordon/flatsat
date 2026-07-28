@@ -189,4 +189,4 @@ def test_missing_ack_is_surfaced_as_a_fault(
 
     assert missing == ["dead_app"], f"expected only dead_app missing, got {missing}"
     assert list(health.missing_acks) == ["dead_app"]
-    assert health.mode == int(mode_pb2.SYSTEM_MODE_RECOVERY)
+    assert health.mode == mode_pb2.SYSTEM_MODE_RECOVERY
