@@ -12,12 +12,16 @@ from flatsat.core.registry import (
     CONTROLLERS,
     DRIVERS,
     ESTIMATORS,
+    FRAMERS,
     GUIDANCE,
+    MODEMS,
     get_actuator_class,
     get_controller_class,
     get_driver_class,
     get_estimator_class,
+    get_framer_class,
     get_guidance_class,
+    get_modem_class,
 )
 
 
@@ -69,3 +73,13 @@ def test_registry_module_imports_no_domain() -> None:
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
 def test_every_registered_actuator_resolves(name: str) -> None:
     assert callable(get_actuator_class(name).from_config)
+
+
+@pytest.mark.parametrize("name", sorted(MODEMS))
+def test_every_registered_modem_resolves(name: str) -> None:
+    assert callable(get_modem_class(name).from_config)
+
+
+@pytest.mark.parametrize("name", sorted(FRAMERS))
+def test_every_registered_framer_resolves(name: str) -> None:
+    assert callable(get_framer_class(name).from_config)

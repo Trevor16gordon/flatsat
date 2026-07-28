@@ -1,0 +1,108 @@
+# Comms: the managed pipe to the ground.
+#
+# The space link is intermittent, asymmetric, high-BER, and mostly
+# absent (PLAN §6). These requirements are about surviving that channel
+# honestly — and about the layering that lets a learned receiver replace
+# the classical PHY under IDENTICAL framing, which is what makes the
+# eventual comparison meaningful.
+
+[[requirement]]
+id = "FSW-LINK-001"
+statement = """
+The framing layer shall delimit payloads such that a payload handed to
+the transmitter is recovered byte-identically by the receiver.
+"""
+rationale = "The floor everything above the channel stands on."
+verification = "test"
+evidence = "ccsds_test.py::test_round_trip and ::test_frame_split_across_reads"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-002"
+statement = """
+A corrupted frame shall be dropped and counted, never delivered; the
+deframer shall resynchronize and continue delivering subsequent frames.
+"""
+rationale = """
+Silence about corruption would let the link fabricate telemetry —
+strictly worse than losing it. And one bad frame must not poison the
+stream behind it, or a single bit error costs an entire pass.
+"""
+verification = "test"
+evidence = "ccsds_test.py::test_corrupted_frame_is_dropped_and_counted, ::test_good_frame_after_corrupted_one_still_arrives, ::test_leading_garbage_resynchronizes; link_test.py::test_bit_errors_cost_frames_not_correctness"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-003"
+statement = """
+The link shall segment messages larger than one frame and deliver them
+only once every segment has arrived; the topics carried shall be an
+explicit allowlist, never the whole bus.
+"""
+rationale = """
+Segmentation is what makes file uplink possible and bounds the cost of
+a corrupted frame to one segment. Half a model is not a model, so
+partial messages are withheld. The allowlist is PLAN §6's two-bus rule:
+middleware is never tunneled over the space link.
+"""
+verification = "test"
+evidence = "link_test.py::test_large_message_is_segmented_and_reassembled, ::test_partial_message_is_never_delivered; link_service_test.py::test_only_allowlisted_topics_are_carried"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-004"
+statement = """
+Outside a contact window the link shall queue messages rather than
+transmit, and shall drain the queue when a window opens; the queue shall
+be bounded.
+"""
+rationale = """
+Simulated pass geometry is what makes this a spacecraft link rather than
+a network socket — telemetry accumulates between passes and dumps on
+contact. Bounded memory beats an out-of-memory kill in orbit.
+"""
+verification = "test"
+evidence = "link_test.py::test_store_and_forward_holds_traffic_until_contact, ::test_contact_schedule_windows, ::test_queue_is_bounded"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-005"
+statement = """
+A modem capable of radiating shall refuse to transmit unless its
+configuration carries an explicit transmit acknowledgement, shall report
+the refusal as a validity flag, and shall state the gate's status in its
+startup description.
+"""
+rationale = """
+The bench convention (FSW-RADIO-001) becomes structural in flight code:
+an accidentally-deployed configuration cannot radiate. Receiving needs
+no gate — listening radiates nothing.
+"""
+verification = "test"
+evidence = "pluto_gmsk_test.py::test_transmit_refused_without_acknowledgement and ::test_refusal_is_visible_in_describe"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-006"
+statement = """
+A bus message published on one segment's allowlisted topic shall be
+republished on the other segment's bus after crossing the link.
+"""
+rationale = "End to end, the link is invisible to every other process."
+verification = "test"
+evidence = "link_service_test.py::test_telemetry_crosses_the_link_and_is_republished"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-007"
+statement = """
+With the link down, onboard processes shall continue operating
+unaffected; only ground data shall become stale.
+"""
+rationale = """
+PLAN §6's correctness test, stated as a requirement: a spacecraft that
+depends on its ground link to keep flying is not a spacecraft.
+"""
+verification = "test"
+evidence = "link_service_test.py::test_the_spacecraft_keeps_working_with_the_link_dead"
+status = "verified"

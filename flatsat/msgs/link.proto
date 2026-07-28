@@ -1,0 +1,25 @@
+// Link-layer wire contract — what actually crosses the RF link.
+//
+// The middleware is NEVER tunneled over the space link (PLAN §6):
+// discovery chatter and reliable-QoS retransmission would melt down on
+// an intermittent, high-BER, mostly-absent pipe. Instead the link
+// service explicitly carries NAMED bus messages as datagrams, stores
+// them between passes, and transmits during contact windows; the ground
+// mirror deframes and republishes. To every other process the link is
+// invisible; underneath it is a managed store-and-forward pipe.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// One segment of one logical message. Large payloads (a model artifact,
+// a telemetry batch) span many segments; small ones are a single
+// segment with total = 1. Segments are the unit the PHY carries, so a
+// corrupted frame costs one segment, not the whole message.
+message LinkSegment {
+  uint64 message_id = 1;  // per-sender message counter
+  uint32 index = 2;       // 0-based segment index
+  uint32 total = 3;       // segments in this message
+  string topic = 4;       // destination bus key on the far side
+  bytes chunk = 5;        // this segment's slice of the payload
+}

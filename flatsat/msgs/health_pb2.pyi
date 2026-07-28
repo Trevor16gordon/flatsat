@@ -340,3 +340,51 @@ class FdirHealth(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___FdirHealth: _TypeAlias = FdirHealth  # noqa: Y015
+
+@_typing.final
+class LinkHealth(_message.Message):
+    """Health of the link service over one reporting window."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    IN_CONTACT_FIELD_NUMBER: _builtins.int
+    QUEUED_MESSAGES_FIELD_NUMBER: _builtins.int
+    FRAMES_SENT_FIELD_NUMBER: _builtins.int
+    FRAMES_RECEIVED_FIELD_NUMBER: _builtins.int
+    FRAMES_DROPPED_CRC_FIELD_NUMBER: _builtins.int
+    MESSAGES_DELIVERED_FIELD_NUMBER: _builtins.int
+    MESSAGES_INCOMPLETE_FIELD_NUMBER: _builtins.int
+    in_contact: _builtins.bool
+    """inside a pass window right now"""
+    queued_messages: _builtins.int
+    """stored, awaiting the next contact"""
+    frames_sent: _builtins.int
+    frames_received: _builtins.int
+    frames_dropped_crc: _builtins.int
+    """corrupted frames the framer rejected"""
+    messages_delivered: _builtins.int
+    """fully reassembled and republished"""
+    messages_incomplete: _builtins.int
+    """aged out with segments missing"""
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        in_contact: _builtins.bool = ...,
+        queued_messages: _builtins.int = ...,
+        frames_sent: _builtins.int = ...,
+        frames_received: _builtins.int = ...,
+        frames_dropped_crc: _builtins.int = ...,
+        messages_delivered: _builtins.int = ...,
+        messages_incomplete: _builtins.int = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["frames_dropped_crc", b"frames_dropped_crc", "frames_received", b"frames_received", "frames_sent", b"frames_sent", "header", b"header", "in_contact", b"in_contact", "messages_delivered", b"messages_delivered", "messages_incomplete", b"messages_incomplete", "queued_messages", b"queued_messages"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___LinkHealth: _TypeAlias = LinkHealth  # noqa: Y015

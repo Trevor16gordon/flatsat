@@ -26,6 +26,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # contract types for signatures only — never imported at runtime
+    from flatsat.comms.framing.framer import Framer
+    from flatsat.comms.modem import Modem
     from flatsat.control.attitude.controller import AttitudeController
     from flatsat.control.attitude.estimators.estimator import StateEstimator
     from flatsat.control.attitude.guidance import ReferenceSource
@@ -56,6 +58,15 @@ GUIDANCE: dict[str, str] = {
 
 ESTIMATORS: dict[str, str] = {
     "passthrough": "flatsat.control.attitude.estimators.passthrough:PassthroughEstimator",
+}
+
+MODEMS: dict[str, str] = {
+    "loopback": "flatsat.comms.phy.loopback:LoopbackModem",
+    "pluto_gmsk": "flatsat.comms.phy.pluto_gmsk:PlutoGmskModem",
+}
+
+FRAMERS: dict[str, str] = {
+    "ccsds": "flatsat.comms.framing.ccsds:CcsdsFramer",
 }
 
 
@@ -128,6 +139,32 @@ def get_guidance_class(name: str) -> type[ReferenceSource]:
         The reference-source class (call ``from_config`` to instantiate).
     """
     resolved: type[ReferenceSource] = _resolve(GUIDANCE, name, "guidance")
+    return resolved
+
+
+def get_modem_class(name: str) -> type[Modem]:
+    """Resolve a modem (PHY) by registry name.
+
+    Args:
+        name: The comms block's filled ``modem`` oneof field.
+
+    Returns:
+        The modem class (call ``from_config`` to instantiate).
+    """
+    resolved: type[Modem] = _resolve(MODEMS, name, "modem")
+    return resolved
+
+
+def get_framer_class(name: str) -> type[Framer]:
+    """Resolve a framer by registry name.
+
+    Args:
+        name: The comms block's filled ``framer`` oneof field.
+
+    Returns:
+        The framer class (call ``from_config`` to instantiate).
+    """
+    resolved: type[Framer] = _resolve(FRAMERS, name, "framer")
     return resolved
 
 

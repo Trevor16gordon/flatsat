@@ -253,6 +253,19 @@ def main() -> int:
     (args.out / "flatsat-mode.service").write_text(mode_unit)
     written.append("flatsat-mode.service")
 
+    if vehicle.comms.WhichOneof("modem") is not None:
+        link_unit = render_service(
+            unit_name="link",
+            description=f"link service ({which_impl(vehicle.comms, 'modem', 'comms')}) "
+            f"— {vehicle.name}",
+            exec_args=["-m", "flatsat.apps.link_service", "--vehicle", str(vehicle_rel)],
+            deploy=deployment.get("link", {}),
+            profile=profile,
+            header=header,
+        )
+        (args.out / "flatsat-link.service").write_text(link_unit)
+        written.append("flatsat-link.service")
+
     if len(vehicle.fdir.rules) > 0:
         fdir_unit = render_service(
             unit_name="fdir",

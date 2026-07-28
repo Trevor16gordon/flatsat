@@ -108,3 +108,16 @@ message FdirHealth {
   repeated string tripped = 3;  // rules currently tripped
   uint64 safe_requests = 4;     // safings requested since start
 }
+
+// Health of the link service over one reporting window.
+message LinkHealth {
+  Header header = 1;
+
+  bool in_contact = 2;            // inside a pass window right now
+  uint64 queued_messages = 3;     // stored, awaiting the next contact
+  uint64 frames_sent = 4;
+  uint64 frames_received = 5;
+  uint64 frames_dropped_crc = 6;  // corrupted frames the framer rejected
+  uint64 messages_delivered = 7;  // fully reassembled and republished
+  uint64 messages_incomplete = 8; // aged out with segments missing
+}

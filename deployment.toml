@@ -45,3 +45,8 @@ memory_max = "128M"
 memory_max = "128M"
 # no core_role, dependency-minimal: the safing path must not depend on
 # anything that can be the reason for safing
+
+[link]
+memory_max = "256M"
+# no core_role: the link is store-and-forward housekeeping; the RT core
+# stays clean. Restart= gives the radio path FDIR tier 1 for free.

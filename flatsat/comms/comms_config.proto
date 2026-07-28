@@ -1,0 +1,74 @@
+// COMMS COMPOSITION SCHEMA — the comms block of a vehicle file.
+//
+// Every layer is selected by a oneof whose FIELD NAME is the registry
+// key, so the PHY and the framing swap independently and by config
+// alone: a Pluto GMSK modem, a lossy in-process loopback for campaigns
+// and CI, and (later) a learned receiver are peer implementations under
+// identical framing — which is what makes the learned-vs-classical
+// comparison honest.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// ---------------------------------------------------------------- PHY --
+
+// In-process loopback: no hardware, no RF. Transmitted frames land in
+// the paired receiver, optionally corrupted — the honest test PHY and
+// the BER-campaign rig that needs no radio.
+message LoopbackModemOptions {
+  string channel = 1;             // paired endpoints share a channel name
+  optional double frame_loss = 2; // fraction of frames dropped; absent = 0
+  optional double bit_error_rate = 3;  // per-bit flip probability; absent = 0
+  optional uint32 seed = 4;       // corruption RNG seed; absent = unseeded
+}
+
+// ADALM-Pluto over GNU Radio, GMSK — the proven baseline PHY (BER 0.00
+// framed loopback, 2026-07-23). RF SAFETY: transmit is refused unless
+// transmit_ack is explicitly true, mirroring the radio scripts'
+// --transmit gate (FSW-RADIO-001); receive needs no acknowledgement.
+message PlutoGmskModemOptions {
+  string uri = 1;                   // e.g. "ip:192.168.2.1"
+  double center_freq_hz = 2;
+  double sample_rate_hz = 3;
+  optional double offset_hz = 4;    // keep energy OFF DC (zero-IF lesson); absent = 250e3
+  optional uint32 samples_per_symbol = 5;  // absent = 8
+  optional int32 tx_attenuation_db = 6;    // absent = 60 (near-minimum power)
+  bool transmit_ack = 7;            // MUST be true to enable TX. Cabled + 30 dB pads only.
+}
+
+// -------------------------------------------------------------- framing --
+
+// CCSDS-style: attached sync marker, length, payload, CRC-32. A
+// corrupted frame is DROPPED and counted, never delivered — the link's
+// flag-and-forward equivalent.
+message CcsdsFramerOptions {
+  optional uint32 max_payload_bytes = 1;  // sanity bound on the length field; absent = 4096
+}
+
+// ------------------------------------------------------------------ link --
+
+// Simulated pass geometry: the radio is gated even though both radios
+// sit on one desk. Telemetry accumulates between passes and dumps on
+// contact (PLAN §6). Absent = always in contact.
+message ContactScheduleConfig {
+  double period_s = 1;    // pass repeat interval
+  double duration_s = 2;  // contact length within each period
+}
+
+message CommsConfig {
+  // Bus topics whose messages are queued for downlink. Explicit by
+  // design — the link carries named traffic, never the whole bus.
+  repeated string downlink_topics = 1;
+  optional uint32 segment_bytes = 2;   // payload bytes per segment; absent = 512
+  optional uint32 queue_limit = 3;     // stored messages between passes; absent = 10000
+  ContactScheduleConfig contact = 4;   // absent = always in contact
+
+  oneof modem {
+    LoopbackModemOptions loopback = 10;
+    PlutoGmskModemOptions pluto_gmsk = 11;
+  }
+  oneof framer {
+    CcsdsFramerOptions ccsds = 20;
+  }
+}

@@ -1,0 +1,36 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# COMMS TEST VEHICLE — the link stack on a loopback channel, no radio.
+# Every topic is test-only. Used by link-service and uplink tests, which
+# must run anywhere (Jetson, Mac, CI) with no hardware.
+
+name: "test-comms"
+description: "Link-stack test vehicle: loopback PHY, CCSDS framing, continuous contact"
+
+sensors {
+  name: "comms_imu"
+  topic: "test/comms/hal/imu0/sample"
+  rate_hz: 10
+  basilisk_imu {
+    spec: "config/devices/imu0.txtpb"
+    truth_topic: "test/comms/sim/truth"
+  }
+}
+
+control {
+  rate_hz: 10
+  input_topic: "test/comms/hal/imu0/sample"
+  output_topic: "test/comms/adcs/torque"
+  stale_after_s: 0.5
+  rate_damping { kp: 0.02 kd: 0.005 max_torque_n_m: 0.05 }
+}
+
+comms {
+  # Explicit allowlist: the link carries NAMED traffic, never the bus.
+  downlink_topics: ["test/comms/hal/**", "test/comms/health/**"]
+  segment_bytes: 256
+  queue_limit: 1000
+  loopback { channel: "test/comms/channel" seed: 11 }
+  ccsds {}
+}

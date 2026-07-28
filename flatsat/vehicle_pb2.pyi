@@ -17,6 +17,7 @@ different flight computers.
 """
 
 from collections import abc as _abc
+from flatsat.comms import comms_config_pb2 as _comms_config_pb2
 from flatsat.control.attitude import control_options_pb2 as _control_options_pb2
 from flatsat.control.health import fdir_config_pb2 as _fdir_config_pb2
 from flatsat.hardware.drivers import driver_options_pb2 as _driver_options_pb2
@@ -264,6 +265,7 @@ class VehicleConfig(_message.Message):
     MODE_FIELD_NUMBER: _builtins.int
     TELEMETRY_FIELD_NUMBER: _builtins.int
     FDIR_FIELD_NUMBER: _builtins.int
+    COMMS_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     description: _builtins.str
     @_builtins.property
@@ -288,6 +290,10 @@ class VehicleConfig(_message.Message):
     def fdir(self) -> _fdir_config_pb2.FdirConfig:
         """absent = no fault rules (no fdir service)"""
 
+    @_builtins.property
+    def comms(self) -> _comms_config_pb2.CommsConfig:
+        """absent = no link service"""
+
     def __init__(
         self,
         *,
@@ -300,10 +306,11 @@ class VehicleConfig(_message.Message):
         mode: _mode_config_pb2.ModeConfig | None = ...,
         telemetry: _telemetry_config_pb2.TelemetryConfig | None = ...,
         fdir: _fdir_config_pb2.FdirConfig | None = ...,
+        comms: _comms_config_pb2.CommsConfig | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["body", b"body", "control", b"control", "fdir", b"fdir", "mode", b"mode", "telemetry", b"telemetry"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["body", b"body", "comms", b"comms", "control", b"control", "fdir", b"fdir", "mode", b"mode", "telemetry", b"telemetry"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["actuators", b"actuators", "body", b"body", "control", b"control", "description", b"description", "fdir", b"fdir", "mode", b"mode", "name", b"name", "sensors", b"sensors", "telemetry", b"telemetry"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["actuators", b"actuators", "body", b"body", "comms", b"comms", "control", b"control", "description", b"description", "fdir", b"fdir", "mode", b"mode", "name", b"name", "sensors", b"sensors", "telemetry", b"telemetry"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
