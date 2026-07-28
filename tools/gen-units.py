@@ -142,6 +142,15 @@ def render_service(
         "Restart=on-failure",
         "RestartSec=1",
     ]
+    if profile.get("RUN_USER"):
+        # Flight code holds no root. Without this, systemd system units
+        # run as root — and every "~" in the configuration (telemetry
+        # archive, clean-shutdown marker) silently lands in /root.
+        lines.append(f"User={profile['RUN_USER']}")
+    if deploy.get("rt_policy"):
+        # mlockall needs RLIMIT_MEMLOCK once the service is unprivileged;
+        # grant it here, declaratively, like the scheduling policy.
+        lines.append("LimitMEMLOCK=infinity")
     affinity = resolve_affinity(deploy.get("core_role"), profile)
     if affinity:
         lines.append(f"CPUAffinity={affinity}")
