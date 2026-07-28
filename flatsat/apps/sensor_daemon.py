@@ -111,6 +111,10 @@ class SensorDaemon:
         """Request the run loop to exit (idempotent, thread-safe)."""
         self._stop.set()
 
+    def close(self) -> None:
+        """Release the driver's device resources."""
+        self._driver.close()
+
 
 def build_daemon(
     sensor_name: str, session: zenoh.Session, vehicle_path: Path | None = None
@@ -158,6 +162,7 @@ def main() -> int:
     except KeyboardInterrupt:
         daemon.stop()
     finally:
+        daemon.close()
         session.close()
     return 0
 

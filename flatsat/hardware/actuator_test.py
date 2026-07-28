@@ -47,19 +47,25 @@ def test_projection_orthogonal_command_is_zero() -> None:
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
 def test_registry_builds_every_actuator_driver(name: str) -> None:
     driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
-    assert isinstance(driver, ActuatorDriver)
-    assert driver.describe()
+    try:
+        assert isinstance(driver, ActuatorDriver)
+        assert driver.describe()
+    finally:
+        driver.close()
 
 
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
 @pytest.mark.verifies("FSW-ACT-003")
 def test_every_actuator_applies_and_reports_without_raising(name: str) -> None:
     driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
-    flags = driver.apply(0.01)
-    assert isinstance(flags, int)
-    msg, state_flags = driver.state()
-    assert msg.SerializeToString() is not None
-    assert isinstance(state_flags, int)
+    try:
+        flags = driver.apply(0.01)
+        assert isinstance(flags, int)
+        msg, state_flags = driver.state()
+        assert msg.SerializeToString() is not None
+        assert isinstance(state_flags, int)
+    finally:
+        driver.close()
 
 
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
@@ -67,6 +73,9 @@ def test_every_actuator_applies_and_reports_without_raising(name: str) -> None:
 def test_every_actuator_survives_absurd_commands(name: str) -> None:
     """Infinite or huge commands degrade to flags, never to exceptions."""
     driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
-    for command in (1e9, -1e9, 0.0):
-        flags = driver.apply(command)
-        assert isinstance(flags, int)
+    try:
+        for command in (1e9, -1e9, 0.0):
+            flags = driver.apply(command)
+            assert isinstance(flags, int)
+    finally:
+        driver.close()

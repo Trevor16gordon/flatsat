@@ -23,7 +23,7 @@ starts at 1 and increases strictly monotonically.
 """
 rationale = "Gap and duplicate detection downstream depends on it."
 verification = "test"
-evidence = "sensor_daemon_test.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+evidence = "sensor_daemon_test.py::test_basilisk_imu_daemon_publishes_contract_compliant_samples"
 status = "verified"
 
 [[requirement]]
@@ -37,7 +37,7 @@ Consumers must be able to distinguish acquisition age from transport delay;
 FDIR staleness rules depend on the difference.
 """
 verification = "test"
-evidence = "sensor_daemon_test.py::test_sim_gyro_driver_publishes_contract_compliant_samples"
+evidence = "sensor_daemon_test.py::test_basilisk_imu_daemon_publishes_contract_compliant_samples"
 status = "verified"
 
 [[requirement]]
@@ -66,7 +66,7 @@ A hardware-in-the-loop run only means something if the simulated sensor is
 the sensor that exists. Duplicated constants drift silently.
 """
 verification = "test"
-evidence = "config_test.py::test_specs_load_with_provenance and the shared config/devices/imu0.toml consumed by both sim_gyro and flatsat/sim/basilisk_hil.py"
+evidence = "config_test.py::test_specs_load_with_provenance; config/devices/imu0.toml drives the shared corruption model (hardware/models/imu.py) inside basilisk_imu, and basilisk_imu_test.py pins the corruption to it"
 status = "verified"
 
 [[requirement]]

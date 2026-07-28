@@ -147,7 +147,7 @@ exited spun the simulated vehicle back up. An actuator must not keep flying
 a dead controller's last order.
 """
 verification = "test"
-evidence = "basilisk_hil_test.py::test_torque_sink_zeroes_when_commands_stop"
+evidence = "basilisk_hil_test.py::test_wheel_sink_zeroes_when_feedback_stops (bridge defense-in-depth) and actuator_daemon_test.py::test_daemon_zeroes_when_commands_stop (flight-side primary, FSW-ACT-001)"
 status = "verified"
 
 [[requirement]]
@@ -188,4 +188,36 @@ versus 0 at +250 kHz).
 """
 verification = "analysis"
 evidence = "GMSK data loopback run 1 vs run 2 (PLAN.md §0, 2026-07-23): 0/40 frames clean at DC, 113/113 clean and BER 0.00 offset-tuned"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SIM-003"
+statement = """
+The simulation bridge shall derive its physical plant — body mass,
+inertia, and per-wheel torque mapping — from the same vehicle file the
+flight software reads.
+"""
+rationale = """
+Sim/flight disagreement about the spacecraft must be impossible by
+accident; deliberate divergence is a future robustness-campaign knob
+(truth_overrides), never a side effect of duplicated constants.
+"""
+verification = "test"
+evidence = "basilisk_hil_test.py::test_plant_is_built_from_the_vehicle_file"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SIM-004"
+statement = """
+A simulation-fed sensor driver with no fresh truth shall publish
+STALE-flagged samples at full cadence rather than stopping or freezing
+the last value.
+"""
+rationale = """
+The bench without a ground machine is the same vehicle file; the correct
+quiet state is an honest degraded sensor, not silence and not a stale
+value passed off as a measurement.
+"""
+verification = "test"
+evidence = "basilisk_imu_test.py::test_no_truth_reads_stale_flagged_zeros and sensor_daemon_test.py::test_basilisk_imu_daemon_publishes_contract_compliant_samples"
 status = "verified"

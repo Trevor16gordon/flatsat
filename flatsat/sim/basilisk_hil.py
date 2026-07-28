@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
-"""Basilisk hardware-in-the-loop feed: simulated spacecraft on the flatsat bus.
+"""Basilisk bridge: the universe-fake, slimmed to physics + truth topics.
 
-Runs on the GROUND host (Mac — PLAN §10: the sim computer is never the
-flight computer). A rigid spacecraft tumbles in Basilisk; every simulation
-step this script publishes the body rates as an ``ImuSample`` on
-``hal/imu0/sample`` — the exact message and topic the fake-IMU daemon uses,
-so the ADCS loop on the Jetson cannot tell the difference. That is the HAL
-seam doing its job.
+Runs on the GROUND host (Mac — the sim computer is never the flight
+computer). A rigid spacecraft integrates in Basilisk; every step this
+bridge publishes rigid-body TRUTH on ``sim/truth/state`` and folds each
+wheel's applied axis torque (from the flight-side
+``basilisk_reaction_wheel`` drivers) into the plant.
 
-Time discipline (PLAN §10): the sim is paced to WALL CLOCK by this script
-(absolute-deadline stepping, the same drift-free pattern as the flight
-loops) — the flight software never knows sim time exists.
+The plant is built FROM THE VEHICLE FILE — ``[body]`` mass/inertia, one
+torque input per declared actuator mapped through ITS mounting — so the
+sim's spacecraft and the flight software's model of it cannot diverge by
+accident. Deliberate divergence (a ``truth_overrides`` block: "actual
+inertia 8% higher than believed") is the future robustness-campaign knob.
 
-Closed-loop mode (``--closed-loop``): additionally subscribes to
-``adcs/wheel_torque`` and applies each received ``WheelTorqueCommand`` as
-the external torque on the simulated hub. With the Jetson's PD loop
-running, the spacecraft in the Mac's physics engine detumbles under
-control computed on the flight hardware — the full sim -> flight software
--> actuator loop.
+Device corruption lives in the flight-side drivers (shared
+``hardware/models``), NOT here: flight-clock timestamps, sequence
+numbers, staleness flags, and health telemetry all stay in the daemon
+machinery during HIL. No stopping services, no topic squatting.
 
-Stop the Jetson's synthetic IMU first so two publishers don't fight:
-  sudo systemctl stop flatsat-imu0
+Time discipline: the sim is paced to WALL CLOCK with absolute deadlines
+(the same drift-free pattern as the flight loops); lost time is dropped,
+never replayed — the flight software never knows sim time exists.
 
 Usage (from the repo root, ground venv active):
-  python -m flatsat.sim.basilisk_hil                       # open loop: tumble feed
-  python -m flatsat.sim.basilisk_hil --closed-loop         # apply Jetson torques
+  python -m flatsat.sim.basilisk_hil
   python -m flatsat.sim.basilisk_hil --connect tcp/jetson.local:7447
 """
 
@@ -32,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import random
 import sys
 import threading
 import time
@@ -40,9 +38,11 @@ import time
 import zenoh
 
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import load_imu_spec, load_vehicle
-from flatsat.hardware.models.imu import apply_gyro_model
-from flatsat.msgs import adcs_pb2, hal_pb2
+from flatsat.core.config import VehicleSpec, load_vehicle
+from flatsat.hardware.drivers.basilisk_reaction_wheel import wheel_torque_topic
+from flatsat.msgs import sim_pb2
+
+TRUTH_TOPIC = "sim/truth/state"
 
 
 def open_session(connect: str | None) -> zenoh.Session:
@@ -61,68 +61,88 @@ def open_session(connect: str | None) -> zenoh.Session:
     return zenoh.open(config)
 
 
-class TorqueSink:
-    """Latest wheel-torque command, with a stale-command cutoff.
+def plant_from_vehicle(
+    vehicle: VehicleSpec,
+) -> tuple[float, list[list[float]], list[tuple[str, tuple[float, float, float]]]]:
+    """Derive the simulation plant from the vehicle file.
 
-    The quiet state is the default (PLAN §1): if no fresh command arrives
-    within ``timeout_s``, the applied torque is ZERO — an actuator must
-    never keep flying a dead controller's last order. (First validation run
-    proved the hazard: when the flight loop exited, the sim kept applying
-    the final torque and spun the spacecraft back up.)
+    This is the no-accidental-divergence property as a function: the same
+    ``[body]`` and ``mounting`` entries the flight software reads become
+    the physics engine's parameters.
+
+    Args:
+        vehicle: Loaded vehicle composition.
+
+    Returns:
+        Tuple of (mass_kg, 3x3 inertia matrix as nested lists, list of
+        (wheel name, body-frame spin axis) per declared actuator).
+
+    Raises:
+        KeyError: If the vehicle declares no ``[body]`` physical model.
+    """
+    body = vehicle.require_body()
+    inertia = [list(row) for row in body.inertia_kg_m2]
+    wheels = [(entry.name, entry.mounting.axis) for entry in vehicle.actuators]
+    return body.mass_kg, inertia, wheels
+
+
+class WheelTorqueSink:
+    """Latest applied axis torque from one wheel, with a stale cutoff.
+
+    The flight-side actuator daemon already zeroes on stale commands; this
+    cutoff is the bridge's own defense in depth — if the DAEMON dies, its
+    last feedback message must not keep torquing the plant forever.
     """
 
-    def __init__(self, session: zenoh.Session, topic: str, timeout_s: float = 0.1) -> None:
-        """Subscribe to the command topic.
+    def __init__(self, session: zenoh.Session, wheel: str, timeout_s: float = 0.5) -> None:
+        """Subscribe to one wheel's applied-torque topic.
 
         Args:
             session: Open zenoh session.
-            topic: Command topic to subscribe to.
-            timeout_s: Command age beyond which the applied torque is zero.
+            wheel: Actuator instance name.
+            timeout_s: Feedback age beyond which the contribution is zero.
         """
+        self.wheel = wheel
         self._lock = threading.Lock()
-        self._torque = (0.0, 0.0, 0.0)
+        self._torque = 0.0
         self._recv_ns = 0
         self._timeout_ns = int(timeout_s * 1e9)
-        self.commands_received = 0
-        self._sub = session.declare_subscriber(topic, self._on_command)
+        self.messages_received = 0
+        self._sub = session.declare_subscriber(wheel_torque_topic(wheel), self._on_torque)
 
-    def _on_command(self, sample: zenoh.Sample) -> None:
-        """Store the newest torque command.
+    def _on_torque(self, sample: zenoh.Sample) -> None:
+        """Store the newest applied torque.
 
         Args:
-            sample: Incoming WheelTorqueCommand.
+            sample: Incoming WheelAxisTorque.
         """
-        cmd = adcs_pb2.WheelTorqueCommand.FromString(bytes(sample.payload.to_bytes()))
+        msg = sim_pb2.WheelAxisTorque.FromString(bytes(sample.payload.to_bytes()))
         with self._lock:
-            self._torque = (cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m)
+            self._torque = msg.torque_n_m
             self._recv_ns = time.monotonic_ns()
-            self.commands_received += 1
+            self.messages_received += 1
 
-    def latest(self) -> tuple[float, float, float]:
-        """Return the commanded torque, or zero if the command is stale.
+    def latest(self) -> float:
+        """Return the applied axis torque, or zero if feedback is stale.
 
         Returns:
-            Torque (x, y, z) in N·m; (0, 0, 0) when no fresh command exists.
+            Torque in N·m about the wheel's axis; 0.0 when nothing fresh.
         """
         with self._lock:
-            if time.monotonic_ns() - self._recv_ns > self._timeout_ns:
-                return (0.0, 0.0, 0.0)
+            if self._recv_ns == 0 or time.monotonic_ns() - self._recv_ns > self._timeout_ns:
+                return 0.0
             return self._torque
 
 
 def main() -> int:
-    """Run the simulated spacecraft against the flatsat bus.
+    """Run the physics bridge against the flatsat bus.
 
     Returns:
         0 on clean exit (Ctrl-C).
     """
-    parser = argparse.ArgumentParser(description="Basilisk HIL feed for the flatsat bus.")
+    parser = argparse.ArgumentParser(description="Basilisk physics bridge for the flatsat bus.")
+    parser.add_argument("--vehicle", default=None, help="vehicle composition file")
     parser.add_argument("--rate", type=float, default=100.0, help="sim step + publish rate [Hz]")
-    parser.add_argument(
-        "--closed-loop",
-        action="store_true",
-        help="apply WheelTorqueCommand from the bus to the simulated hub",
-    )
     parser.add_argument(
         "--connect", default=None, help="explicit zenoh endpoint, e.g. tcp/jetson.local:7447"
     )
@@ -132,7 +152,6 @@ def main() -> int:
         help="initial body rates [rad/s], comma-separated",
     )
     parser.add_argument("--report-every", type=float, default=5.0, help="status print period [s]")
-    parser.add_argument("--seed", type=int, default=42, help="sensor-noise RNG seed")
     parser.add_argument(
         "--viz",
         action="store_true",
@@ -165,9 +184,8 @@ def main() -> int:
     from Basilisk.simulation import extForceTorque, spacecraft
     from Basilisk.utilities import SimulationBaseClass, macros
 
-    vehicle = load_vehicle()
-    imu_spec = load_imu_spec()
-    rng = random.Random(args.seed)
+    vehicle = load_vehicle(args.vehicle)
+    mass_kg, inertia, wheels = plant_from_vehicle(vehicle)
     dt_s = 1.0 / args.rate
     omega0 = [float(v) for v in args.omega0.split(",")]
 
@@ -177,8 +195,8 @@ def main() -> int:
 
     sc = spacecraft.Spacecraft()
     sc.ModelTag = "flatsat-sim"
-    sc.hub.mHub = 10.0  # kg — smallsat-ish
-    sc.hub.IHubPntBc_B = [[0.9, 0.0, 0.0], [0.0, 0.8, 0.0], [0.0, 0.0, 0.6]]  # kg m^2
+    sc.hub.mHub = mass_kg  # FROM THE VEHICLE FILE — never a literal here
+    sc.hub.IHubPntBc_B = inertia
     sc.hub.omega_BN_BInit = [[omega0[0]], [omega0[1]], [omega0[2]]]
     sc.hub.sigma_BNInit = [[0.0], [0.0], [0.0]]
     sim.AddModelToTask("dynTask", sc)
@@ -206,14 +224,17 @@ def main() -> int:
             print(f"[sim] recording Vizard playback file: {args.viz_save}")
 
     session = open_session(args.connect)
-    publisher = SamplePublisher(session, vehicle.control.input_topic, imu_spec.name)
-    sink = TorqueSink(session, vehicle.control.output_topic) if args.closed_loop else None
+    truth_pub = SamplePublisher(session, TRUTH_TOPIC, "sim_truth")
+    sinks = [WheelTorqueSink(session, name) for name, _ in wheels]
+    axes = {name: axis for name, axis in wheels}
 
     sim.InitializeSimulation()
-    mode = "CLOSED loop (applying flight torques)" if sink else "open loop (tumble feed only)"
-    for line in imu_spec.describe():
-        print(f"[sim] {line}", flush=True)
-    print(f"[sim] {mode} at {args.rate:g} Hz — Ctrl-C to stop", flush=True)
+    print(
+        f"[sim] plant from {vehicle.provenance.describe()}: mass {mass_kg:g} kg, "
+        f"wheels {[name for name, _ in wheels]}",
+        flush=True,
+    )
+    print(f"[sim] truth on {TRUTH_TOPIC} at {args.rate:g} Hz — Ctrl-C to stop", flush=True)
 
     sim_t_s = 0.0
     period_ns = int(1_000_000_000 / args.rate)
@@ -221,9 +242,16 @@ def main() -> int:
     next_report = time.monotonic() + args.report_every
     try:
         while True:
-            if sink is not None:
-                tx, ty, tz = sink.latest()
-                ext.extTorquePntB_B = [[tx], [ty], [tz]]
+            # Sum every wheel's applied axis torque into a body torque,
+            # through the SAME mounting the flight side used.
+            torque_body = [0.0, 0.0, 0.0]
+            for sink in sinks:
+                u = sink.latest()
+                axis = axes[sink.wheel]
+                torque_body[0] += axis[0] * u
+                torque_body[1] += axis[1] * u
+                torque_body[2] += axis[2] * u
+            ext.extTorquePntB_B = [[torque_body[0]], [torque_body[1]], [torque_body[2]]]
 
             sim_t_s += dt_s
             sim.ConfigureStopTime(macros.sec2nano(sim_t_s))
@@ -231,25 +259,22 @@ def main() -> int:
 
             state = sc.scStateOutMsg.read()
             omega = state.omega_BN_B
-            truth = (float(omega[0]), float(omega[1]), float(omega[2]))
-            # Physics gives truth; the DEVICE SPEC decides what the sensor
-            # reports — same model the flight-side fake IMU and (later) the
-            # real driver use, so HIL exercises the sensor that exists.
-            (gx, gy, gz), flags = apply_gyro_model(truth, imu_spec, rng)
-
-            msg = hal_pb2.ImuSample()
-            msg.gyro_x_rad_s = gx
-            msg.gyro_y_rad_s = gy
-            msg.gyro_z_rad_s = gz
-            msg.temperature_c = imu_spec.temperature_c
-            publisher.publish(msg, validity=flags)
+            sigma = state.sigma_BN
+            truth = sim_pb2.TruthState()
+            truth.omega_x_rad_s = float(omega[0])
+            truth.omega_y_rad_s = float(omega[1])
+            truth.omega_z_rad_s = float(omega[2])
+            truth.sigma_x = float(sigma[0])
+            truth.sigma_y = float(sigma[1])
+            truth.sigma_z = float(sigma[2])
+            truth_pub.publish(truth)
 
             now = time.monotonic()
             if now >= next_report:
                 rate_mag = math.sqrt(sum(float(w) ** 2 for w in omega))
-                extra = f", cmds rx {sink.commands_received}" if sink else ""
+                rx = ", ".join(f"{s.wheel} rx {s.messages_received}" for s in sinks)
                 print(
-                    f"[sim] t={sim_t_s:7.1f}s  |omega|={rate_mag * 1000.0:7.2f} mrad/s{extra}",
+                    f"[sim] t={sim_t_s:7.1f}s  |omega|={rate_mag * 1000.0:7.2f} mrad/s  {rx}",
                     flush=True,
                 )
                 next_report += args.report_every

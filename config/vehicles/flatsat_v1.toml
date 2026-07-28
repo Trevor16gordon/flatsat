@@ -6,7 +6,7 @@
 # shape — not different code:
 #
 #   * more/fewer sensors   -> add or remove [[sensors]] entries
-#   * simulated vs real    -> change `driver` (sim_gyro -> imu_bno055, ...)
+#   * simulated vs real    -> change `driver` (basilisk_imu -> imu_bno055, ...)
 #   * PD vs PID vs ML      -> change `strategy` and its options
 #   * detumble vs pointing -> change `objective` and its options
 #
@@ -16,7 +16,7 @@
 # different flight computers.
 
 name = "flatsat-v1"
-description = "Bench flat-sat: simulated gyro + wheel + Jetson housekeeping, PD detumble"
+description = "Flat-sat: Basilisk-fed IMU + wheel, Jetson housekeeping, PD detumble"
 
 # Physical model — integration truth, read by flight software AND by the
 # sim bridge to build its plant, so the two cannot disagree by accident.
@@ -24,14 +24,17 @@ description = "Bench flat-sat: simulated gyro + wheel + Jetson housekeeping, PD 
 mass_kg = 10.0
 inertia_kg_m2 = [[0.9, 0.0, 0.0], [0.0, 0.8, 0.0], [0.0, 0.0, 0.6]]
 
+# ONE vehicle file serves bench and HIL — only the Mac's presence differs.
+# With no bridge running this is the correct quiet state: imu0 publishes
+# STALE-flagged samples on cadence, commands self-flag, the wheel zeroes.
 [[sensors]]
 name = "imu0"
-driver = "sim_gyro"          # swap for a hardware driver; nothing else changes
+driver = "basilisk_imu"      # swap for a hardware driver; nothing else changes
 topic = "hal/imu0/sample"
 rate_hz = 100.0
-spec = "config/devices/imu0.toml"    # device characteristics, shared with the sim
-amplitude_rad_s = 0.05
-period_s = 20.0
+spec = "config/devices/imu0.toml"  # device characteristics, shared corruption model
+truth_topic = "sim/truth/state"    # where the bridge publishes physics truth
+stale_after_s = 0.5
 
 [[sensors]]
 name = "thermal_tj"
@@ -42,7 +45,7 @@ zone = "tj-thermal"
 
 [[actuators]]
 name = "wheel0"
-driver = "sim_reaction_wheel"          # swap for a hardware driver; nothing else changes
+driver = "basilisk_reaction_wheel"     # sim_reaction_wheel = local-only alternative
 command_topic = "adcs/wheel_torque"    # body-frame torque from the control loop
 state_topic = "hal/wheel0/state"
 rate_hz = 100.0

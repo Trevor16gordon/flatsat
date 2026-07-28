@@ -1,0 +1,36 @@
+// Simulation bridge contract — the seam between the universe-fake and the
+// basilisk_* device drivers.
+//
+// The bridge (flatsat/sim/basilisk_hil.py, ground machine) publishes TRUTH;
+// the flight-side basilisk_* drivers corrupt truth through the shared
+// device models and feed it to the ordinary daemons. Flight software never
+// consumes these topics directly — only drivers do. Truth is exactly what
+// a robustness campaign later perturbs on purpose (truth_overrides).
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "hal.proto";
+
+// Rigid-body truth from the physics engine, one message per sim step.
+message TruthState {
+  Header header = 1;
+  double omega_x_rad_s = 2;  // true body rates
+  double omega_y_rad_s = 3;
+  double omega_z_rad_s = 4;
+  double sigma_x = 5;        // true attitude, MRP (sigma_BN)
+  double sigma_y = 6;
+  double sigma_z = 7;
+}
+
+// Torque one wheel is actually applying about its own spin axis,
+// published by the basilisk_reaction_wheel driver AFTER its device
+// envelopes — the sim feels what the device could actually do, not what
+// was asked of it. The bridge maps it into the body frame through the
+// SAME vehicle-file mounting the flight side used.
+message WheelAxisTorque {
+  Header header = 1;
+  string wheel = 2;          // actuator instance name, sanity check vs topic
+  double torque_n_m = 3;
+}

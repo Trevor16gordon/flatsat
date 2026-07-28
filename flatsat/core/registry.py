@@ -1,6 +1,6 @@
 """Name → implementation lookup for drivers, controllers, guidance, estimators.
 
-Composition works by NAME: a vehicle file says ``driver = "sim_gyro"`` or
+Composition works by NAME: a vehicle file says ``driver = "basilisk_imu"`` or
 ``strategy = "pid"``, and this module resolves that to a class. Nothing in
 the applications imports a concrete driver or controller, which is what
 makes "different sensors / different control law / simulated instead of
@@ -35,11 +35,14 @@ if TYPE_CHECKING:  # contract types for signatures only — never imported at ru
 # name -> "module:ClassName"
 DRIVERS: dict[str, str] = {
     "jetson_thermal": "flatsat.hardware.drivers.jetson_thermal:JetsonThermalDriver",
-    "sim_gyro": "flatsat.hardware.drivers.sim_gyro:SimGyroDriver",
+    "basilisk_imu": "flatsat.hardware.drivers.basilisk_imu:BasiliskImuDriver",
 }
 
 ACTUATORS: dict[str, str] = {
     "sim_reaction_wheel": "flatsat.hardware.drivers.sim_reaction_wheel:SimReactionWheelDriver",
+    "basilisk_reaction_wheel": (
+        "flatsat.hardware.drivers.basilisk_reaction_wheel:BasiliskReactionWheelDriver"
+    ),
 }
 
 CONTROLLERS: dict[str, str] = {

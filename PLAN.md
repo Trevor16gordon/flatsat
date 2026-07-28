@@ -2,18 +2,19 @@
 
 v1.2 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status (2026-07-27): flight-software skeleton flying; architecture v2
-migration in progress — commit 1 (restructure) landed.** Jetson bring-up
-complete (PREEMPT_RT live, 69 µs cyclictest under load) · radio proven
-one-radio end to end (framed data at BER 0, BER-vs-SNR waterfall) ·
-**cross-machine HIL closed**: Basilisk on the Mac detumbled by the Jetson's
-100 Hz FIFO control loop over WiFi · 2026-07-27 design session settled the
-target architecture — single `flatsat/` package, actuator layer,
-Basilisk-as-drivers, device-intrinsic vs integration config split, four
-versioning tiers (decision log + `docs/ARCHITECTURE.md`) · migration
-commits 1–2 landed same day: `flatsat/` package, colocated tests,
-estimator seam, actuator layer (93 tests) · next: commit 3
-(Basilisk-as-drivers), then the telemetry recorder.
+**Status (2026-07-27): architecture v2 migration COMPLETE — all three
+commits landed.** Jetson bring-up complete (PREEMPT_RT live, 69 µs
+cyclictest under load) · radio proven one-radio end to end (framed data
+at BER 0, BER-vs-SNR waterfall) · **cross-machine HIL closed**: Basilisk
+on the Mac detumbled by the Jetson's 100 Hz FIFO control loop over WiFi ·
+2026-07-27 design session settled the target architecture — single
+`flatsat/` package, actuator layer, Basilisk-as-drivers, device-intrinsic
+vs integration config split, four versioning tiers (decision log +
+`docs/ARCHITECTURE.md`) · migration commits 1–3 landed same day:
+`flatsat/` package + colocated tests + estimator seam, actuator layer,
+Basilisk-as-drivers (107 tests) · pending hands-on: unit reinstall
+(sudo) + Mac `git pull` + HIL re-validation · next: the telemetry
+recorder.
 
 ---
 
@@ -95,6 +96,24 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Migration commit 3 — Basilisk as drivers (2026-07-27).** The universe
+fake now shows up to flight software as ordinary drivers: `basilisk_imu`
+(subscribes the bridge's `sim/truth/state`, corrupts through the SHARED
+`hardware/models/imu.py` + device spec; no fresh truth ⇒ STALE-flagged
+zeros at full cadence) and `basilisk_reaction_wheel` (shared
+`hardware/models/wheel.py` envelopes — extracted so both wheel fakes
+saturate identically — publishing POST-envelope applied torque on
+`sim/wheel/<name>/torque` for the bridge). `sim_gyro` deleted;
+`sim_reaction_wheel` stays registered as the local-only alternative.
+Bridge slimmed to physics + truth topics; its plant (mass, inertia,
+per-wheel axis mapping) is DERIVED from the vehicle file
+(`plant_from_vehicle`, pinned by test — FSW-SIM-003) and its per-wheel
+sinks keep a stale cutoff as defense in depth behind the daemon's
+zeroing. New `protos/sim.proto` (TruthState, WheelAxisTorque); driver
+contracts gained a no-op `close()` for bus-reached devices. One vehicle
+file now serves bench and HIL. FSW-SIM-003/004 added; **107 tests
+green**.
+
 **Migration commit 2 — actuator layer (2026-07-27).** The write side now
 mirrors the read side: `ActuatorDriver` contract (`apply`/`state`, never
 raises) + `sim_reaction_wheel` (momentum integrates against the wall
@@ -135,12 +154,14 @@ test-verified; **93 tests green**.
 ### Current state (2026-07-27, post-design session)
 
 **Live right now.** Jetson on the RT kernel (`5.15.148-rt-tegra`);
-`flatsat.target` running three composed services (imu0 sim_gyro daemon,
-thermal_tj daemon, ADCS loop at verified FIFO 80 / core 3) — the RUNNING
-services still hold the pre-migration code images; after commit 1 the
-units were regenerated for `flatsat.apps.*` and need
+`flatsat.target`'s RUNNING services still hold the pre-migration code
+images (v1 layout, sim_gyro). After migration commits 1–3 the units are
+regenerated for `flatsat.apps.*` — now four services (imu0 basilisk_imu
+daemon, thermal_tj daemon, wheel0 actuator daemon, ADCS loop) — and need
 `sudo ./tools/install-units.sh && sudo systemctl restart flatsat.target`
-(Trevor) to pick up the new layout. Mac (`~/venvs/flatsat-ground`,
+(Trevor) to pick up the new layout. Expected bench state with no Mac:
+imu0 STALE-flagged at cadence, commands self-flag, wheel zeroed — that
+is correct quiet-state behavior, not a bug. Mac (`~/venvs/flatsat-ground`,
 Basilisk 2.11 + Vizard) needs `git pull` before the next HIL run.
 
 **Where to start reading:** `README.md` (the end state), then
@@ -186,15 +207,9 @@ still boxed.
    restart flatsat.target` (Trevor) and Mac `git pull`.
 2. ~~Migration commit 2 — actuator layer~~ **DONE 2026-07-27** (see §0
    Done).
-3. **Migration commit 3 — Basilisk as drivers**: `basilisk_imu` +
-   `basilisk_reaction_wheel`, delete `sim_gyro`, bridge slimmed to physics
-   + truth topics, plant built from the vehicle's physical model. The
-   default vehicle file selects the basilisk_* drivers (one file serves
-   bench and HIL — only the Mac's presence differs); `sim_reaction_wheel`
-   stays registered as the local-only alternative. Expected bench behavior
-   with no Mac: imu0 publishes validity-flagged samples, commands
-   self-flag, the wheel zeroes — that is correct quiet-state behavior,
-   not a bug.
+3. ~~Migration commit 3 — Basilisk as drivers~~ **DONE 2026-07-27** (see
+   §0 Done). Cross-machine HIL re-validation with the new driver chain
+   still pending (needs the Mac).
 4. **Telemetry recorder** (highest leverage after migration): subscribe to
    `hal/**`, `adcs/**`, `health/**`, write time-series to disk with
    rotation. Regression comparison, FDIR inputs, and the ML corpus are all

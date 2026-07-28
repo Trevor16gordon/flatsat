@@ -52,6 +52,14 @@ class SensorDriver(ABC):
             Never raises: failures come back as flags on a valid message.
         """
 
+    def close(self) -> None:
+        """Release device resources (file handles, bus subscriptions).
+
+        Drivers whose device is reached over a bus (the basilisk_* fakes)
+        override this; local devices inherit the no-op.
+        """
+        return
+
     def describe(self) -> list[str]:
         """Human-readable configuration lines for startup logs/telemetry.
 

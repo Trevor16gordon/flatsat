@@ -76,7 +76,7 @@ or every closed-loop result is validated against hardware that cannot be
 built.
 """
 verification = "test"
-evidence = "sim_reaction_wheel_test.py::test_torque_clips_and_flags_range and ::test_momentum_rails_and_flags_saturated"
+evidence = "wheel_test.py::test_torque_clips_and_flags_range and ::test_momentum_rails_and_flags_saturated (the shared model both wheel drivers run)"
 status = "verified"
 
 [[requirement]]

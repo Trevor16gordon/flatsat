@@ -96,6 +96,14 @@ class ActuatorDriver(ABC):
             publishable message.
         """
 
+    def close(self) -> None:
+        """Release device resources (bus subscriptions, file handles).
+
+        Drivers whose device is reached over a bus (the basilisk_* fakes)
+        override this; local devices inherit the no-op.
+        """
+        return
+
     def describe(self) -> list[str]:
         """Human-readable configuration lines for startup logs/telemetry.
 

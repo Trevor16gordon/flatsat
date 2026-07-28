@@ -165,8 +165,9 @@ class ActuatorDaemon:
         self._stop.set()
 
     def close(self) -> None:
-        """Undeclare bus resources."""
+        """Undeclare bus resources and release the driver's device."""
         self._sub.undeclare()
+        self._driver.close()
 
 
 def build_daemon(

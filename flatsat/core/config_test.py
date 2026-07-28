@@ -13,7 +13,7 @@ def test_specs_load_with_provenance() -> None:
     spec = load_imu_spec()
     assert vehicle.control.rate_hz > 0
     assert vehicle.provenance.checksum and len(vehicle.provenance.checksum) == 12
-    assert vehicle.sensor("imu0").driver == "sim_gyro"
+    assert vehicle.sensor("imu0").driver == "basilisk_imu"
     assert spec.gyro_noise_rad_s > 0
     assert "imu0" in spec.provenance.path
 
@@ -35,7 +35,7 @@ def test_actuators_load_with_body_and_mounting() -> None:
     """Commit 2's config surface: [body], [[actuators]], mounting."""
     vehicle = load_vehicle()
     wheel = vehicle.actuator("wheel0")
-    assert wheel.driver == "sim_reaction_wheel"
+    assert wheel.driver == "basilisk_reaction_wheel"
     assert wheel.stale_zero_s > 0
     assert wheel.mounting.axis == (1.0, 0.0, 0.0)
     body = vehicle.require_body()
