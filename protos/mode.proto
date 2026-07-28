@@ -25,3 +25,22 @@ message ModeState {
   string reason = 3;             // cause of the last transition
   fixed64 transition_time_ns = 4; // flight-clock time of the transition
 }
+
+// Request to change the system mode, published on sys/mode/request.
+//
+// The authority asymmetry lives in the manager's transition rules:
+// toward safety needs no authority (FDIR, watchdogs, anyone); away from
+// safety is honored only with ground_authority set.
+message ModeRequest {
+  string source = 1;          // requesting component, e.g. "fdir", "ground"
+  SystemMode requested = 2;
+  string reason = 3;
+  bool ground_authority = 4;  // true only for ground-commanded requests
+}
+
+// One app's acknowledgement of a mode transition, on sys/mode/ack.
+// A missing ack within the timeout is itself a fault the manager surfaces.
+message ModeAck {
+  string app = 1;
+  uint64 mode_seq = 2;  // the transition being acknowledged
+}

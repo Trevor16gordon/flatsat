@@ -15,8 +15,10 @@ Config provenance travels WITH the numbers so a recorded window can
 always be traced to the parameters that produced it.
 """
 
+from collections import abc as _abc
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
+from google.protobuf.internal import containers as _containers
 import builtins as _builtins
 import hal_pb2 as _hal_pb2
 import sys
@@ -255,3 +257,50 @@ class RecorderHealth(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___RecorderHealth: _TypeAlias = RecorderHealth  # noqa: Y015
+
+@_typing.final
+class ModeHealth(_message.Message):
+    """Health of the mode manager over one reporting window."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    MODE_FIELD_NUMBER: _builtins.int
+    MODE_SEQ_FIELD_NUMBER: _builtins.int
+    TRANSITIONS_FIELD_NUMBER: _builtins.int
+    REJECTED_REQUESTS_FIELD_NUMBER: _builtins.int
+    SAFE_ENTRIES_FIELD_NUMBER: _builtins.int
+    MISSING_ACKS_FIELD_NUMBER: _builtins.int
+    mode: _builtins.int
+    """current SystemMode (numeric; mode.proto)"""
+    mode_seq: _builtins.int
+    transitions: _builtins.int
+    """accepted transitions since start"""
+    rejected_requests: _builtins.int
+    """requests refused (authority, matrix, dwell)"""
+    safe_entries: _builtins.int
+    """times SAFE has been entered (flap escalation input)"""
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    @_builtins.property
+    def missing_acks(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]:
+        """apps that did not ack the current seq in time"""
+
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        mode: _builtins.int = ...,
+        mode_seq: _builtins.int = ...,
+        transitions: _builtins.int = ...,
+        rejected_requests: _builtins.int = ...,
+        safe_entries: _builtins.int = ...,
+        missing_acks: _abc.Iterable[_builtins.str] | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "missing_acks", b"missing_acks", "mode", b"mode", "mode_seq", b"mode_seq", "rejected_requests", b"rejected_requests", "safe_entries", b"safe_entries", "transitions", b"transitions"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ModeHealth: _TypeAlias = ModeHealth  # noqa: Y015

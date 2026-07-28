@@ -70,8 +70,13 @@ max_torque_n_m = 0.05        # reaction-wheel envelope; commands clip to it
 [control.objective_options]
 target_rates_rad_s = [0.0, 0.0, 0.0]   # zero = detumble
 
+[mode]                       # mission state: who must ack transitions
+apps = ["imu0", "thermal_tj", "wheel0", "adcs", "recorder"]
+ack_timeout_s = 2.0
+min_dwell_s = 1.0            # anti-flap: applies to away-from-safety only
+
 [telemetry]                  # the recorder: what gets archived, and where
-topics = ["hal/**", "adcs/**", "health/**"]
+topics = ["hal/**", "adcs/**", "health/**", "sys/**"]
 output_dir = "~/flatsat-telemetry"
 max_file_bytes = 67108864    # 64 MiB per file
 rotate_every_s = 900         # or every 15 min, whichever first

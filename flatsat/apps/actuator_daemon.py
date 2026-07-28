@@ -42,6 +42,7 @@ from flatsat.core.config import ActuatorEntry, load_vehicle
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_actuator_class
 from flatsat.hardware.actuator import ActuatorDriver, project_body_torque
+from flatsat.mode.client import ModeClient
 from flatsat.msgs import adcs_pb2, health_pb2
 
 
@@ -216,11 +217,14 @@ def main() -> int:
         print(f"cannot start actuator {args.actuator!r}: {exc}", file=sys.stderr)
         session.close()
         return 2
+    # Join the mode contract: late-join query + ack every transition.
+    mode_client = ModeClient(session, args.actuator)
     try:
         daemon.run()
     except KeyboardInterrupt:
         daemon.stop()
     finally:
+        mode_client.close()
         daemon.close()
         session.close()
     return 0

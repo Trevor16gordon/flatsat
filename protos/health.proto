@@ -86,3 +86,15 @@ message RecorderHealth {
   uint64 total_bytes = 5;     // archive size currently on disk
   string current_file = 6;    // basename of the file being written
 }
+
+// Health of the mode manager over one reporting window.
+message ModeHealth {
+  Header header = 1;
+
+  int32 mode = 2;                 // current SystemMode (numeric; mode.proto)
+  uint64 mode_seq = 3;
+  uint64 transitions = 4;         // accepted transitions since start
+  uint64 rejected_requests = 5;   // requests refused (authority, matrix, dwell)
+  uint64 safe_entries = 6;        // times SAFE has been entered (flap escalation input)
+  repeated string missing_acks = 7; // apps that did not ack the current seq in time
+}

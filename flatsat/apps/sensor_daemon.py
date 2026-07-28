@@ -30,6 +30,7 @@ from flatsat.core.config import SensorEntry, load_vehicle
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_driver_class
 from flatsat.hardware.sensor import SensorDriver
+from flatsat.mode.client import ModeClient
 from flatsat.msgs import health_pb2
 
 
@@ -157,11 +158,16 @@ def main() -> int:
         print(f"cannot start sensor {args.sensor!r}: {exc}", file=sys.stderr)
         session.close()
         return 2
+    # Join the mode contract: late-join query + ack every transition.
+    # Behavior per mode arrives with the mode table; acking is the
+    # liveness signal the manager's missing-ack fault detection needs.
+    mode_client = ModeClient(session, args.sensor)
     try:
         daemon.run()
     except KeyboardInterrupt:
         daemon.stop()
     finally:
+        mode_client.close()
         daemon.close()
         session.close()
     return 0

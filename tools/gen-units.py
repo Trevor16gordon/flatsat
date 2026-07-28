@@ -219,6 +219,22 @@ def main() -> int:
         (args.out / f"flatsat-{name}.service").write_text(unit)
         written.append(f"flatsat-{name}.service")
 
+    mode_unit = render_service(
+        unit_name="mode",
+        description=f"system mode manager — {vehicle['name']}",
+        exec_args=[
+            "-m",
+            "flatsat.apps.mode_manager",
+            "--vehicle",
+            str(vehicle_rel),
+        ],
+        deploy=deployment.get("mode_manager", {}),
+        profile=profile,
+        header=header,
+    )
+    (args.out / "flatsat-mode.service").write_text(mode_unit)
+    written.append("flatsat-mode.service")
+
     recorder_unit = render_service(
         unit_name="recorder",
         description=f"telemetry recorder — {vehicle['name']}",

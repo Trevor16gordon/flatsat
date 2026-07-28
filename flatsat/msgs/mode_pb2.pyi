@@ -78,3 +78,67 @@ class ModeState(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ModeState: _TypeAlias = ModeState  # noqa: Y015
+
+@_typing.final
+class ModeRequest(_message.Message):
+    """Request to change the system mode, published on sys/mode/request.
+
+    The authority asymmetry lives in the manager's transition rules:
+    toward safety needs no authority (FDIR, watchdogs, anyone); away from
+    safety is honored only with ground_authority set.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SOURCE_FIELD_NUMBER: _builtins.int
+    REQUESTED_FIELD_NUMBER: _builtins.int
+    REASON_FIELD_NUMBER: _builtins.int
+    GROUND_AUTHORITY_FIELD_NUMBER: _builtins.int
+    source: _builtins.str
+    """requesting component, e.g. "fdir", "ground" """
+    requested: Global___SystemMode.ValueType
+    reason: _builtins.str
+    ground_authority: _builtins.bool
+    """true only for ground-commanded requests"""
+    def __init__(
+        self,
+        *,
+        source: _builtins.str = ...,
+        requested: Global___SystemMode.ValueType = ...,
+        reason: _builtins.str = ...,
+        ground_authority: _builtins.bool = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["ground_authority", b"ground_authority", "reason", b"reason", "requested", b"requested", "source", b"source"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ModeRequest: _TypeAlias = ModeRequest  # noqa: Y015
+
+@_typing.final
+class ModeAck(_message.Message):
+    """One app's acknowledgement of a mode transition, on sys/mode/ack.
+    A missing ack within the timeout is itself a fault the manager surfaces.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    APP_FIELD_NUMBER: _builtins.int
+    MODE_SEQ_FIELD_NUMBER: _builtins.int
+    app: _builtins.str
+    mode_seq: _builtins.int
+    """the transition being acknowledged"""
+    def __init__(
+        self,
+        *,
+        app: _builtins.str = ...,
+        mode_seq: _builtins.int = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["app", b"app", "mode_seq", b"mode_seq"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___ModeAck: _TypeAlias = ModeAck  # noqa: Y015

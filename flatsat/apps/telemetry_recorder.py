@@ -25,6 +25,7 @@ import zenoh
 from flatsat.core.bus import SamplePublisher
 from flatsat.core.config import load_vehicle
 from flatsat.core.health import health_topic
+from flatsat.mode.client import ModeClient
 from flatsat.msgs import health_pb2
 from flatsat.telemetry.recorder import Recorder
 
@@ -99,11 +100,14 @@ def main() -> int:
         print(f"[recorder] {line}", flush=True)
 
     app = RecorderApp(recorder, session)
+    # Join the mode contract: late-join query + ack every transition.
+    mode_client = ModeClient(session, "recorder")
     try:
         app.run()
     except KeyboardInterrupt:
         app.stop()
     finally:
+        mode_client.close()
         recorder.close()
         session.close()
     return 0

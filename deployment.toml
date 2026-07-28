@@ -35,3 +35,8 @@ memory_max = "512M"
 [recorder]
 memory_max = "256M"
 # no core_role: archive writing is housekeeping, keeping the RT core clean
+
+[mode_manager]
+memory_max = "128M"
+# no core_role, dependency-minimal: Safe's entry path must not depend on
+# anything that can be the reason for entering it

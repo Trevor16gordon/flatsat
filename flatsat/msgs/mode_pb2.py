@@ -24,15 +24,19 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nmode.proto\x12\nflatsat.v1\"o\n\tModeState\x12$\n\x04mode\x18\x01 \x01(\x0e\x32\x16.flatsat.v1.SystemMode\x12\x10\n\x08mode_seq\x18\x02 \x01(\x04\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x1a\n\x12transition_time_ns\x18\x04 \x01(\x06*\x88\x01\n\nSystemMode\x12\x1b\n\x17SYSTEM_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYSTEM_MODE_INIT\x10\x01\x12\x17\n\x13SYSTEM_MODE_NOMINAL\x10\x02\x12\x14\n\x10SYSTEM_MODE_SAFE\x10\x03\x12\x18\n\x14SYSTEM_MODE_RECOVERY\x10\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nmode.proto\x12\nflatsat.v1\"o\n\tModeState\x12$\n\x04mode\x18\x01 \x01(\x0e\x32\x16.flatsat.v1.SystemMode\x12\x10\n\x08mode_seq\x18\x02 \x01(\x04\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x1a\n\x12transition_time_ns\x18\x04 \x01(\x06\"r\n\x0bModeRequest\x12\x0e\n\x06source\x18\x01 \x01(\t\x12)\n\trequested\x18\x02 \x01(\x0e\x32\x16.flatsat.v1.SystemMode\x12\x0e\n\x06reason\x18\x03 \x01(\t\x12\x18\n\x10ground_authority\x18\x04 \x01(\x08\"(\n\x07ModeAck\x12\x0b\n\x03\x61pp\x18\x01 \x01(\t\x12\x10\n\x08mode_seq\x18\x02 \x01(\x04*\x88\x01\n\nSystemMode\x12\x1b\n\x17SYSTEM_MODE_UNSPECIFIED\x10\x00\x12\x14\n\x10SYSTEM_MODE_INIT\x10\x01\x12\x17\n\x13SYSTEM_MODE_NOMINAL\x10\x02\x12\x14\n\x10SYSTEM_MODE_SAFE\x10\x03\x12\x18\n\x14SYSTEM_MODE_RECOVERY\x10\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'mode_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_SYSTEMMODE']._serialized_start=140
-  _globals['_SYSTEMMODE']._serialized_end=276
+  _globals['_SYSTEMMODE']._serialized_start=298
+  _globals['_SYSTEMMODE']._serialized_end=434
   _globals['_MODESTATE']._serialized_start=26
   _globals['_MODESTATE']._serialized_end=137
+  _globals['_MODEREQUEST']._serialized_start=139
+  _globals['_MODEREQUEST']._serialized_end=253
+  _globals['_MODEACK']._serialized_start=255
+  _globals['_MODEACK']._serialized_end=295
 # @@protoc_insertion_point(module_scope)

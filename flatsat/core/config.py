@@ -164,6 +164,35 @@ class ControlEntry:
 
 
 @dataclass(frozen=True)
+class ModeEntry:
+    """The mode manager's composition.
+
+    Attributes:
+        apps: Apps that must ack every mode transition; a missing ack is
+            surfaced as a fault in ModeHealth.
+        ack_timeout_s: How long apps have to ack a transition.
+        min_dwell_s: Minimum time in a mode before an away-from-safety
+            transition out of it is honored (anti-flap).
+        clean_shutdown_marker: File whose presence at boot means the
+            previous shutdown was deliberate; consumed at startup, so a
+            crash always leaves the next boot marker-less — and Safe.
+    """
+
+    apps: tuple[str, ...]
+    ack_timeout_s: float
+    min_dwell_s: float
+    clean_shutdown_marker: str
+
+
+DEFAULT_MODE = ModeEntry(
+    apps=(),
+    ack_timeout_s=2.0,
+    min_dwell_s=1.0,
+    clean_shutdown_marker="~/flatsat-state/clean-shutdown",
+)
+
+
+@dataclass(frozen=True)
 class TelemetryEntry:
     """The telemetry recorder's composition.
 
@@ -185,7 +214,7 @@ class TelemetryEntry:
 
 
 DEFAULT_TELEMETRY = TelemetryEntry(
-    topics=("hal/**", "adcs/**", "health/**"),
+    topics=("hal/**", "adcs/**", "health/**", "sys/**"),
     output_dir="~/flatsat-telemetry",
     max_file_bytes=64 * 1024 * 1024,
     rotate_every_s=900.0,
@@ -210,8 +239,10 @@ class VehicleSpec:
         body: Rigid-body physical model; None until a vehicle declares
             ``[body]`` (consumers that need it fail loudly).
         telemetry: Recorder composition; defaults cover ``hal/**``,
-            ``adcs/**``, and ``health/**`` when the file has no
-            ``[telemetry]`` section.
+            ``adcs/**``, ``health/**``, and ``sys/**`` when the file has
+            no ``[telemetry]`` section.
+        mode: Mode-manager composition; defaults apply when the file has
+            no ``[mode]`` section.
         provenance: Source file and checksum.
     """
 
@@ -222,6 +253,7 @@ class VehicleSpec:
     control: ControlEntry
     body: BodySpec | None
     telemetry: TelemetryEntry
+    mode: ModeEntry
     provenance: Provenance
 
     def sensor(self, name: str) -> SensorEntry:
@@ -495,6 +527,18 @@ def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
             max_total_bytes=int(tel.get("max_total_bytes", DEFAULT_TELEMETRY.max_total_bytes)),
         )
 
+    mode = DEFAULT_MODE
+    if "mode" in data:
+        raw_mode = data["mode"]
+        mode = ModeEntry(
+            apps=tuple(str(a) for a in raw_mode.get("apps", DEFAULT_MODE.apps)),
+            ack_timeout_s=float(raw_mode.get("ack_timeout_s", DEFAULT_MODE.ack_timeout_s)),
+            min_dwell_s=float(raw_mode.get("min_dwell_s", DEFAULT_MODE.min_dwell_s)),
+            clean_shutdown_marker=str(
+                raw_mode.get("clean_shutdown_marker", DEFAULT_MODE.clean_shutdown_marker)
+            ),
+        )
+
     body: BodySpec | None = None
     if "body" in data:
         raw_inertia = data["body"]["inertia_kg_m2"]
@@ -514,6 +558,7 @@ def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
         control=control,
         body=body,
         telemetry=telemetry,
+        mode=mode,
         provenance=prov,
     )
 

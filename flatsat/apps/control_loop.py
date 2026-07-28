@@ -43,6 +43,7 @@ from flatsat.core.config import ControlEntry, VehicleSpec, load_vehicle
 from flatsat.core.health import health_topic, percentiles
 from flatsat.core.registry import get_controller_class, get_estimator_class, get_guidance_class
 from flatsat.core.rt import describe_actual, pin_to_core, quiesce_gc, try_fifo, try_mlockall
+from flatsat.mode.client import ModeClient
 from flatsat.msgs import adcs_pb2, hal_pb2, health_pb2
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -380,6 +381,8 @@ def main() -> int:
         print(f"cannot compose control loop: {exc}", file=sys.stderr)
         session.close()
         return 2
+    # Join the mode contract: late-join query + ack every transition.
+    mode_client = ModeClient(session, "adcs")
 
     verified = describe_actual()
     loop.scheduling = verified[0].removeprefix("verified: ")
@@ -410,6 +413,7 @@ def main() -> int:
         )
         report.print_summary()
     finally:
+        mode_client.close()
         loop.close()
         session.close()
         for child in children:

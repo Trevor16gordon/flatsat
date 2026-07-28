@@ -1,0 +1,116 @@
+# Mode management: the mission state machine and its distribution.
+#
+# The asymmetry IS the philosophy: toward safety automatic, away from
+# safety ground-command-only. The mode manager is small, boring, and
+# dependency-minimal — Safe's entry path must not depend on anything
+# that can be the reason for entering it.
+
+[[requirement]]
+id = "FSW-MODE-001"
+statement = """
+A process joining after a mode transition shall be able to obtain the
+current latched mode on demand from the mode manager.
+"""
+rationale = """
+Restarted or late-starting apps must not act on an unknown mode while
+waiting for the next broadcast. (FSW-BUS-002 proved the bus pattern;
+this is the mode manager actually providing it.)
+"""
+verification = "test"
+evidence = "manager_test.py::test_late_joiner_learns_mode_by_query"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-002"
+statement = """
+A transition toward Safe shall be honored from any mode, from any
+requester, without ground authority and without dwell-time delay.
+"""
+rationale = "Safety is automatic and software-triggerable from anywhere; it never waits."
+verification = "test"
+evidence = "machine_test.py::test_toward_safety_needs_no_authority_from_any_mode and ::test_toward_safety_ignores_dwell"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-003"
+statement = """
+Transitions away from safety shall be honored only with ground authority.
+"""
+rationale = """
+Software (FDIR included) may only ever make the system safer on its own;
+making it interesting again is a human decision.
+"""
+verification = "test"
+evidence = "machine_test.py::test_away_from_safety_requires_ground_authority and manager_test.py::test_bus_requests_respect_ground_authority"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-004"
+statement = """
+Only the declared transition graph shall be honored: Init -> Nominal,
+any -> Safe, Safe -> Recovery, Recovery -> Nominal. Return from Safe
+goes through Recovery.
+"""
+rationale = """
+Recovery exists so checkout happens payload-off, one subsystem at a
+time; a Safe -> Nominal shortcut would skip exactly the checks Safe
+entry demanded.
+"""
+verification = "test"
+evidence = "machine_test.py::test_safe_to_nominal_must_go_through_recovery and ::test_nonexistent_transitions_are_rejected"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-005"
+statement = """
+Every accepted transition shall be broadcast latched with a monotonic
+sequence number and the triggering source and reason.
+"""
+rationale = """
+Acks cite the sequence; recorded transitions with reasons are free
+corpus labels and the audit trail of every safing event.
+"""
+verification = "test"
+evidence = "machine_test.py::test_sequence_is_monotonic_and_reason_carries_source and manager_test.py::test_transitions_broadcast_with_monotonic_seq"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-006"
+statement = """
+An away-from-safety transition shall not be honored before a configured
+minimum dwell time in the current mode has elapsed.
+"""
+rationale = "Anti-flap: a fault that recurs on recovery must not oscillate the system."
+verification = "test"
+evidence = "machine_test.py::test_dwell_blocks_rapid_departure_from_safety"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-007"
+statement = """
+Any boot not preceded by a deliberate clean shutdown shall enter Safe;
+a clean prior shutdown permits Init -> Nominal. The clean-shutdown
+record shall be consumed at boot.
+"""
+rationale = """
+After anything unexpected the system rests in its safest configuration.
+Consuming the marker makes Safe the default path — a crash cannot
+inherit last boot's clean record.
+"""
+verification = "test"
+evidence = "manager_test.py::test_unexpected_reset_boots_into_safe and ::test_clean_shutdown_marker_allows_nominal_boot"
+status = "verified"
+
+[[requirement]]
+id = "FSW-MODE-008"
+statement = """
+The mode manager shall track per-app acknowledgement of each transition
+and surface apps that fail to ack within the timeout.
+"""
+rationale = """
+A missing ack is itself a fault: an app that did not hear a safing
+command is exactly the app that most needs attention.
+"""
+verification = "test"
+evidence = "manager_test.py::test_missing_ack_is_surfaced_as_a_fault"
+status = "verified"

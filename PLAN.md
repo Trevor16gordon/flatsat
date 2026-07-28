@@ -96,6 +96,23 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Mode manager (2026-07-27) — mission state as a service (§7 realized).**
+`flatsat/mode/`: pure `ModeStateMachine` (explicit transition graph
+Init → Nominal ⇄ (Safe → Recovery); toward-safety needs no authority and
+no dwell, away-from-safety is ground-command-only and dwell-guarded;
+Safe→Nominal must go through Recovery; safe-entry counters for flap
+escalation — every rule pinned by clock-injected unit tests) +
+`ModeManager` bus shell (latched `sys/mode` broadcast + queryable for
+late joiners, `sys/mode/request` with the authority gate,
+`sys/mode/ack` tracking with missing-ack surfacing in ModeHealth) +
+`ModeClient` (late-join query, auto-ack) now wired into every app main.
+Boot policy: clean-shutdown marker consumed at startup — unexpected
+reset boots SAFE, only a deliberate shutdown allows Init→Nominal.
+Recorder defaults now archive `sys/**` (transitions are data products).
+Mode topics are parameterizable so tests use test-only keys.
+`flatsat-mode.service` generated (7 units total). FSW-MODE-001…008
+test-verified; **130 tests green**.
+
 **Telemetry recorder (2026-07-27) — the first flight organ after
 migration.** `flatsat/telemetry/recorder.py` + `apps/telemetry_recorder`:
 subscribes the vehicle file's `[telemetry]` topics (default `hal/**`,
@@ -233,10 +250,17 @@ still boxed.
 6. **Unbox ground Pluto** (Trevor, ~10 min): record serial into the §2 role
    table; resolve the two-Pluto identity collision (both default to
    192.168.2.1) before any two-radio work.
-7. **P3 + mode manager**: BPSK/framing over the loopback (zero-IF lesson
-   applies), graduating proven PHY into `flatsat/comms/`; then the latched
-   `sys/mode` pattern as a real service with broadcast+ack (§7), the next
-   flight organ after the recorder.
+7. **P3**: BPSK/framing over the loopback (zero-IF lesson applies),
+   graduating proven PHY into `flatsat/comms/`. (~~Mode manager~~ **DONE
+   2026-07-27**, see §0 Done — the `sys/mode` service with broadcast+ack
+   is live in code; needs the unit reinstall to run as a service.)
+8. **Scenario harness + mission profiles** (in progress): mission
+   profiles as `config/missions/*.toml`, a runner in `flatsat/sim/`
+   composing the real daemons + loop + mode manager against an
+   in-process rigid-body plant (same `plant_from_vehicle` derivation as
+   the Basilisk bridge), integration tests verifying system-level
+   FSW-SYS requirements. Same profiles later replayable against real
+   Basilisk HIL.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,
