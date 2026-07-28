@@ -1,0 +1,28 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# THE SHOW MISSION — a minute-scale 3-axis detumble sized for watching
+# in Vizard. Run it on the ground machine against real dynamics:
+#
+#   python -m flatsat.sim.run_mission config/missions/detumble_3d.txtpb \
+#       --plant basilisk --viz-save ~/detumble.bin
+#
+# then open ~/detumble.bin in Vizard. (--plant local works anywhere for
+# a quick judgment without the 3D view.)
+
+name: "detumble-3d"
+description: "Minute-scale 3-axis detumble of the demo smallsat, Vizard-watchable"
+vehicle: "config/vehicles/demo_3wheel.txtpb"
+
+omega0_rad_s: [0.35, -0.3, 0.25]  # a proper tumble, inside the wheel momentum budget
+plant_rate_hz: 100
+
+phases {
+  name: "detumble"
+  duration_s: 90.0
+  success {
+    max_omega_mag_rad_s: 0.01
+    require_mode: "NOMINAL"
+    require_all_acks: true
+  }
+}

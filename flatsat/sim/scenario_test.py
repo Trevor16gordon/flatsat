@@ -53,3 +53,20 @@ def test_mission_files_parse() -> None:
     for path in missions:
         mission = load_mission(path)
         assert mission.phases, f"{path.name}: mission with no phases"
+
+
+def test_runner_rejects_unknown_plant(tmp_path: Path) -> None:
+    mission = load_mission(MISSIONS / "detumble_test.txtpb")
+    with pytest.raises(ValueError, match="unknown plant"):
+        ScenarioRunner(mission, tmp_path, plant_kind="matrix")
+
+
+def test_basilisk_plant_class_is_importable_without_basilisk() -> None:
+    """Constructing the class must not import Basilisk (flight computer!).
+
+    Only start() may touch the Basilisk packages — the scenario runner
+    and this module must import cleanly on a machine that has none.
+    """
+    from flatsat.sim.basilisk_hil import BasiliskPlant
+
+    assert callable(BasiliskPlant)

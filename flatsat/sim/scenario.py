@@ -48,7 +48,8 @@ from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager
 from flatsat.msgs import mode_pb2
 from flatsat.sim import mission_pb2
-from flatsat.sim.plant import LocalPlant
+from flatsat.sim.basilisk_hil import BasiliskPlant
+from flatsat.sim.plant import LocalPlant, Plant
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_MODE_BASE = "test/scn/sys/mode"
@@ -255,16 +256,65 @@ def _truth_topic(vehicle: VehicleSpec) -> str:
 class ScenarioRunner:
     """Composes the flight chain in-process and executes one mission."""
 
-    def __init__(self, mission: MissionSpec, work_dir: Path) -> None:
-        """Bind a mission to a scratch directory.
+    def __init__(
+        self,
+        mission: MissionSpec,
+        work_dir: Path,
+        plant_kind: str = "local",
+        viz_live: bool = False,
+        viz_save: str | None = None,
+    ) -> None:
+        """Bind a mission to a scratch directory and a universe-fake.
 
         Args:
             mission: The mission to fly.
             work_dir: Scratch directory (clean-shutdown marker lives
                 here — scenario runs must never touch flight state).
+            plant_kind: ``local`` (rigid body, runs anywhere) or
+                ``basilisk`` (full dynamics; needs Basilisk installed —
+                the ground machine).
+            viz_live: Basilisk only — live Vizard 3D view (start Vizard
+                first in Direct Communication mode).
+            viz_save: Basilisk only — record a Vizard playback ``.bin``.
+
+        Raises:
+            ValueError: On an unknown plant kind.
         """
+        if plant_kind not in ("local", "basilisk"):
+            raise ValueError(f"unknown plant {plant_kind!r}; use 'local' or 'basilisk'")
         self.mission = mission
         self._work_dir = work_dir
+        self._plant_kind = plant_kind
+        self._viz_live = viz_live
+        self._viz_save = viz_save
+
+    def _build_plant(self, vehicle: VehicleSpec, session: zenoh.Session) -> Plant:
+        """Stand up the chosen universe-fake behind the sim topics.
+
+        Args:
+            vehicle: Loaded vehicle composition.
+            session: Open zenoh session.
+
+        Returns:
+            The plant, not yet started.
+        """
+        if self._plant_kind == "basilisk":
+            return BasiliskPlant(
+                vehicle,
+                session,
+                truth_topic=_truth_topic(vehicle),
+                omega0=self.mission.omega0_rad_s,
+                rate_hz=self.mission.plant_rate_hz,
+                viz_live=self._viz_live,
+                viz_save=self._viz_save,
+            )
+        return LocalPlant(
+            vehicle,
+            session,
+            truth_topic=_truth_topic(vehicle),
+            omega0=self.mission.omega0_rad_s,
+            rate_hz=self.mission.plant_rate_hz,
+        )
 
     def run(self) -> ScenarioResult:
         """Fly the mission.
@@ -284,7 +334,7 @@ class ScenarioRunner:
         sensor_daemons: list[SensorDaemon] = []
         actuator_daemons: list[ActuatorDaemon] = []
         clients: list[ModeClient] = []
-        plant: LocalPlant | None = None
+        plant: Plant | None = None
         loop: ControlLoop | None = None
         manager: ModeManager | None = None
         try:
@@ -321,13 +371,7 @@ class ScenarioRunner:
                 ModeClient(session, app, base_topic=SCENARIO_MODE_BASE) for app in mode_entry.apps
             ]
 
-            plant = LocalPlant(
-                vehicle,
-                session,
-                truth_topic=_truth_topic(vehicle),
-                omega0=self.mission.omega0_rad_s,
-                rate_hz=self.mission.plant_rate_hz,
-            )
+            plant = self._build_plant(vehicle, session)
             plant.start()
 
             for daemon in sensor_daemons:
@@ -379,7 +423,7 @@ class ScenarioRunner:
                 manager.close()
             session.close()
 
-    def _run_phase(self, phase: PhaseSpec, manager: ModeManager, plant: LocalPlant) -> PhaseResult:
+    def _run_phase(self, phase: PhaseSpec, manager: ModeManager, plant: Plant) -> PhaseResult:
         """Execute and judge one phase.
 
         Args:
@@ -417,7 +461,7 @@ class ScenarioRunner:
 
         criteria = phase.success
         if criteria.max_omega_mag_rad_s is not None:
-            omega = plant.body.rate_magnitude()
+            omega = plant.rate_magnitude()
             ok = omega <= criteria.max_omega_mag_rad_s
             passed = passed and ok
             details.append(

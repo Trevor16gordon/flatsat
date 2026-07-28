@@ -95,6 +95,17 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Mission runner + 3D demo (2026-07-28).** The scenario runner now
+takes its universe-fake by choice: `--plant local` (rigid body,
+anywhere) or `--plant basilisk` (real dynamics, ground machine) behind
+one `Plant` protocol — the bridge refactored into a `BasiliskPlant`
+class interchangeable with `LocalPlant`, Vizard options plumbed
+(`--viz` live / `--viz-save` playback). New `flatsat.sim.run_mission`
+CLI; `config/vehicles/demo_3wheel.txtpb` (3 orthogonal wheels,
+demo-prefixed topics) + `config/missions/detumble_3d.txtpb` (90 s
+watchable detumble; verified with the local plant: 0.5 → 0.0009 rad/s).
+The same mission file IS the Vizard demo on the Mac. **144 tests.**
+
 **Proto tree unified (2026-07-28).** Wire-contract protos moved from
 `protos/` into `flatsat/msgs/` beside their bindings: ONE codegen
 mechanism for every schema (repo-root import path, colocated output, no

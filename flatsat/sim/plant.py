@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Protocol
 
 import zenoh
 
@@ -25,6 +26,28 @@ from flatsat.msgs import sim_pb2
 from flatsat.sim.basilisk_hil import WheelTorqueSink, plant_from_vehicle
 
 Vec3 = tuple[float, float, float]
+
+
+class Plant(Protocol):
+    """What the scenario runner needs from any universe-fake.
+
+    :class:`LocalPlant` (quick, on-target/CI) and
+    :class:`~flatsat.sim.basilisk_hil.BasiliskPlant` (full dynamics,
+    ground machine, optional Vizard 3D) both satisfy it — the mission is
+    identical either way.
+    """
+
+    def start(self) -> None:
+        """Start the physics behind the sim topics."""
+        ...
+
+    def stop(self) -> None:
+        """Stop the physics and join its thread."""
+        ...
+
+    def rate_magnitude(self) -> float:
+        """Current |omega| of the simulated body, rad/s."""
+        ...
 
 
 class RigidBody:
@@ -137,6 +160,14 @@ class LocalPlant:
             if delta > 0:
                 self._stop.wait(delta / 1e9)
             next_wake += period_ns
+
+    def rate_magnitude(self) -> float:
+        """Current |omega| of the simulated body.
+
+        Returns:
+            The body-rate magnitude in rad/s.
+        """
+        return self.body.rate_magnitude()
 
     def start(self) -> None:
         """Start the physics thread."""

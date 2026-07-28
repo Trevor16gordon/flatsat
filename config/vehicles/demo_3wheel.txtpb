@@ -1,0 +1,77 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# 3D DEMO VEHICLE — a smallsat with three orthogonal reaction wheels,
+# tuned for a satisfying minute-scale detumble you can watch in Vizard.
+# Topics are demo-prefixed so a run never collides with the live bench
+# services or the test suite.
+
+name: "demo-3wheel"
+description: "Demo smallsat: 3 orthogonal wheels, Basilisk-fed IMU, PD detumble"
+
+body {
+  mass_kg: 10.0
+  inertia_kg_m2: [0.9, 0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.6]  # asymmetric: visible tumble coupling
+}
+
+sensors {
+  name: "demo_imu"
+  topic: "demo/hal/imu/sample"
+  rate_hz: 100
+  basilisk_imu {
+    spec: "config/devices/imu0.txtpb"
+    truth_topic: "demo/sim/truth"
+    stale_after_s: 0.5
+    seed: 42
+  }
+}
+
+actuators {
+  name: "demo_wheel_x"
+  command_topic: "demo/adcs/torque"
+  state_topic: "demo/hal/wheel_x/state"
+  rate_hz: 100
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "demo_wheel_y"
+  command_topic: "demo/adcs/torque"
+  state_topic: "demo/hal/wheel_y/state"
+  rate_hz: 100
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "demo_wheel_z"
+  command_topic: "demo/adcs/torque"
+  state_topic: "demo/hal/wheel_z/state"
+  rate_hz: 100
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+control {
+  rate_hz: 100
+  input_topic: "demo/hal/imu/sample"
+  output_topic: "demo/adcs/torque"
+  stale_after_s: 0.05
+  rate_damping {
+    kp: 0.06                 # tau = (I + kd)/kp ~ 15 s on the major axis
+    kd: 0.005
+    max_torque_n_m: 0.05     # the wheel0 device envelope
+  }
+  constant_rate { target_rates_rad_s: [0.0, 0.0, 0.0] }
+  passthrough {}
+}
+
+mode {
+  apps: ["demo_imu", "demo_wheel_x", "demo_wheel_y", "demo_wheel_z", "adcs"]
+  ack_timeout_s: 2.0
+  min_dwell_s: 0.5
+}
