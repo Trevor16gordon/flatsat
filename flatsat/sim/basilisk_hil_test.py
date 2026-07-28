@@ -61,3 +61,25 @@ def test_plant_is_built_from_the_vehicle_file() -> None:
     assert inertia == [flat[0:3], flat[3:6], flat[6:9]]
     assert wheels == [(a.name, tuple(a.mounting.axis)) for a in vehicle.actuators]
     assert wheels, "default vehicle must declare at least one wheel"
+
+
+def test_equivalent_box_dims_round_trip() -> None:
+    """Box -> uniform-box inertia -> derived dims recovers the box."""
+    from flatsat.sim.basilisk_hil import equivalent_box_dims
+
+    mass, (a, b, c) = 10.0, (0.5, 0.7, 1.1)
+    ix = mass / 12.0 * (b * b + c * c)
+    iy = mass / 12.0 * (a * a + c * c)
+    iz = mass / 12.0 * (a * a + b * b)
+    inertia = [[ix, 0.0, 0.0], [0.0, iy, 0.0], [0.0, 0.0, iz]]
+    dims = equivalent_box_dims(mass, inertia)
+    assert dims == pytest.approx((a, b, c), rel=1e-9)
+
+
+def test_equivalent_box_dims_degenerate_inertia_clamps() -> None:
+    """A physically inconsistent tensor must degrade, not raise — display only."""
+    from flatsat.sim.basilisk_hil import equivalent_box_dims
+
+    inertia = [[10.0, 0.0, 0.0], [0.0, 0.1, 0.0], [0.0, 0.0, 0.1]]  # Ix >> Iy+Iz
+    dims = equivalent_box_dims(1.0, inertia)
+    assert all(d > 0 for d in dims)

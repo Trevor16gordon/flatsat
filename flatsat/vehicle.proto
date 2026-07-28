@@ -33,6 +33,11 @@ message MountingConfig {
 message BodyConfig {
   double mass_kg = 1;
   repeated double inertia_kg_m2 = 2;  // 3x3 tensor, row-major, 9 values
+  // Visual body dimensions (x, y, z) for the 3D view. Optional: when
+  // empty, the display shows the uniform box IMPLIED by mass + inertia
+  // (the shape the physics says you are). Display only — dynamics come
+  // from the inertia tensor above.
+  repeated double box_dims_m = 3;
 }
 
 // One sensor: identity + cadence + exactly one driver's options.

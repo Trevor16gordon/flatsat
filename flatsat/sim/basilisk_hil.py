@@ -97,6 +97,32 @@ def plant_from_vehicle(
     return body.mass_kg, inertia, wheels
 
 
+def equivalent_box_dims(mass_kg: float, inertia: list[list[float]]) -> Vec3:
+    """Dimensions of the uniform box implied by mass + principal inertias.
+
+    For a uniform box, Ix = m/12 (b² + c²) and cyclic — three equations
+    that invert to unique dimensions. Used as the DISPLAY shape when the
+    vehicle declares no explicit ``box_dims_m``: the 3D view then shows
+    the body the physics says you are, from numbers already declared.
+
+    Args:
+        mass_kg: Body mass.
+        inertia: 3x3 inertia tensor (only the diagonal is used).
+
+    Returns:
+        Box dimensions (x, y, z) in meters; degenerate inertias clamp to
+        a small positive size rather than raising — this feeds a display,
+        never dynamics.
+    """
+    ix, iy, iz = inertia[0][0], inertia[1][1], inertia[2][2]
+    scale = 6.0 / mass_kg
+    return (
+        max(scale * (iy + iz - ix), 1e-4) ** 0.5,
+        max(scale * (ix + iz - iy), 1e-4) ** 0.5,
+        max(scale * (ix + iy - iz), 1e-4) ** 0.5,
+    )
+
+
 class WheelTorqueSink:
     """Latest applied axis torque from one wheel, with a stale cutoff.
 
@@ -246,6 +272,7 @@ class BasiliskPlant:
             viz = vizSupport.enableUnityVisualization(
                 sim, "dynTask", sc, liveStream=self._viz_live, saveFile=self._viz_save
             )
+            self._apply_body_model(vizSupport, viz, sc.ModelTag)
             if self._viz_live:
                 viz.reqComAddress = self._viz_address
                 viz.pubComAddress = self._viz_address
@@ -272,6 +299,35 @@ class BasiliskPlant:
             target=self._run, args=(sim, sc, ext, macros, dt_s), daemon=True
         )
         self._thread.start()
+
+    def _apply_body_model(self, viz_support: object, viz: object, model_tag: str) -> None:
+        """Show the vehicle's own body shape instead of Vizard's default.
+
+        Explicit ``box_dims_m`` wins; otherwise the box implied by mass +
+        inertia. Display cosmetics must never kill a run: any Vizard API
+        mismatch degrades to the default model with a warning.
+
+        Args:
+            viz_support: Basilisk's vizSupport module.
+            viz: The vizInterface instance from enableUnityVisualization.
+            model_tag: The spacecraft ModelTag to restyle.
+        """
+        declared = tuple(self.vehicle.require_body().box_dims_m)
+        dims = declared if len(declared) == 3 else equivalent_box_dims(self.mass_kg, self.inertia)
+        try:
+            viz_support.createCustomModel(  # type: ignore[attr-defined]
+                viz,
+                simBodiesToModify=[model_tag],
+                modelPath="CUBE",
+                scale=[dims[0], dims[1], dims[2]],
+            )
+            origin = "declared box_dims_m" if len(declared) == 3 else "derived from mass+inertia"
+            print(
+                f"[sim] body model: {dims[0]:.2f} x {dims[1]:.2f} x {dims[2]:.2f} m ({origin})",
+                flush=True,
+            )
+        except (AttributeError, TypeError) as exc:
+            print(f"[sim] custom body model unavailable ({exc}); using default", flush=True)
 
     def _run(self, sim: object, sc: object, ext: object, macros: object, dt_s: float) -> None:
         """Pace the physics with absolute deadlines (drift-free).
