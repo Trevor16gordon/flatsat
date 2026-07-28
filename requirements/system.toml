@@ -1,0 +1,54 @@
+# System level: what the COMPOSED flight chain must do, end to end.
+#
+# Everything below this tier is a component with contract tests; these
+# requirements are about the composition itself — config in, mission
+# behavior out. Verified by mission-profile scenario runs
+# (flatsat/sim/scenario.py) against the local rigid-body plant; the same
+# mission files script real Basilisk HIL runs.
+
+[[requirement]]
+id = "FSW-SYS-001"
+statement = """
+The composed flight chain — sim-fed sensor through estimator,
+controller, per-actuator mounting projection, and wheel envelopes,
+closed through plant feedback — shall detumble a tumbling vehicle to
+below a mission-profile rate bound within the profile's time bound.
+"""
+rationale = """
+Component tests cannot prove composition. This is the end-to-end claim
+every architecture decision serves, judged against physics.
+"""
+verification = "test"
+evidence = "scenario_test.py::test_detumble_mission_succeeds (config/missions/detumble_test.toml)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SYS-002"
+statement = """
+Mission scenarios shall be defined as data — phases, mode commands, and
+success criteria in a mission profile file — executed by one generic
+runner with no per-mission code.
+"""
+rationale = """
+A spacecraft is a config file; so is a mission. Profiles double as the
+script for real HIL campaigns, so the SIL and HIL tiers cannot drift.
+"""
+verification = "test"
+evidence = "scenario_test.py — two distinct missions through one runner; ::test_mission_files_parse covers every checked-in profile"
+status = "verified"
+
+[[requirement]]
+id = "FSW-SYS-003"
+statement = """
+A safing command issued mid-mission shall take effect across the
+composed system — accepted without ground authority, broadcast, and
+acknowledged by every registered app — and the system shall refuse to
+leave Safe without ground authority.
+"""
+rationale = """
+The mode asymmetry is only real if it holds with every daemon running,
+not just in the manager's unit tests.
+"""
+verification = "test"
+evidence = "scenario_test.py::test_safe_entry_mission_succeeds (config/missions/safe_entry_test.toml)"
+status = "verified"

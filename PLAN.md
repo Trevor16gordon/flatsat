@@ -96,6 +96,24 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Scenario harness + mission profiles (2026-07-28) — the system-level
+test tier.** A mission is data: `config/missions/*.toml` declares
+initial conditions, phases (each optionally commanding a mode), and
+per-phase success criteria; `flatsat/sim/scenario.py` is one generic
+runner that composes the REAL flight chain in-process — sensor daemon
+(sim-fed IMU), three actuator daemons projecting through their
+mountings, control loop, mode manager, mode clients — all resolved from
+the vehicle file through the registry, closed against
+`flatsat/sim/plant.py` (pure rigid body with Euler's gyroscopic term,
+parameters via the same `plant_from_vehicle` the Basilisk bridge uses).
+Two missions checked in: **detumble** (0.54 → 0.0007 rad/s in 8 s
+through the full chain, all acks in, NOMINAL held) and **safe-entry**
+(FDIR-sourced SAFE accepted without authority + acked by every app;
+unauthorized RECOVERY refused). `config/vehicles/test_scenario.toml` =
+3-wheel scenario vehicle on test-only topics. The same mission files
+script future real-HIL campaigns (the Mac bridge stands behind the same
+topics). FSW-SYS-001…003 test-verified; **138 tests, 54 requirements**.
+
 **Mode manager (2026-07-27) — mission state as a service (§7 realized).**
 `flatsat/mode/`: pure `ModeStateMachine` (explicit transition graph
 Init → Nominal ⇄ (Safe → Recovery); toward-safety needs no authority and
@@ -254,13 +272,11 @@ still boxed.
    graduating proven PHY into `flatsat/comms/`. (~~Mode manager~~ **DONE
    2026-07-27**, see §0 Done — the `sys/mode` service with broadcast+ack
    is live in code; needs the unit reinstall to run as a service.)
-8. **Scenario harness + mission profiles** (in progress): mission
-   profiles as `config/missions/*.toml`, a runner in `flatsat/sim/`
-   composing the real daemons + loop + mode manager against an
-   in-process rigid-body plant (same `plant_from_vehicle` derivation as
-   the Basilisk bridge), integration tests verifying system-level
-   FSW-SYS requirements. Same profiles later replayable against real
-   Basilisk HIL.
+8. ~~Scenario harness + mission profiles~~ **DONE 2026-07-28** (see §0
+   Done). Natural extensions when wanted: fault-injection phases (kill
+   truth mid-mission, assert flag-and-forward + safing), criteria read
+   from recorded telemetry, and running a mission profile against real
+   Basilisk HIL via the Mac.
 
 Operational notes for working sessions: Claude Code runs as `trevor` directly
 on the Jetson but has **no passwordless sudo** — privileged steps (apt install,

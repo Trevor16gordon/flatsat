@@ -1,0 +1,83 @@
+# SCENARIO TEST VEHICLE — the composed system, tuned to converge in seconds.
+#
+# Used by mission-profile integration tests (flatsat/sim/scenario_test.py).
+# Same shape as the flight vehicle, three differences on purpose:
+#   * every topic is test-only (a live daemon must never bleed into a test);
+#   * three orthogonal wheels, so a 3-axis tumble is fully controllable —
+#     the mounting-projection composition doing real work;
+#   * small inertia + firm gains, so detumble completes in seconds, not
+#     minutes (wall-clock pacing; faster-than-real-time is a deliberate
+#     future extension).
+
+name = "test-scenario"
+description = "Scenario-test vehicle: 3-wheel detumble in seconds, test-only topics"
+
+[body]
+mass_kg = 2.0
+inertia_kg_m2 = [[0.05, 0.0, 0.0], [0.0, 0.05, 0.0], [0.0, 0.0, 0.05]]
+
+[[sensors]]
+name = "scn_imu0"
+driver = "basilisk_imu"
+topic = "test/scn/hal/imu/sample"
+rate_hz = 50.0
+spec = "config/devices/imu0.toml"
+truth_topic = "test/scn/sim/truth"
+stale_after_s = 0.5
+seed = 7
+
+[[actuators]]
+name = "scn_wheel_x"
+driver = "basilisk_reaction_wheel"
+command_topic = "test/scn/adcs/torque"
+state_topic = "test/scn/hal/wheel_x/state"
+rate_hz = 50.0
+stale_zero_s = 0.2
+device = "config/devices/wheel0.toml"
+[actuators.mounting]
+position_m = [0.0, 0.0, 0.0]
+axis = [1.0, 0.0, 0.0]
+
+[[actuators]]
+name = "scn_wheel_y"
+driver = "basilisk_reaction_wheel"
+command_topic = "test/scn/adcs/torque"
+state_topic = "test/scn/hal/wheel_y/state"
+rate_hz = 50.0
+stale_zero_s = 0.2
+device = "config/devices/wheel0.toml"
+[actuators.mounting]
+position_m = [0.0, 0.0, 0.0]
+axis = [0.0, 1.0, 0.0]
+
+[[actuators]]
+name = "scn_wheel_z"
+driver = "basilisk_reaction_wheel"
+command_topic = "test/scn/adcs/torque"
+state_topic = "test/scn/hal/wheel_z/state"
+rate_hz = 50.0
+stale_zero_s = 0.2
+device = "config/devices/wheel0.toml"
+[actuators.mounting]
+position_m = [0.0, 0.0, 0.0]
+axis = [0.0, 0.0, 1.0]
+
+[mode]
+apps = ["scn_imu0", "scn_wheel_x", "scn_wheel_y", "scn_wheel_z", "adcs"]
+ack_timeout_s = 1.0
+min_dwell_s = 0.2
+
+[control]
+strategy = "rate_damping"
+objective = "constant_rate"
+estimator = "passthrough"
+rate_hz = 50.0
+input_topic = "test/scn/hal/imu/sample"
+output_topic = "test/scn/adcs/torque"
+stale_after_s = 0.1
+kp = 0.05                    # tau = (I + kd)/kp ~ 1.1 s per axis
+kd = 0.005
+max_torque_n_m = 0.05        # matches the wheel0 device envelope
+
+[control.objective_options]
+target_rates_rad_s = [0.0, 0.0, 0.0]

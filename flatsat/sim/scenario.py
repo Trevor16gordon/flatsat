@@ -1,0 +1,437 @@
+"""Scenario runner: execute a mission profile against the composed system.
+
+A mission is DATA (``config/missions/*.toml``): initial conditions, a
+sequence of phases — each optionally commanding a mode transition — and
+per-phase success criteria. This runner composes the REAL flight chain
+in one process — sensor daemons, actuator daemons, the control loop, and
+the mode manager, all resolved from the vehicle file through the
+registry exactly as in flight — against the local rigid-body plant, then
+judges each phase.
+
+What this is: the system-level test tier. Every component below it has
+its own contract tests; a mission proves the composition — config in,
+behavior out, nothing wired by hand.
+
+What this is not: physics fidelity. Basilisk remains the ground
+machine's universe-fake; the same mission files are the script for real
+HIL runs, where the Mac's bridge replaces the local plant behind the
+same topics.
+
+Missions run at wall clock (faster-than-real-time is a deliberate future
+extension), so CI-able missions use scenario vehicles tuned to converge
+in seconds.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any
+
+import zenoh
+
+from flatsat.apps.actuator_daemon import ActuatorDaemon
+from flatsat.apps.control_loop import ControlLoop
+from flatsat.apps.sensor_daemon import SensorDaemon
+from flatsat.core.config import VehicleSpec, load_vehicle
+from flatsat.core.registry import (
+    get_actuator_class,
+    get_controller_class,
+    get_driver_class,
+    get_estimator_class,
+    get_guidance_class,
+)
+from flatsat.mode.client import ModeClient
+from flatsat.mode.manager import ModeManager
+from flatsat.msgs import mode_pb2
+from flatsat.sim.plant import LocalPlant
+
+try:  # Python 3.11+ (the ground Mac)
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 (the onboard interpreter)
+    import tomli as tomllib
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCENARIO_MODE_BASE = "test/scn/sys/mode"
+
+
+@dataclass(frozen=True)
+class SuccessCriteria:
+    """What must be true at the end of a phase.
+
+    Attributes:
+        max_omega_mag_rad_s: Plant |omega| bound; None skips the check.
+        require_mode: Bare mode name (``NOMINAL``, ``SAFE``, ...) the
+            system must be latched in; None skips the check.
+        require_all_acks: When True, every registered app must have
+            acked the current mode sequence.
+    """
+
+    max_omega_mag_rad_s: float | None = None
+    require_mode: str | None = None
+    require_all_acks: bool = False
+
+
+@dataclass(frozen=True)
+class PhaseSpec:
+    """One phase of a mission timeline.
+
+    Attributes:
+        name: Phase name, for the report.
+        duration_s: How long the phase runs before judgment.
+        request_mode: Bare mode name to request at phase start; None
+            requests nothing.
+        request_ground_authority: Whether the request carries ground
+            authority (the runner playing ground vs playing FDIR).
+        expect_request_refused: When True, the phase EXPECTS its mode
+            request to be refused — asserting the authority asymmetry.
+        success: End-of-phase criteria.
+    """
+
+    name: str
+    duration_s: float
+    request_mode: str | None = None
+    request_ground_authority: bool = False
+    expect_request_refused: bool = False
+    success: SuccessCriteria = field(default_factory=SuccessCriteria)
+
+
+@dataclass(frozen=True)
+class MissionSpec:
+    """A mission profile: what to fly and what must come true.
+
+    Attributes:
+        name: Mission identifier.
+        description: Human-readable purpose.
+        vehicle_path: Vehicle composition the mission flies.
+        omega0_rad_s: Initial plant body rates.
+        plant_rate_hz: Plant integration/publish rate.
+        phases: The timeline.
+    """
+
+    name: str
+    description: str
+    vehicle_path: str
+    omega0_rad_s: tuple[float, float, float]
+    plant_rate_hz: float
+    phases: tuple[PhaseSpec, ...]
+
+
+@dataclass(frozen=True)
+class PhaseResult:
+    """One phase's judgment.
+
+    Attributes:
+        name: Phase name.
+        passed: Whether every criterion held.
+        details: Human-readable pass/fail lines, one per check.
+    """
+
+    name: str
+    passed: bool
+    details: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScenarioResult:
+    """A full mission's judgment.
+
+    Attributes:
+        mission: Mission name.
+        phases: Per-phase results, in order.
+    """
+
+    mission: str
+    phases: tuple[PhaseResult, ...]
+
+    @property
+    def passed(self) -> bool:
+        """Whether every phase passed."""
+        return all(phase.passed for phase in self.phases)
+
+    def describe(self) -> str:
+        """Render the judgment for logs and assertion messages.
+
+        Returns:
+            A multi-line report.
+        """
+        lines = [f"mission {self.mission}: {'PASS' if self.passed else 'FAIL'}"]
+        for phase in self.phases:
+            lines.append(f"  phase {phase.name}: {'pass' if phase.passed else 'FAIL'}")
+            lines.extend(f"    {detail}" for detail in phase.details)
+        return "\n".join(lines)
+
+
+def _mode_value(name: str) -> mode_pb2.SystemMode.ValueType:
+    """Resolve a bare mode name from a mission file.
+
+    Args:
+        name: Bare name, e.g. ``SAFE``.
+
+    Returns:
+        The SystemMode value.
+
+    Raises:
+        ValueError: If the name is not a mode (fail loud at load).
+    """
+    try:
+        value: mode_pb2.SystemMode.ValueType = mode_pb2.SystemMode.Value(f"SYSTEM_MODE_{name}")
+    except ValueError as exc:
+        raise ValueError(f"unknown mode {name!r} in mission file") from exc
+    return value
+
+
+def load_mission(path: Path | str) -> MissionSpec:
+    """Load and validate a mission profile.
+
+    Args:
+        path: Mission file, e.g. ``config/missions/detumble_test.toml``.
+
+    Returns:
+        The parsed mission.
+
+    Raises:
+        KeyError: If a required key is missing (fail loud, not mid-run).
+        ValueError: If a mode name does not exist.
+    """
+    data: dict[str, Any] = tomllib.loads(Path(path).read_text())
+    phases: list[PhaseSpec] = []
+    for row in data["phases"]:
+        request_mode = row.get("request_mode")
+        if request_mode is not None:
+            _mode_value(str(request_mode))  # validate at load time
+        raw_success = row.get("success", {})
+        criteria = SuccessCriteria(
+            max_omega_mag_rad_s=(
+                float(raw_success["max_omega_mag_rad_s"])
+                if "max_omega_mag_rad_s" in raw_success
+                else None
+            ),
+            require_mode=(
+                str(raw_success["require_mode"]) if "require_mode" in raw_success else None
+            ),
+            require_all_acks=bool(raw_success.get("require_all_acks", False)),
+        )
+        if criteria.require_mode is not None:
+            _mode_value(criteria.require_mode)
+        phases.append(
+            PhaseSpec(
+                name=str(row["name"]),
+                duration_s=float(row["duration_s"]),
+                request_mode=str(request_mode) if request_mode is not None else None,
+                request_ground_authority=bool(row.get("request_ground_authority", False)),
+                expect_request_refused=bool(row.get("expect_request_refused", False)),
+                success=criteria,
+            )
+        )
+    initial = data["initial"]
+    omega0 = tuple(float(v) for v in initial["omega0_rad_s"])
+    return MissionSpec(
+        name=str(data["name"]),
+        description=str(data.get("description", "")),
+        vehicle_path=str(data["vehicle"]),
+        omega0_rad_s=(omega0[0], omega0[1], omega0[2]),
+        plant_rate_hz=float(initial.get("plant_rate_hz", 100.0)),
+        phases=tuple(phases),
+    )
+
+
+def _truth_topic(vehicle: VehicleSpec) -> str:
+    """Find the truth topic the vehicle's sim-fed IMU subscribes to.
+
+    Args:
+        vehicle: Loaded vehicle composition.
+
+    Returns:
+        The truth key expression.
+
+    Raises:
+        KeyError: If no sensor declares a ``truth_topic`` — the mission
+            needs a sim-fed vehicle.
+    """
+    for sensor in vehicle.sensors:
+        if "truth_topic" in sensor.options:
+            return str(sensor.options["truth_topic"])
+    raise KeyError(f"vehicle {vehicle.name!r} has no sim-fed sensor (truth_topic)")
+
+
+class ScenarioRunner:
+    """Composes the flight chain in-process and executes one mission."""
+
+    def __init__(self, mission: MissionSpec, work_dir: Path) -> None:
+        """Bind a mission to a scratch directory.
+
+        Args:
+            mission: The mission to fly.
+            work_dir: Scratch directory (clean-shutdown marker lives
+                here — scenario runs must never touch flight state).
+        """
+        self.mission = mission
+        self._work_dir = work_dir
+
+    def run(self) -> ScenarioResult:
+        """Fly the mission.
+
+        Returns:
+            The per-phase judgment.
+        """
+        vehicle = load_vehicle(REPO_ROOT / self.mission.vehicle_path)
+        marker = self._work_dir / "clean-shutdown"
+        marker.touch()  # scenario boots are clean boots: system goes NOMINAL
+        mode_entry = replace(vehicle.mode, clean_shutdown_marker=str(marker))
+
+        session = zenoh.open(zenoh.Config())
+        threads: list[threading.Thread] = []
+        sensor_daemons: list[SensorDaemon] = []
+        actuator_daemons: list[ActuatorDaemon] = []
+        clients: list[ModeClient] = []
+        plant: LocalPlant | None = None
+        loop: ControlLoop | None = None
+        manager: ModeManager | None = None
+        try:
+            manager = ModeManager(mode_entry, session, base_topic=SCENARIO_MODE_BASE)
+
+            for entry in vehicle.sensors:
+                driver = get_driver_class(entry.driver).from_config(entry.name, entry.options)
+                sensor_daemons.append(SensorDaemon(entry, driver, session))
+            for actuator in vehicle.actuators:
+                actuator_driver = get_actuator_class(actuator.driver).from_config(
+                    actuator.name, actuator.options
+                )
+                actuator_daemons.append(ActuatorDaemon(actuator, actuator_driver, session))
+
+            control = vehicle.control
+            loop = ControlLoop(
+                session,
+                control,
+                get_controller_class(control.strategy).from_config(control.options),
+                get_guidance_class(control.objective).from_config(control.objective_options),
+                get_estimator_class(control.estimator).from_config(control.estimator_options),
+                vehicle_name=vehicle.name,
+                config_checksum=vehicle.provenance.checksum,
+            )
+
+            clients = [
+                ModeClient(session, app, base_topic=SCENARIO_MODE_BASE) for app in mode_entry.apps
+            ]
+
+            plant = LocalPlant(
+                vehicle,
+                session,
+                truth_topic=_truth_topic(vehicle),
+                omega0=self.mission.omega0_rad_s,
+                rate_hz=self.mission.plant_rate_hz,
+            )
+            plant.start()
+
+            for daemon in sensor_daemons:
+                thread = threading.Thread(
+                    target=lambda d=daemon: d.run(health_every_s=0.0), daemon=True
+                )
+                thread.start()
+                threads.append(thread)
+            for act_daemon in actuator_daemons:
+                thread = threading.Thread(
+                    target=lambda d=act_daemon: d.run(health_every_s=0.0), daemon=True
+                )
+                thread.start()
+                threads.append(thread)
+
+            running_loop = loop  # narrow for the closure
+
+            def run_loop() -> None:
+                """Feed the control loop once input flows."""
+                if running_loop.wait_for_first_sample(timeout_s=10.0):
+                    running_loop.run(duration_s=0.0)
+
+            loop_thread = threading.Thread(target=run_loop, daemon=True)
+            loop_thread.start()
+            threads.append(loop_thread)
+
+            phases = tuple(self._run_phase(phase, manager, plant) for phase in self.mission.phases)
+            return ScenarioResult(mission=self.mission.name, phases=phases)
+        finally:
+            if plant is not None:
+                plant.stop()
+            if loop is not None:
+                loop.stop()
+            for sensor_daemon in sensor_daemons:
+                sensor_daemon.stop()
+            for act_daemon in actuator_daemons:
+                act_daemon.stop()
+            for thread in threads:
+                thread.join(timeout=3.0)
+            if loop is not None:
+                loop.close()
+            for sensor_daemon in sensor_daemons:
+                sensor_daemon.close()
+            for act_daemon in actuator_daemons:
+                act_daemon.close()
+            for client in clients:
+                client.close()
+            if manager is not None:
+                manager.close()
+            session.close()
+
+    def _run_phase(self, phase: PhaseSpec, manager: ModeManager, plant: LocalPlant) -> PhaseResult:
+        """Execute and judge one phase.
+
+        Args:
+            phase: The phase to run.
+            manager: The live mode manager.
+            plant: The live plant (truth source for criteria).
+
+        Returns:
+            The phase's judgment.
+        """
+        details: list[str] = []
+        passed = True
+
+        if phase.request_mode is not None:
+            source = "ground" if phase.request_ground_authority else "fdir"
+            decision = manager.request(
+                mode_pb2.ModeRequest(
+                    source=source,
+                    requested=_mode_value(phase.request_mode),
+                    reason=f"mission phase {phase.name}",
+                    ground_authority=phase.request_ground_authority,
+                )
+            )
+            if decision.accepted == phase.expect_request_refused:
+                passed = False
+                expectation = "refused" if phase.expect_request_refused else "accepted"
+                details.append(
+                    f"FAIL: request {phase.request_mode} should have been {expectation} "
+                    f"({decision.reason})"
+                )
+            else:
+                details.append(f"request {phase.request_mode}: {decision.reason}")
+
+        time.sleep(phase.duration_s)
+
+        criteria = phase.success
+        if criteria.max_omega_mag_rad_s is not None:
+            omega = plant.body.rate_magnitude()
+            ok = omega <= criteria.max_omega_mag_rad_s
+            passed = passed and ok
+            details.append(
+                f"{'ok' if ok else 'FAIL'}: |omega| {omega:.4f} rad/s "
+                f"(bound {criteria.max_omega_mag_rad_s:g})"
+            )
+        if criteria.require_mode is not None:
+            state = manager.state()
+            actual = mode_pb2.SystemMode.Name(state.mode).removeprefix("SYSTEM_MODE_")
+            ok = actual == criteria.require_mode
+            passed = passed and ok
+            details.append(
+                f"{'ok' if ok else 'FAIL'}: mode {actual} (required {criteria.require_mode})"
+            )
+        if criteria.require_all_acks:
+            missing = manager.missing_acks()
+            ok = missing == []
+            passed = passed and ok
+            details.append(f"{'ok' if ok else 'FAIL'}: missing acks {missing}")
+
+        return PhaseResult(name=phase.name, passed=passed, details=tuple(details))
