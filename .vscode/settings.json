@@ -10,6 +10,6 @@
     "options": ["--proto_path=${workspaceRoot}"]
   },
   "files.associations": {
-    "*.txtpb": "prototext"
+    "*.txtpb": "textproto"
   }
 }
