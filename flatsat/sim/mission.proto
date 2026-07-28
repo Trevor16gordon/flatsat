@@ -26,6 +26,10 @@ message PhaseConfig {
   bool request_ground_authority = 4;    // runner plays ground (true) vs FDIR (false)
   bool expect_request_refused = 5;      // phase EXPECTS refusal — asserts the asymmetry
   SuccessCriteriaConfig success = 6;
+  // Fault injection: kill the truth source at phase start (the plant
+  // stops publishing — the bench-without-bridge signature). Downstream
+  // must degrade honestly: STALE flags, wheel zeroing, FDIR safing.
+  bool inject_truth_blackout = 7;
 }
 
 // The whole mission.

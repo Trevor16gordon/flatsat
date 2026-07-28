@@ -70,6 +70,7 @@ class PhaseConfig(_message.Message):
     REQUEST_GROUND_AUTHORITY_FIELD_NUMBER: _builtins.int
     EXPECT_REQUEST_REFUSED_FIELD_NUMBER: _builtins.int
     SUCCESS_FIELD_NUMBER: _builtins.int
+    INJECT_TRUTH_BLACKOUT_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     duration_s: _builtins.float
     """how long the phase runs before judgment"""
@@ -79,6 +80,11 @@ class PhaseConfig(_message.Message):
     """runner plays ground (true) vs FDIR (false)"""
     expect_request_refused: _builtins.bool
     """phase EXPECTS refusal — asserts the asymmetry"""
+    inject_truth_blackout: _builtins.bool
+    """Fault injection: kill the truth source at phase start (the plant
+    stops publishing — the bench-without-bridge signature). Downstream
+    must degrade honestly: STALE flags, wheel zeroing, FDIR safing.
+    """
     @_builtins.property
     def success(self) -> Global___SuccessCriteriaConfig: ...
     def __init__(
@@ -90,10 +96,11 @@ class PhaseConfig(_message.Message):
         request_ground_authority: _builtins.bool = ...,
         expect_request_refused: _builtins.bool = ...,
         success: Global___SuccessCriteriaConfig | None = ...,
+        inject_truth_blackout: _builtins.bool = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["success", b"success"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["duration_s", b"duration_s", "expect_request_refused", b"expect_request_refused", "name", b"name", "request_ground_authority", b"request_ground_authority", "request_mode", b"request_mode", "success", b"success"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["duration_s", b"duration_s", "expect_request_refused", b"expect_request_refused", "inject_truth_blackout", b"inject_truth_blackout", "name", b"name", "request_ground_authority", b"request_ground_authority", "request_mode", b"request_mode", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

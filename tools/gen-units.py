@@ -253,6 +253,23 @@ def main() -> int:
     (args.out / "flatsat-mode.service").write_text(mode_unit)
     written.append("flatsat-mode.service")
 
+    if len(vehicle.fdir.rules) > 0:
+        fdir_unit = render_service(
+            unit_name="fdir",
+            description=f"FDIR limit checker ({len(vehicle.fdir.rules)} rules) — {vehicle.name}",
+            exec_args=[
+                "-m",
+                "flatsat.apps.fdir",
+                "--vehicle",
+                str(vehicle_rel),
+            ],
+            deploy=deployment.get("fdir", {}),
+            profile=profile,
+            header=header,
+        )
+        (args.out / "flatsat-fdir.service").write_text(fdir_unit)
+        written.append("flatsat-fdir.service")
+
     recorder_unit = render_service(
         unit_name="recorder",
         description=f"telemetry recorder — {vehicle.name}",

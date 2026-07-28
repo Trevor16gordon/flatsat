@@ -116,6 +116,32 @@ class Header(_message.Message):
 Global___Header: _TypeAlias = Header  # noqa: Y015
 
 @_typing.final
+class HeaderEnvelope(_message.Message):
+    """Header-only view of ANY bus message. Every message embeds Header as
+    field 1, so parsing an unknown payload as HeaderEnvelope yields just
+    the envelope (unknown fields are skipped) — the generic watchpoint
+    FDIR's limit rules read validity flags through.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___HeaderEnvelope: _TypeAlias = HeaderEnvelope  # noqa: Y015
+
+@_typing.final
 class ImuSample(_message.Message):
     """Inertial measurement sample. Body frame, SI units."""
 

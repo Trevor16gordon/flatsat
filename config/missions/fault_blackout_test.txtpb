@@ -1,0 +1,38 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# FAULT-INJECTION MISSION — the HIL stall scenario, scripted. Phase 1
+# settles nominal; phase 2 kills the truth source mid-mission and
+# expects the chain to degrade honestly all the way to FDIR safing the
+# vehicle; phase 3 verifies software cannot un-safe it afterwards.
+
+name: "fault-blackout-test"
+description: "Truth blackout mid-mission: STALE cascade ends in an FDIR safing"
+vehicle: "config/vehicles/test_scenario.txtpb"
+
+omega0_rad_s: [0.2, -0.15, 0.1]
+plant_rate_hz: 100
+
+phases {
+  name: "settle-nominal"
+  duration_s: 3.0
+  success { require_mode: "NOMINAL" }
+}
+
+phases {
+  name: "truth-blackout"
+  duration_s: 6.0
+  inject_truth_blackout: true
+  success {
+    require_mode: "SAFE"       # FDIR must have safed the vehicle
+    require_all_acks: true     # and every app heard it
+  }
+}
+
+phases {
+  name: "software-cannot-unsafe"
+  duration_s: 1.0
+  request_mode: "RECOVERY"     # no ground authority — must be refused
+  expect_request_refused: true
+  success { require_mode: "SAFE" }
+}

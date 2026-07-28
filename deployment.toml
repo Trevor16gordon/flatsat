@@ -40,3 +40,8 @@ memory_max = "256M"
 memory_max = "128M"
 # no core_role, dependency-minimal: Safe's entry path must not depend on
 # anything that can be the reason for entering it
+
+[fdir]
+memory_max = "128M"
+# no core_role, dependency-minimal: the safing path must not depend on
+# anything that can be the reason for safing

@@ -24,21 +24,23 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x66latsat/msgs/hal.proto\x12\nflatsat.v1\"h\n\x06Header\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x16\n\x0esample_time_ns\x18\x02 \x01(\x06\x12\x17\n\x0fpublish_time_ns\x18\x03 \x01(\x06\x12\x0b\n\x03seq\x18\x04 \x01(\x04\x12\x10\n\x08validity\x18\x05 \x01(\r\"\xca\x01\n\tImuSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0cgyro_x_rad_s\x18\x02 \x01(\x01\x12\x14\n\x0cgyro_y_rad_s\x18\x03 \x01(\x01\x12\x14\n\x0cgyro_z_rad_s\x18\x04 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_x_m_s2\x18\x05 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_y_m_s2\x18\x06 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_z_m_s2\x18\x07 \x01(\x01\x12\x15\n\rtemperature_c\x18\x08 \x01(\x01\"`\n\x11TemperatureSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\rtemperature_c\x18\x02 \x01(\x01\x12\x10\n\x08location\x18\x03 \x01(\t\"\x84\x01\n\nWheelState\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x13\n\x0bspeed_rad_s\x18\x02 \x01(\x01\x12\x16\n\x0emomentum_n_m_s\x18\x03 \x01(\x01\x12\x12\n\ntorque_n_m\x18\x04 \x01(\x01\x12\x11\n\tsaturated\x18\x05 \x01(\x08*\xa5\x01\n\x0cValidityFlag\x12\x17\n\x13VALIDITY_FLAG_VALID\x10\x00\x12\x17\n\x13VALIDITY_FLAG_RANGE\x10\x01\x12\x16\n\x12VALIDITY_FLAG_COMM\x10\x02\x12\x15\n\x11VALIDITY_FLAG_CRC\x10\x04\x12\x17\n\x13VALIDITY_FLAG_STALE\x10\x08\x12\x1b\n\x17VALIDITY_FLAG_SATURATED\x10\x10\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x66latsat/msgs/hal.proto\x12\nflatsat.v1\"h\n\x06Header\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x16\n\x0esample_time_ns\x18\x02 \x01(\x06\x12\x17\n\x0fpublish_time_ns\x18\x03 \x01(\x06\x12\x0b\n\x03seq\x18\x04 \x01(\x04\x12\x10\n\x08validity\x18\x05 \x01(\r\"4\n\x0eHeaderEnvelope\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\"\xca\x01\n\tImuSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0cgyro_x_rad_s\x18\x02 \x01(\x01\x12\x14\n\x0cgyro_y_rad_s\x18\x03 \x01(\x01\x12\x14\n\x0cgyro_z_rad_s\x18\x04 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_x_m_s2\x18\x05 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_y_m_s2\x18\x06 \x01(\x01\x12\x14\n\x0c\x61\x63\x63\x65l_z_m_s2\x18\x07 \x01(\x01\x12\x15\n\rtemperature_c\x18\x08 \x01(\x01\"`\n\x11TemperatureSample\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\rtemperature_c\x18\x02 \x01(\x01\x12\x10\n\x08location\x18\x03 \x01(\t\"\x84\x01\n\nWheelState\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x13\n\x0bspeed_rad_s\x18\x02 \x01(\x01\x12\x16\n\x0emomentum_n_m_s\x18\x03 \x01(\x01\x12\x12\n\ntorque_n_m\x18\x04 \x01(\x01\x12\x11\n\tsaturated\x18\x05 \x01(\x08*\xa5\x01\n\x0cValidityFlag\x12\x17\n\x13VALIDITY_FLAG_VALID\x10\x00\x12\x17\n\x13VALIDITY_FLAG_RANGE\x10\x01\x12\x16\n\x12VALIDITY_FLAG_COMM\x10\x02\x12\x15\n\x11VALIDITY_FLAG_CRC\x10\x04\x12\x17\n\x13VALIDITY_FLAG_STALE\x10\x08\x12\x1b\n\x17VALIDITY_FLAG_SATURATED\x10\x10\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'flatsat.msgs.hal_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_VALIDITYFLAG']._serialized_start=583
-  _globals['_VALIDITYFLAG']._serialized_end=748
+  _globals['_VALIDITYFLAG']._serialized_start=637
+  _globals['_VALIDITYFLAG']._serialized_end=802
   _globals['_HEADER']._serialized_start=38
   _globals['_HEADER']._serialized_end=142
-  _globals['_IMUSAMPLE']._serialized_start=145
-  _globals['_IMUSAMPLE']._serialized_end=347
-  _globals['_TEMPERATURESAMPLE']._serialized_start=349
-  _globals['_TEMPERATURESAMPLE']._serialized_end=445
-  _globals['_WHEELSTATE']._serialized_start=448
-  _globals['_WHEELSTATE']._serialized_end=580
+  _globals['_HEADERENVELOPE']._serialized_start=144
+  _globals['_HEADERENVELOPE']._serialized_end=196
+  _globals['_IMUSAMPLE']._serialized_start=199
+  _globals['_IMUSAMPLE']._serialized_end=401
+  _globals['_TEMPERATURESAMPLE']._serialized_start=403
+  _globals['_TEMPERATURESAMPLE']._serialized_end=499
+  _globals['_WHEELSTATE']._serialized_start=502
+  _globals['_WHEELSTATE']._serialized_end=634
 # @@protoc_insertion_point(module_scope)

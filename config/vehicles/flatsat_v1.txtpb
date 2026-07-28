@@ -74,9 +74,41 @@ control {
 }
 
 mode {  # mission state: who must ack transitions
-  apps: ["imu0", "thermal_tj", "wheel0", "adcs", "recorder"]
+  apps: ["imu0", "thermal_tj", "wheel0", "adcs", "recorder", "fdir"]
   ack_timeout_s: 2.0
   min_dwell_s: 1.0                     # anti-flap: away-from-safety only
+}
+
+fdir {
+  # Thresholds from the 2026-07-28 HIL stall census: 39 stale episodes,
+  # median barely over the 0.5 s staleness threshold, 2.2% of the window
+  # — sub-second stalls are NORMAL on this link. Only a SUSTAINED stale
+  # ratio (a dead bridge, a wedged link) is a fault worth safing over.
+  rules {
+    name: "imu_stale"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/imu0/sample"
+      flag_mask: 8         # VALIDITY_FLAG_STALE
+      window_s: 10.0
+      max_ratio: 0.5
+    }
+  }
+  rules {
+    name: "imu_silent"     # daemon DEATH, distinct from degraded
+    min_trip_s: 1.0
+    silence { topic: "hal/imu0/sample" timeout_s: 2.0 }
+  }
+  rules {
+    name: "wheel_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel0/state"
+      flag_mask: 16        # VALIDITY_FLAG_SATURATED
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
 }
 
 telemetry {  # the recorder: what gets archived, and where

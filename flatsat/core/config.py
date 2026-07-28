@@ -32,6 +32,7 @@ from google.protobuf import text_format
 from google.protobuf.message import Message
 
 from flatsat import vehicle_pb2
+from flatsat.control.health import fdir_config_pb2
 from flatsat.hardware import devices_pb2
 from flatsat.mode import mode_config_pb2
 from flatsat.telemetry import telemetry_config_pb2
@@ -156,6 +157,11 @@ class VehicleSpec:
     def telemetry(self) -> telemetry_config_pb2.TelemetryConfig:
         """Recorder composition, defaults filled."""
         return self.config.telemetry
+
+    @property
+    def fdir(self) -> fdir_config_pb2.FdirConfig:
+        """FDIR rulebook; empty when the vehicle declares no rules."""
+        return self.config.fdir
 
     def sensor(self, name: str) -> vehicle_pb2.SensorConfig:
         """Look up one sensor entry by name.

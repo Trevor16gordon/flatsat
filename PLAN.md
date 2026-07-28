@@ -95,6 +95,23 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**FDIR + ground commanding (2026-07-28) — M4's core landed, thresholds
+measured not invented.** `flatsat/control/health/`: declarative limit
+rules as protos in the vehicle file (flag-ratio and silence checks —
+degraded vs DEAD are different faults — each wrapped in `min_trip_s`
+persistence so chatter never safes the vehicle), a pure clock-injected
+rule engine, and an arbiter that is structurally one-way: its only
+escalation is a Safe request without ground authority, held while
+already Safe. flatsat_v1's rulebook derives directly from the HIL stall
+census (sub-second stalls normal; sustained ratio, silence, or wheel
+saturation are faults). `flatsat-fdir.service` generated (8 units).
+Scenario runner gained fault injection (`inject_truth_blackout`);
+`fault_blackout_test` mission proves the full story at system tier:
+truth dies → STALE cascade → FDIR safes → software cannot un-safe.
+Plus `flatsat.apps.mode_request` — the operator CLI that leaves SAFE
+with `--ground` and reports refusals honestly. FSW-FDIR-001…004
+test-verified; **160 tests, 59 requirements**.
+
 **Distributed HIL re-validation PASSED (2026-07-28) — the migrated
 stack against real physics over WiFi.** Jetson bench (6 services, now
 running as trevor — see the User= fix) ↔ Mac Basilisk bridge, 41.8 min

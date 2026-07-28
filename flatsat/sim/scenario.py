@@ -35,6 +35,7 @@ import zenoh
 from flatsat.apps.actuator_daemon import ActuatorDaemon
 from flatsat.apps.control_loop import ControlLoop
 from flatsat.apps.sensor_daemon import SensorDaemon
+from flatsat.control.health.arbiter import Fdir
 from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle, which_impl
 from flatsat.core.registry import (
     get_actuator_class,
@@ -93,6 +94,7 @@ class PhaseSpec:
     request_mode: str | None = None
     request_ground_authority: bool = False
     expect_request_refused: bool = False
+    inject_truth_blackout: bool = False
     success: SuccessCriteria = field(default_factory=SuccessCriteria)
 
 
@@ -218,6 +220,7 @@ def load_mission(path: Path | str) -> MissionSpec:
                 request_mode=row.request_mode or None,
                 request_ground_authority=row.request_ground_authority,
                 expect_request_refused=row.expect_request_refused,
+                inject_truth_blackout=row.inject_truth_blackout,
                 success=criteria,
             )
         )
@@ -337,6 +340,7 @@ class ScenarioRunner:
         plant: Plant | None = None
         loop: ControlLoop | None = None
         manager: ModeManager | None = None
+        fdir: Fdir | None = None
         try:
             manager = ModeManager(mode_entry, session, base_topic=SCENARIO_MODE_BASE)
 
@@ -371,6 +375,14 @@ class ScenarioRunner:
                 ModeClient(session, app, base_topic=SCENARIO_MODE_BASE) for app in mode_entry.apps
             ]
 
+            if len(vehicle.fdir.rules) > 0:
+                fdir = Fdir(vehicle.fdir, session, base_topic=SCENARIO_MODE_BASE)
+                fdir_thread = threading.Thread(
+                    target=lambda: fdir.run(health_every_s=1.0), daemon=True
+                )
+                fdir_thread.start()
+                threads.append(fdir_thread)
+
             plant = self._build_plant(vehicle, session)
             plant.start()
 
@@ -401,6 +413,8 @@ class ScenarioRunner:
             phases = tuple(self._run_phase(phase, manager, plant) for phase in self.mission.phases)
             return ScenarioResult(mission=self.mission.name, phases=phases)
         finally:
+            if fdir is not None:
+                fdir.stop()
             if plant is not None:
                 plant.stop()
             if loop is not None:
@@ -419,6 +433,8 @@ class ScenarioRunner:
                 act_daemon.close()
             for client in clients:
                 client.close()
+            if fdir is not None:
+                fdir.close()
             if manager is not None:
                 manager.close()
             session.close()
@@ -436,6 +452,10 @@ class ScenarioRunner:
         """
         details: list[str] = []
         passed = True
+
+        if phase.inject_truth_blackout:
+            plant.stop()  # truth goes dark: the bench-without-bridge signature
+            details.append("injected: truth blackout (plant stopped)")
 
         if phase.request_mode is not None:
             source = "ground" if phase.request_ground_authority else "fdir"

@@ -1,0 +1,50 @@
+// FDIR RULEBOOK SCHEMA — the fdir block of a vehicle file.
+//
+// Fault detection is the same sense-decide-act shape as attitude
+// control, with the SYSTEM as the plant: these declarative rules are
+// the limit checker (sense), the arbiter decides, and the response
+// ladder actuates — restart is systemd's Restart= tier, reconfigure
+// arrives with the parameter database, and "request Safe" is FDIR
+// acting as a CLIENT of mode authority, never its owner.
+//
+// Rules watch bus telemetry every process already publishes. The first
+// thresholds came from measured behavior: the 2026-07-28 HIL stall
+// census (39 stale episodes, median just over the 0.5 s staleness
+// threshold, 2.2% of the window) says brief stalls are NORMAL — only a
+// sustained ratio is a fault.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// Condition: fraction of samples on a topic carrying any of the given
+// validity flags exceeds max_ratio over a sliding window.
+message FlagRatioRule {
+  string topic = 1;      // bus key expression to watch
+  uint32 flag_mask = 2;  // ValidityFlag bits that count as flagged (e.g. 8 = STALE)
+  double window_s = 3;   // sliding window length
+  double max_ratio = 4;  // flagged fraction beyond which the condition holds
+}
+
+// Condition: nothing at all on a topic for too long. Distinct from
+// STALE by design — a daemon that flags is degraded; a daemon that
+// goes silent is DEAD, a different fault with a different response.
+message SilenceRule {
+  string topic = 1;
+  double timeout_s = 2;
+}
+
+// One named rule: a check plus the anti-chatter persistence bound.
+message FdirRule {
+  string name = 1;
+  optional double min_trip_s = 2;  // condition must persist this long; absent = 1.0
+
+  oneof check {
+    FlagRatioRule flag_ratio = 10;
+    SilenceRule silence = 11;
+  }
+}
+
+message FdirConfig {
+  repeated FdirRule rules = 1;
+}

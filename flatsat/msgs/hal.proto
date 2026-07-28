@@ -42,6 +42,14 @@ message Header {
   uint32 validity = 5;         // bitwise OR of ValidityFlag; 0 == valid
 }
 
+// Header-only view of ANY bus message. Every message embeds Header as
+// field 1, so parsing an unknown payload as HeaderEnvelope yields just
+// the envelope (unknown fields are skipped) — the generic watchpoint
+// FDIR's limit rules read validity flags through.
+message HeaderEnvelope {
+  Header header = 1;
+}
+
 // Inertial measurement sample. Body frame, SI units.
 message ImuSample {
   Header header = 1;

@@ -1,0 +1,67 @@
+# FDIR: fault detection, isolation, and recovery — the system as plant.
+#
+# The first thresholds are MEASURED, not invented: the 2026-07-28 HIL
+# stall census (39 stale episodes, median barely over the 0.5 s
+# staleness threshold) defined what "normal" looks like on this link,
+# and the rules fault only what exceeds it.
+
+[[requirement]]
+id = "FSW-FDIR-001"
+statement = """
+Fault-detection limit rules shall be declarative configuration in the
+vehicle file, not code.
+"""
+rationale = """
+Ground-tunable rules are the design (PLAN §8): thresholds change by
+config edit and, later, by command — never by reflashing a limit that
+proved wrong on orbit.
+"""
+verification = "test"
+evidence = "rules_test.py::test_rulebook_is_declarative_config; the fdir blocks of flatsat_v1.txtpb and test_scenario.txtpb"
+status = "verified"
+
+[[requirement]]
+id = "FSW-FDIR-002"
+statement = """
+A sustained acquisition-fault condition — flagged-sample ratio or topic
+silence persisting beyond its configured bound — shall cause FDIR to
+request Safe, carrying the triggering rule names as the reason.
+"""
+rationale = """
+After anything unexpected the system rests in its safest configuration.
+The persistence bound is what separates a fault from the measured
+normal (brief link stalls) — chatter must not safe the vehicle.
+"""
+verification = "test"
+evidence = "arbiter_test.py::test_sustained_fault_ends_in_safe; rules_test.py::test_sustained_stale_ratio_trips, ::test_brief_stall_does_not_trip, ::test_silence_trips_without_any_message; scenario_test.py::test_fault_blackout_mission_succeeds (system tier)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-FDIR-003"
+statement = """
+FDIR shall only ever command toward safety: its sole escalation is a
+Safe request without ground authority, and it shall not issue requests
+while the system is already Safe.
+"""
+rationale = """
+FDIR is a client of mode authority, never its owner. Software may only
+make the system safer on its own; leaving safety is a human decision.
+"""
+verification = "test"
+evidence = "arbiter_test.py::test_fdir_holds_fire_when_already_safe; structurally, the arbiter constructs only SYSTEM_MODE_SAFE requests"
+status = "verified"
+
+[[requirement]]
+id = "FSW-FDIR-004"
+statement = """
+FDIR shall publish health telemetry naming the rules currently tripped
+and counting safings requested.
+"""
+rationale = """
+A tripped-but-not-yet-escalated rule is exactly what an operator (and
+the anomaly corpus) most needs to see; a silent watchdog is worse than
+none.
+"""
+verification = "test"
+evidence = "arbiter_test.py::test_fdir_health_reports_tripped_rules"
+status = "verified"

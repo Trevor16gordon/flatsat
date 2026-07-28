@@ -17,6 +17,7 @@ syntax = "proto3";
 package flatsat.v1;
 
 import "flatsat/control/attitude/control_options.proto";
+import "flatsat/control/health/fdir_config.proto";
 import "flatsat/hardware/drivers/driver_options.proto";
 import "flatsat/mode/mode_config.proto";
 import "flatsat/telemetry/telemetry_config.proto";
@@ -91,4 +92,5 @@ message VehicleConfig {
   ControlConfig control = 6;
   ModeConfig mode = 7;            // absent = defaults
   TelemetryConfig telemetry = 8;  // absent = defaults
+  FdirConfig fdir = 9;            // absent = no fault rules (no fdir service)
 }

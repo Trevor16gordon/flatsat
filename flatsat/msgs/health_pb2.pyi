@@ -304,3 +304,39 @@ class ModeHealth(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ModeHealth: _TypeAlias = ModeHealth  # noqa: Y015
+
+@_typing.final
+class FdirHealth(_message.Message):
+    """Health of the FDIR service over one reporting window."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    RULES_FIELD_NUMBER: _builtins.int
+    TRIPPED_FIELD_NUMBER: _builtins.int
+    SAFE_REQUESTS_FIELD_NUMBER: _builtins.int
+    rules: _builtins.int
+    """rules loaded from the vehicle file"""
+    safe_requests: _builtins.int
+    """safings requested since start"""
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    @_builtins.property
+    def tripped(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]:
+        """rules currently tripped"""
+
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        rules: _builtins.int = ...,
+        tripped: _abc.Iterable[_builtins.str] | None = ...,
+        safe_requests: _builtins.int = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "rules", b"rules", "safe_requests", b"safe_requests", "tripped", b"tripped"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___FdirHealth: _TypeAlias = FdirHealth  # noqa: Y015

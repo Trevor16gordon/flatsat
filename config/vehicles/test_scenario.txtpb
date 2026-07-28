@@ -73,7 +73,20 @@ control {
 }
 
 mode {
-  apps: ["scn_imu0", "scn_wheel_x", "scn_wheel_y", "scn_wheel_z", "adcs"]
+  apps: ["scn_imu0", "scn_wheel_x", "scn_wheel_y", "scn_wheel_z", "adcs", "fdir"]
   ack_timeout_s: 1.0
   min_dwell_s: 0.2
+}
+
+fdir {  # thresholds scaled to this vehicle's 2 s test tempo
+  rules {
+    name: "imu_stale"
+    min_trip_s: 0.5
+    flag_ratio {
+      topic: "test/scn/hal/imu/sample"
+      flag_mask: 8         # VALIDITY_FLAG_STALE
+      window_s: 2.0
+      max_ratio: 0.5
+    }
+  }
 }

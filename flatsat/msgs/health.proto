@@ -99,3 +99,12 @@ message ModeHealth {
   uint64 safe_entries = 6;        // times SAFE has been entered (flap escalation input)
   repeated string missing_acks = 7; // apps that did not ack the current seq in time
 }
+
+// Health of the FDIR service over one reporting window.
+message FdirHealth {
+  Header header = 1;
+
+  uint32 rules = 2;             // rules loaded from the vehicle file
+  repeated string tripped = 3;  // rules currently tripped
+  uint64 safe_requests = 4;     // safings requested since start
+}

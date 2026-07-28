@@ -70,3 +70,11 @@ def test_basilisk_plant_class_is_importable_without_basilisk() -> None:
     from flatsat.sim.basilisk_hil import BasiliskPlant
 
     assert callable(BasiliskPlant)
+
+
+@pytest.mark.verifies("FSW-FDIR-002", "FSW-SYS-002")
+def test_fault_blackout_mission_succeeds(tmp_path: Path) -> None:
+    """Truth dies mid-mission; the STALE cascade must end in an FDIR safing."""
+    mission = load_mission(MISSIONS / "fault_blackout_test.txtpb")
+    result = ScenarioRunner(mission, tmp_path).run()
+    assert result.passed, result.describe()
