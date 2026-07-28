@@ -29,17 +29,18 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.control.attitude.controller import AttitudeController
 from flatsat.control.attitude.estimators.estimator import StateEstimator
 from flatsat.control.attitude.guidance import ReferenceSource
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import ControlEntry, VehicleSpec, load_vehicle
+from flatsat.core.config import VehicleSpec, load_vehicle, which_impl
 from flatsat.core.health import health_topic, percentiles
 from flatsat.core.registry import get_controller_class, get_estimator_class, get_guidance_class
 from flatsat.core.rt import describe_actual, pin_to_core, quiesce_gc, try_fifo, try_mlockall
@@ -84,8 +85,8 @@ class LoopReport:
         msg = health_pb2.LoopHealth()
         msg.vehicle = loop.vehicle_name
         msg.config_checksum = loop.config_checksum
-        msg.strategy = loop.entry.strategy
-        msg.objective = loop.entry.objective
+        msg.strategy = loop.strategy_name
+        msg.objective = loop.objective_name
         msg.rate_hz = loop.entry.rate_hz
         msg.scheduling = environment
         msg.cpu_affinity = affinity
@@ -126,7 +127,7 @@ class ControlLoop:
     def __init__(
         self,
         session: zenoh.Session,
-        entry: ControlEntry,
+        entry: vehicle_pb2.ControlConfig,
         controller: AttitudeController,
         guidance: ReferenceSource,
         estimator: StateEstimator,
@@ -147,6 +148,8 @@ class ControlLoop:
                 telemetry so a recorded window traces to its parameters.
         """
         self.entry = entry
+        self.strategy_name = which_impl(entry, "strategy", "control")
+        self.objective_name = which_impl(entry, "objective", "control")
         self.vehicle_name = vehicle_name
         self.config_checksum = config_checksum
         self._health = SamplePublisher(session, health_topic("adcs"), "adcs_loop")
@@ -327,9 +330,12 @@ def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
         The composed loop, ready to run.
     """
     entry = vehicle.control
-    controller = get_controller_class(entry.strategy).from_config(entry.options)
-    guidance = get_guidance_class(entry.objective).from_config(entry.objective_options)
-    estimator = get_estimator_class(entry.estimator).from_config(entry.estimator_options)
+    strategy = which_impl(entry, "strategy", "control")
+    objective = which_impl(entry, "objective", "control")
+    estimator_name = which_impl(entry, "estimator", "control")
+    controller = get_controller_class(strategy).from_config(getattr(entry, strategy))
+    guidance = get_guidance_class(objective).from_config(getattr(entry, objective))
+    estimator = get_estimator_class(estimator_name).from_config(getattr(entry, estimator_name))
     return ControlLoop(
         session,
         entry,
@@ -362,7 +368,7 @@ def main() -> int:
 
     vehicle = load_vehicle(args.vehicle)
     if args.rate is not None:
-        vehicle = replace(vehicle, control=replace(vehicle.control, rate_hz=args.rate))
+        vehicle.config.control.rate_hz = args.rate  # protos are mutable views
 
     children: list[subprocess.Popen[bytes]] = []
     if args.spawn_sensors:

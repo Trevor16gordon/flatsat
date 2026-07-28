@@ -35,7 +35,7 @@ import zenoh
 from flatsat.apps.actuator_daemon import ActuatorDaemon
 from flatsat.apps.control_loop import ControlLoop
 from flatsat.apps.sensor_daemon import SensorDaemon
-from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle
+from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle, which_impl
 from flatsat.core.registry import (
     get_actuator_class,
     get_controller_class,
@@ -247,9 +247,8 @@ def _truth_topic(vehicle: VehicleSpec) -> str:
             needs a sim-fed vehicle.
     """
     for sensor in vehicle.sensors:
-        if sensor.driver == "basilisk_imu":
-            topic = sensor.options.truth_topic
-            return str(topic) if topic else "sim/truth/state"
+        if sensor.WhichOneof("options") == "basilisk_imu":
+            return sensor.basilisk_imu.truth_topic or "sim/truth/state"
     raise KeyError(f"vehicle {vehicle.name!r} has no sim-fed sensor (basilisk_imu)")
 
 
@@ -292,21 +291,28 @@ class ScenarioRunner:
             manager = ModeManager(mode_entry, session, base_topic=SCENARIO_MODE_BASE)
 
             for entry in vehicle.sensors:
-                driver = get_driver_class(entry.driver).from_config(entry.name, entry.options)
+                driver_name = which_impl(entry, "options", entry.name)
+                driver = get_driver_class(driver_name).from_config(
+                    entry.name, getattr(entry, driver_name)
+                )
                 sensor_daemons.append(SensorDaemon(entry, driver, session))
             for actuator in vehicle.actuators:
-                actuator_driver = get_actuator_class(actuator.driver).from_config(
-                    actuator.name, actuator.options
+                act_name = which_impl(actuator, "options", actuator.name)
+                actuator_driver = get_actuator_class(act_name).from_config(
+                    actuator.name, getattr(actuator, act_name)
                 )
                 actuator_daemons.append(ActuatorDaemon(actuator, actuator_driver, session))
 
             control = vehicle.control
+            strategy = which_impl(control, "strategy", "control")
+            objective = which_impl(control, "objective", "control")
+            estimator = which_impl(control, "estimator", "control")
             loop = ControlLoop(
                 session,
                 control,
-                get_controller_class(control.strategy).from_config(control.options),
-                get_guidance_class(control.objective).from_config(control.objective_options),
-                get_estimator_class(control.estimator).from_config(control.estimator_options),
+                get_controller_class(strategy).from_config(getattr(control, strategy)),
+                get_guidance_class(objective).from_config(getattr(control, objective)),
+                get_estimator_class(estimator).from_config(getattr(control, estimator)),
                 vehicle_name=vehicle.name,
                 config_checksum=vehicle.provenance.checksum,
             )

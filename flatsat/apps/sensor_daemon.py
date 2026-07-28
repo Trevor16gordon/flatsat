@@ -25,8 +25,9 @@ from pathlib import Path
 
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import SensorEntry, load_vehicle
+from flatsat.core.config import load_vehicle, which_impl
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_driver_class
 from flatsat.hardware.sensor import SensorDriver
@@ -37,7 +38,9 @@ from flatsat.msgs import health_pb2
 class SensorDaemon:
     """Publishes one driver's readings on the bus at a fixed cadence."""
 
-    def __init__(self, entry: SensorEntry, driver: SensorDriver, session: zenoh.Session) -> None:
+    def __init__(
+        self, entry: vehicle_pb2.SensorConfig, driver: SensorDriver, session: zenoh.Session
+    ) -> None:
         """Bind a driver to its topic and cadence.
 
         Args:
@@ -46,6 +49,7 @@ class SensorDaemon:
             session: Open zenoh session; not owned — caller closes it.
         """
         self.entry = entry
+        self.driver_name = which_impl(entry, "options", entry.name)
         self._driver = driver
         self._publisher = SamplePublisher(session, entry.topic, entry.name)
         self._health = SamplePublisher(session, health_topic(entry.name), entry.name)
@@ -76,7 +80,7 @@ class SensorDaemon:
             The published message, for tests and introspection.
         """
         msg = health_pb2.SensorHealth()
-        msg.driver = self.entry.driver
+        msg.driver = self.driver_name
         msg.rate_hz = self.entry.rate_hz
         msg.window_samples = self._window_samples
         msg.flagged_samples = self._flagged_samples
@@ -132,8 +136,9 @@ def build_daemon(
     """
     vehicle = load_vehicle(vehicle_path)
     entry = vehicle.sensor(sensor_name)
-    driver_cls = get_driver_class(entry.driver)
-    driver = driver_cls.from_config(entry.name, entry.options)
+    driver_name = which_impl(entry, "options", entry.name)
+    driver_cls = get_driver_class(driver_name)
+    driver = driver_cls.from_config(entry.name, getattr(entry, driver_name))
     for line in (*vehicle.describe(), *driver.describe()):
         print(f"[{entry.name}] {line}", flush=True)
     print(f"[{entry.name}] publishing {entry.topic} at {entry.rate_hz:g} Hz", flush=True)

@@ -3,7 +3,7 @@
 import pytest
 from google.protobuf.message import Message
 
-from flatsat.core.config import Mounting
+from flatsat import vehicle_pb2
 from flatsat.core.registry import ACTUATORS, get_actuator_class
 from flatsat.hardware.actuator import ActuatorDriver, project_body_torque
 from flatsat.hardware.drivers import driver_options_pb2
@@ -20,8 +20,8 @@ DRIVER_OPTIONS: dict[str, Message] = {
 }
 
 
-def _mounting(axis: tuple[float, float, float]) -> Mounting:
-    return Mounting(position_m=(0.0, 0.0, 0.0), axis=axis)
+def _mounting(axis: tuple[float, float, float]) -> vehicle_pb2.MountingConfig:
+    return vehicle_pb2.MountingConfig(position_m=[0.0, 0.0, 0.0], axis=list(axis))
 
 
 # ---------------------------------------------------- mounting projection --

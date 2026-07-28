@@ -81,8 +81,12 @@ def plant_from_vehicle(
         KeyError: If the vehicle declares no ``[body]`` physical model.
     """
     body = vehicle.require_body()
-    inertia = [list(row) for row in body.inertia_kg_m2]
-    wheels = [(entry.name, entry.mounting.axis) for entry in vehicle.actuators]
+    flat = list(body.inertia_kg_m2)
+    inertia = [flat[0:3], flat[3:6], flat[6:9]]
+    wheels = [
+        (entry.name, (entry.mounting.axis[0], entry.mounting.axis[1], entry.mounting.axis[2]))
+        for entry in vehicle.actuators
+    ]
     return body.mass_kg, inertia, wheels
 
 

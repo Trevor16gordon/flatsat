@@ -11,8 +11,9 @@ import time
 import pytest
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.apps.actuator_daemon import ActuatorDaemon
-from flatsat.core.config import ActuatorEntry, Mounting
+from flatsat.core.config import which_impl
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_actuator_class
 from flatsat.hardware.drivers import driver_options_pb2
@@ -21,16 +22,19 @@ from flatsat.msgs import adcs_pb2, hal_pb2, health_pb2
 RECV_TIMEOUT_S = 5.0
 
 
-def _entry(name: str, axis: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> ActuatorEntry:
-    return ActuatorEntry(
+def _entry(
+    name: str, axis: tuple[float, float, float] = (1.0, 0.0, 0.0)
+) -> vehicle_pb2.ActuatorConfig:
+    return vehicle_pb2.ActuatorConfig(
         name=name,
-        driver="sim_reaction_wheel",
         command_topic=f"test/act/{name}/cmd",
         state_topic=f"test/act/{name}/state",
         rate_hz=50.0,
         stale_zero_s=0.15,
-        mounting=Mounting(position_m=(0.0, 0.0, 0.0), axis=axis),
-        options=driver_options_pb2.SimReactionWheelOptions(device="config/devices/wheel0.txtpb"),
+        mounting=vehicle_pb2.MountingConfig(position_m=[0.0, 0.0, 0.0], axis=list(axis)),
+        sim_reaction_wheel=driver_options_pb2.SimReactionWheelOptions(
+            device="config/devices/wheel0.txtpb"
+        ),
     )
 
 
@@ -65,9 +69,10 @@ def fixture_sessions() -> object:
 
 
 def _run_daemon(
-    entry: ActuatorEntry, session: zenoh.Session
+    entry: vehicle_pb2.ActuatorConfig, session: zenoh.Session
 ) -> tuple[ActuatorDaemon, threading.Thread]:
-    driver = get_actuator_class(entry.driver).from_config(entry.name, entry.options)
+    driver_name = which_impl(entry, "options", entry.name)
+    driver = get_actuator_class(driver_name).from_config(entry.name, getattr(entry, driver_name))
     daemon = ActuatorDaemon(entry, driver, session)
     thread = threading.Thread(target=lambda: daemon.run(health_every_s=0.4), daemon=True)
     thread.start()

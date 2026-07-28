@@ -3,9 +3,9 @@
 import pytest
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.apps.control_loop import ControlLoop, LoopReport
 from flatsat.control.attitude import control_options_pb2
-from flatsat.core.config import ControlEntry
 from flatsat.core.registry import (
     get_controller_class,
     get_estimator_class,
@@ -14,28 +14,25 @@ from flatsat.core.registry import (
 from flatsat.msgs import health_pb2
 
 
-def _entry() -> ControlEntry:
-    return ControlEntry(
-        strategy="rate_damping",
-        objective="constant_rate",
-        estimator="passthrough",
+def _entry() -> vehicle_pb2.ControlConfig:
+    return vehicle_pb2.ControlConfig(
         rate_hz=100.0,
         input_topic="test/health/in",
         output_topic="test/health/out",
         stale_after_s=0.05,
-        options=control_options_pb2.RateDampingOptions(kp=0.02, kd=0.005),
-        objective_options=control_options_pb2.ConstantRateOptions(),
-        estimator_options=control_options_pb2.PassthroughOptions(),
+        rate_damping=control_options_pb2.RateDampingOptions(kp=0.02, kd=0.005),
+        constant_rate=control_options_pb2.ConstantRateOptions(),
+        passthrough=control_options_pb2.PassthroughOptions(),
     )
 
 
-def _build_loop(session: zenoh.Session, entry: ControlEntry) -> ControlLoop:
+def _build_loop(session: zenoh.Session, entry: vehicle_pb2.ControlConfig) -> ControlLoop:
     return ControlLoop(
         session,
         entry,
-        get_controller_class(entry.strategy).from_config(entry.options),
-        get_guidance_class(entry.objective).from_config(entry.objective_options),
-        get_estimator_class(entry.estimator).from_config(entry.estimator_options),
+        get_controller_class("rate_damping").from_config(entry.rate_damping),
+        get_guidance_class("constant_rate").from_config(entry.constant_rate),
+        get_estimator_class("passthrough").from_config(entry.passthrough),
         vehicle_name="test-vehicle",
         config_checksum="deadbeef1234",
     )

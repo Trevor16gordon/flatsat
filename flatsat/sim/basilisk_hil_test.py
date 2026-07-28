@@ -56,7 +56,8 @@ def test_plant_is_built_from_the_vehicle_file() -> None:
     mass_kg, inertia, wheels = plant_from_vehicle(vehicle)
 
     body = vehicle.require_body()
+    flat = list(body.inertia_kg_m2)
     assert mass_kg == body.mass_kg
-    assert inertia == [list(row) for row in body.inertia_kg_m2]
-    assert wheels == [(a.name, a.mounting.axis) for a in vehicle.actuators]
+    assert inertia == [flat[0:3], flat[3:6], flat[6:9]]
+    assert wheels == [(a.name, tuple(a.mounting.axis)) for a in vehicle.actuators]
     assert wheels, "default vehicle must declare at least one wheel"

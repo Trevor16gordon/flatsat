@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from google.protobuf import text_format
 
-from flatsat.core.config import load_imu_spec, load_vehicle, load_wheel_spec
+from flatsat.core.config import load_imu_spec, load_vehicle, load_wheel_spec, which_impl
 
 VEHICLE = Path("config/vehicles/flatsat_v1.txtpb")
 
@@ -16,7 +16,7 @@ def test_specs_load_with_provenance() -> None:
     spec, prov = load_imu_spec()
     assert vehicle.control.rate_hz > 0
     assert vehicle.provenance.checksum and len(vehicle.provenance.checksum) == 12
-    assert vehicle.sensor("imu0").driver == "basilisk_imu"
+    assert which_impl(vehicle.sensor("imu0"), "options", "imu0") == "basilisk_imu"
     assert spec.gyro_noise_rad_s > 0
     assert "imu0" in prov.path
 
@@ -35,11 +35,11 @@ def test_driver_selection_is_the_oneof_field() -> None:
     """The filled options block IS the driver — no separate key to disagree."""
     vehicle = load_vehicle()
     imu = vehicle.sensor("imu0")
-    assert imu.driver == "basilisk_imu"
-    assert imu.options.truth_topic == "sim/truth/state"
+    assert imu.WhichOneof("options") == "basilisk_imu"
+    assert imu.basilisk_imu.truth_topic == "sim/truth/state"
     thermal = vehicle.sensor("thermal_tj")
-    assert thermal.driver == "jetson_thermal"
-    assert thermal.options.zone == "tj-thermal"
+    assert thermal.WhichOneof("options") == "jetson_thermal"
+    assert thermal.jetson_thermal.zone == "tj-thermal"
 
 
 def test_missing_options_block_fails_loud(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ def test_estimator_defaults_to_passthrough(tmp_path: Path) -> None:
     target = tmp_path / "vehicle.txtpb"
     target.write_text(tweaked)
     vehicle = load_vehicle(target)
-    assert vehicle.control.estimator == "passthrough"
+    assert vehicle.control.WhichOneof("estimator") == "passthrough"
 
 
 def test_mode_and_telemetry_defaults_fill_absent_fields(tmp_path: Path) -> None:
@@ -83,12 +83,12 @@ def test_unknown_sensor_fails_loud() -> None:
 def test_actuators_load_with_body_and_mounting() -> None:
     vehicle = load_vehicle()
     wheel = vehicle.actuator("wheel0")
-    assert wheel.driver == "basilisk_reaction_wheel"
+    assert wheel.WhichOneof("options") == "basilisk_reaction_wheel"
     assert wheel.stale_zero_s > 0
-    assert wheel.mounting.axis == (1.0, 0.0, 0.0)
+    assert tuple(wheel.mounting.axis) == (1.0, 0.0, 0.0)
     body = vehicle.require_body()
     assert body.mass_kg > 0
-    assert len(body.inertia_kg_m2) == 3
+    assert len(body.inertia_kg_m2) == 9  # 3x3 row-major, on the proto itself
 
 
 def test_mounting_axis_is_normalized(tmp_path: Path) -> None:
@@ -96,7 +96,7 @@ def test_mounting_axis_is_normalized(tmp_path: Path) -> None:
     target = tmp_path / "vehicle.txtpb"
     target.write_text(tweaked)
     vehicle = load_vehicle(target)
-    assert vehicle.actuator("wheel0").mounting.axis == pytest.approx((1.0, 0.0, 0.0))
+    assert tuple(vehicle.actuator("wheel0").mounting.axis) == pytest.approx((1.0, 0.0, 0.0))
 
 
 def test_zero_mounting_axis_fails_loud(tmp_path: Path) -> None:

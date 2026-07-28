@@ -19,8 +19,9 @@ import time
 import pytest
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.apps.sensor_daemon import SensorDaemon
-from flatsat.core.config import SensorEntry, load_imu_spec
+from flatsat.core.config import load_imu_spec
 from flatsat.core.health import health_topic
 from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.basilisk_imu import BasiliskImuDriver
@@ -32,7 +33,7 @@ SPEC, _PROV = load_imu_spec()
 RECV_TIMEOUT_S = 5.0
 
 
-def _collect(entry: SensorEntry, driver: object, n_samples: int) -> list[bytes]:
+def _collect(entry: vehicle_pb2.SensorConfig, driver: object, n_samples: int) -> list[bytes]:
     """Run a daemon at the entry's rate and collect published payloads.
 
     Args:
@@ -71,12 +72,11 @@ def _collect(entry: SensorEntry, driver: object, n_samples: int) -> list[bytes]:
 @pytest.mark.verifies("FSW-HAL-002", "FSW-HAL-003", "FSW-SIM-004")
 def test_basilisk_imu_daemon_publishes_contract_compliant_samples() -> None:
     """With no bridge running: full cadence, STALE-flagged — quiet state."""
-    entry = SensorEntry(
+    entry = vehicle_pb2.SensorConfig(
         name="test_imu",
-        driver="basilisk_imu",
         topic="test/hal/basilisk_imu",
         rate_hz=50.0,
-        options=driver_options_pb2.BasiliskImuOptions(),
+        basilisk_imu=driver_options_pb2.BasiliskImuOptions(),
     )
     driver = BasiliskImuDriver(SPEC, truth_topic="test/sim/truth_daemon_none", stale_after_s=0.1)
     try:
@@ -100,14 +100,13 @@ def test_basilisk_imu_daemon_publishes_contract_compliant_samples() -> None:
 
 @pytest.mark.skipif(not THERMAL_ROOT.exists(), reason="no thermal sysfs (not on target)")
 def test_readable_zone_publishes_valid_samples() -> None:
-    entry = SensorEntry(
+    entry = vehicle_pb2.SensorConfig(
         name="test_tj",
-        driver="jetson_thermal",
         topic="test/hal/thermal_tj",
         rate_hz=10.0,
-        options=driver_options_pb2.JetsonThermalOptions(zone="tj-thermal"),
+        jetson_thermal=driver_options_pb2.JetsonThermalOptions(zone="tj-thermal"),
     )
-    driver = JetsonThermalDriver.from_config(entry.name, entry.options)
+    driver = JetsonThermalDriver.from_config(entry.name, entry.jetson_thermal)
     samples = [hal_pb2.TemperatureSample.FromString(p) for p in _collect(entry, driver, 5)]
     assert len(samples) >= 5
     for s in samples:
@@ -119,14 +118,13 @@ def test_readable_zone_publishes_valid_samples() -> None:
 @pytest.mark.skipif(not THERMAL_ROOT.exists(), reason="no thermal sysfs (not on target)")
 @pytest.mark.verifies("FSW-HAL-001", "FSW-HAL-004")
 def test_power_gated_zone_flags_comm_but_keeps_publishing() -> None:
-    entry = SensorEntry(
+    entry = vehicle_pb2.SensorConfig(
         name="test_cv0",
-        driver="jetson_thermal",
         topic="test/hal/thermal_cv0",
         rate_hz=10.0,
-        options=driver_options_pb2.JetsonThermalOptions(zone="cv0-thermal"),
+        jetson_thermal=driver_options_pb2.JetsonThermalOptions(zone="cv0-thermal"),
     )
-    driver = JetsonThermalDriver.from_config(entry.name, entry.options)
+    driver = JetsonThermalDriver.from_config(entry.name, entry.jetson_thermal)
     samples = [hal_pb2.TemperatureSample.FromString(p) for p in _collect(entry, driver, 4)]
     assert len(samples) >= 4, "daemon must keep cadence even when every read fails"
     for s in samples:
@@ -136,12 +134,11 @@ def test_power_gated_zone_flags_comm_but_keeps_publishing() -> None:
 
 @pytest.mark.verifies("FSW-HAL-007")
 def test_sensor_daemon_publishes_health() -> None:
-    entry = SensorEntry(
+    entry = vehicle_pb2.SensorConfig(
         name="test_health_imu",
-        driver="basilisk_imu",
         topic="test/hal/health_imu",
         rate_hz=200.0,
-        options=driver_options_pb2.BasiliskImuOptions(),
+        basilisk_imu=driver_options_pb2.BasiliskImuOptions(),
     )
     sub_session = zenoh.open(zenoh.Config())
     daemon_session = zenoh.open(zenoh.Config())

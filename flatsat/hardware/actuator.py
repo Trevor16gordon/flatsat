@@ -30,13 +30,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from flatsat import vehicle_pb2
 from flatsat.core.bus import HalMessage
-from flatsat.core.config import Mounting
 
 Vec3 = tuple[float, float, float]
 
 
-def project_body_torque(mounting: Mounting, torque_body_n_m: Vec3) -> float:
+def project_body_torque(mounting: vehicle_pb2.MountingConfig, torque_body_n_m: Vec3) -> float:
     """Project a body-frame torque command onto one device's axis.
 
     The controller publishes body-frame torque; each actuator daemon
@@ -46,14 +46,14 @@ def project_body_torque(mounting: Mounting, torque_body_n_m: Vec3) -> float:
     torque along the spin axis.
 
     Args:
-        mounting: The device's placement (axis is unit-length by load-time
-            normalization).
+        mounting: The device's placement (the loader normalized its axis
+            to unit length in place).
         torque_body_n_m: Commanded torque in the body frame.
 
     Returns:
         The torque the device should produce about its own axis.
     """
-    ax, ay, az = mounting.axis
+    ax, ay, az = (float(v) for v in mounting.axis)
     tx, ty, tz = torque_body_n_m
     return ax * tx + ay * ty + az * tz
 

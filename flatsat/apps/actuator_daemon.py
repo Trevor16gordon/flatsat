@@ -37,8 +37,9 @@ from pathlib import Path
 
 import zenoh
 
+from flatsat import vehicle_pb2
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import ActuatorEntry, load_vehicle
+from flatsat.core.config import load_vehicle, which_impl
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_actuator_class
 from flatsat.hardware.actuator import ActuatorDriver, project_body_torque
@@ -50,7 +51,7 @@ class ActuatorDaemon:
     """Applies bus commands to one driver and publishes its state."""
 
     def __init__(
-        self, entry: ActuatorEntry, driver: ActuatorDriver, session: zenoh.Session
+        self, entry: vehicle_pb2.ActuatorConfig, driver: ActuatorDriver, session: zenoh.Session
     ) -> None:
         """Bind a driver to its topics and cadence.
 
@@ -61,6 +62,7 @@ class ActuatorDaemon:
             session: Open zenoh session; not owned — caller closes it.
         """
         self.entry = entry
+        self.driver_name = which_impl(entry, "options", entry.name)
         self._driver = driver
         self._state_pub = SamplePublisher(session, entry.state_topic, entry.name)
         self._health = SamplePublisher(session, health_topic(entry.name), entry.name)
@@ -127,7 +129,7 @@ class ActuatorDaemon:
             The published message, for tests and introspection.
         """
         msg = health_pb2.ActuatorHealth()
-        msg.driver = self.entry.driver
+        msg.driver = self.driver_name
         msg.rate_hz = self.entry.rate_hz
         msg.window_cycles = self._window_cycles
         msg.stale_zeroed_cycles = self._stale_zeroed_cycles
@@ -186,12 +188,13 @@ def build_daemon(
     """
     vehicle = load_vehicle(vehicle_path)
     entry = vehicle.actuator(actuator_name)
-    driver_cls = get_actuator_class(entry.driver)
-    driver = driver_cls.from_config(entry.name, entry.options)
+    driver_name = which_impl(entry, "options", entry.name)
+    driver_cls = get_actuator_class(driver_name)
+    driver = driver_cls.from_config(entry.name, getattr(entry, driver_name))
     for line in (*vehicle.describe(), *driver.describe()):
         print(f"[{entry.name}] {line}", flush=True)
     print(
-        f"[{entry.name}] commands {entry.command_topic} -> axis {entry.mounting.axis}, "
+        f"[{entry.name}] commands {entry.command_topic} -> axis {tuple(entry.mounting.axis)}, "
         f"state on {entry.state_topic} at {entry.rate_hz:g} Hz, "
         f"stale-zero after {entry.stale_zero_s:g} s",
         flush=True,

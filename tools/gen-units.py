@@ -36,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))  # allow `python tools/gen-units.py` from anywhere
 
-from flatsat.core.config import VehicleSpec, load_vehicle  # noqa: E402
+from flatsat.core.config import VehicleSpec, load_vehicle, which_impl  # noqa: E402
 
 DEFAULT_VEHICLE = REPO_ROOT / "config" / "vehicles" / "flatsat_v1.txtpb"
 DEFAULT_DEPLOYMENT = REPO_ROOT / "deployment.toml"
@@ -187,7 +187,9 @@ def main() -> int:
         deploy = {**sensor_defaults, **sensor_overrides.get(name, {})}
         unit = render_service(
             unit_name=name,
-            description=f"{name} sensor daemon ({sensor.driver}) — {vehicle.name}",
+            description=(
+                f"{name} sensor daemon ({which_impl(sensor, 'options', name)}) — {vehicle.name}"
+            ),
             exec_args=[
                 "-m",
                 "flatsat.apps.sensor_daemon",
@@ -208,7 +210,9 @@ def main() -> int:
         deploy = {**actuator_defaults, **actuator_overrides.get(name, {})}
         unit = render_service(
             unit_name=name,
-            description=f"{name} actuator daemon ({actuator.driver}) — {vehicle.name}",
+            description=(
+                f"{name} actuator daemon ({which_impl(actuator, 'options', name)}) — {vehicle.name}"
+            ),
             exec_args=[
                 "-m",
                 "flatsat.apps.actuator_daemon",
@@ -260,8 +264,8 @@ def main() -> int:
     control_unit = render_service(
         unit_name="adcs",
         description=(
-            f"ADCS control loop ({vehicle.control.strategy}, "
-            f"{vehicle.control.objective}) — {vehicle.name}"
+            f"ADCS control loop ({which_impl(vehicle.control, 'strategy', 'control')}, "
+            f"{which_impl(vehicle.control, 'objective', 'control')}) — {vehicle.name}"
         ),
         exec_args=[
             "-m",
