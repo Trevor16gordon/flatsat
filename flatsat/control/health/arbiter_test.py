@@ -85,7 +85,7 @@ def test_sustained_fault_ends_in_safe(rig: tuple[ModeManager, Fdir, zenoh.Sessio
 
     state = manager.state()
     assert state.mode == mode_pb2.SYSTEM_MODE_SAFE, "FDIR never safed the vehicle"
-    assert "fdir" in state.reason and "imu_stale" in state.reason
+    assert state.reason == "fdir: imu_stale", "source prefixed exactly once"
     assert fdir.safe_requests >= 1
 
 

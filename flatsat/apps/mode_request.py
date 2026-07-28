@@ -37,12 +37,13 @@ def current_state(
     Returns:
         The latched state, or None when no manager answered.
     """
-    for reply in session.get(base_topic, timeout=timeout_s):
+    replies = session.get(base_topic, timeout=timeout_s)
+    for reply in replies:
         if reply.ok is not None:
             state: mode_pb2.ModeState = mode_pb2.ModeState.FromString(
                 bytes(reply.ok.payload.to_bytes())
             )
-            return state
+            return state  # one latched state is the answer — do not drain
     return None
 
 
@@ -128,6 +129,7 @@ def main() -> int:
     args = parser.parse_args()
 
     session = zenoh.open(zenoh.Config())
+    time.sleep(0.5)  # let scouting find the manager before querying
     try:
         if args.status or args.mode is None:
             state = current_state(session, MODE_TOPIC)

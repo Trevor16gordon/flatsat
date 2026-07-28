@@ -118,7 +118,7 @@ class Fdir:
             request = mode_pb2.ModeRequest(
                 source="fdir",
                 requested=mode_pb2.SYSTEM_MODE_SAFE,
-                reason="fdir: " + ", ".join(tripped),
+                reason=", ".join(tripped),
                 ground_authority=False,
             )
             self._request_pub.put(request.SerializeToString())
