@@ -31,3 +31,13 @@ repos:
         # Generated protobuf bindings are exempt (the .proto files beside them
         # are the reviewed source of truth); consumers are checked via .pyi stubs.
         exclude: '_pb2\.pyi?$'
+
+  - repo: local
+    hooks:
+      - id: validate-configs
+        name: validate config textprotos against their schemas
+        entry: python tools/validate-configs.py
+        language: python
+        additional_dependencies: [protobuf]
+        files: '\.txtpb$'
+        pass_filenames: true
