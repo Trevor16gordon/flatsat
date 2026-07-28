@@ -11,9 +11,12 @@ actuator layer, Basilisk-as-drivers, telemetry recorder, mode manager
 (§7), scenario harness + mission profiles · 07-28: config schemas moved
 into colocated protos, all config files strictly-parsed `.txtpb`,
 oneof-selected implementations, CI drift guard (**142 tests, 55
-requirements**) · units reinstalled, 6 services live (quiet state) ·
-pending: Mac `git pull` + HIL re-validation on the new driver chain ·
-next: mode-request CLI, FDIR, A1 core isolation, ground Pluto, P3.
+requirements**) · distributed HIL
+re-validation PASSED (41.8 min, 39 link stalls all handled; services
+now run unprivileged) · FDIR live in code with census-derived
+thresholds + fault-injection missions + ground-commanding CLI (**160
+tests, 59 requirements**) · pending: install the fdir unit (sudo) ·
+next: A1 core isolation, ground Pluto, P3, mode table.
 
 ---
 
