@@ -22,9 +22,12 @@ import zenoh
 from flatsat.apps.sensor_daemon import SensorDaemon
 from flatsat.core.config import SensorEntry, load_imu_spec
 from flatsat.core.health import health_topic
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.basilisk_imu import BasiliskImuDriver
 from flatsat.hardware.drivers.jetson_thermal import THERMAL_ROOT, JetsonThermalDriver
 from flatsat.msgs import hal_pb2, health_pb2
+
+SPEC, _PROV = load_imu_spec()
 
 RECV_TIMEOUT_S = 5.0
 
@@ -73,11 +76,9 @@ def test_basilisk_imu_daemon_publishes_contract_compliant_samples() -> None:
         driver="basilisk_imu",
         topic="test/hal/basilisk_imu",
         rate_hz=50.0,
-        options={},
+        options=driver_options_pb2.BasiliskImuOptions(),
     )
-    driver = BasiliskImuDriver(
-        load_imu_spec(), truth_topic="test/sim/truth_daemon_none", stale_after_s=0.1
-    )
+    driver = BasiliskImuDriver(SPEC, truth_topic="test/sim/truth_daemon_none", stale_after_s=0.1)
     try:
         payloads = _collect(entry, driver, n_samples=5)
     finally:
@@ -104,7 +105,7 @@ def test_readable_zone_publishes_valid_samples() -> None:
         driver="jetson_thermal",
         topic="test/hal/thermal_tj",
         rate_hz=10.0,
-        options={"zone": "tj-thermal"},
+        options=driver_options_pb2.JetsonThermalOptions(zone="tj-thermal"),
     )
     driver = JetsonThermalDriver.from_config(entry.name, entry.options)
     samples = [hal_pb2.TemperatureSample.FromString(p) for p in _collect(entry, driver, 5)]
@@ -123,7 +124,7 @@ def test_power_gated_zone_flags_comm_but_keeps_publishing() -> None:
         driver="jetson_thermal",
         topic="test/hal/thermal_cv0",
         rate_hz=10.0,
-        options={"zone": "cv0-thermal"},
+        options=driver_options_pb2.JetsonThermalOptions(zone="cv0-thermal"),
     )
     driver = JetsonThermalDriver.from_config(entry.name, entry.options)
     samples = [hal_pb2.TemperatureSample.FromString(p) for p in _collect(entry, driver, 4)]
@@ -140,7 +141,7 @@ def test_sensor_daemon_publishes_health() -> None:
         driver="basilisk_imu",
         topic="test/hal/health_imu",
         rate_hz=200.0,
-        options={},
+        options=driver_options_pb2.BasiliskImuOptions(),
     )
     sub_session = zenoh.open(zenoh.Config())
     daemon_session = zenoh.open(zenoh.Config())
@@ -154,9 +155,7 @@ def test_sensor_daemon_publishes_health() -> None:
     sub = sub_session.declare_subscriber(health_topic(entry.name), on_health)
     time.sleep(0.5)
 
-    driver = BasiliskImuDriver(
-        load_imu_spec(), truth_topic="test/sim/truth_health_none", stale_after_s=0.1
-    )
+    driver = BasiliskImuDriver(SPEC, truth_topic="test/sim/truth_health_none", stale_after_s=0.1)
     daemon = SensorDaemon(entry, driver, daemon_session)
     thread = threading.Thread(target=lambda: daemon.run(health_every_s=0.3), daemon=True)
     thread.start()

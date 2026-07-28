@@ -1,0 +1,16 @@
+// Mode-manager composition — the [mode] block of a vehicle file.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+message ModeConfig {
+  // Apps that must ack every mode transition; a missing ack is surfaced
+  // as a fault in ModeHealth.
+  repeated string apps = 1;
+  optional double ack_timeout_s = 2;  // absent = 2.0
+  optional double min_dwell_s = 3;    // anti-flap, away-from-safety only; absent = 1.0
+  // File whose presence at boot means the previous shutdown was
+  // deliberate; consumed at startup. Empty = ~/flatsat-state/clean-shutdown.
+  string clean_shutdown_marker = 4;
+}

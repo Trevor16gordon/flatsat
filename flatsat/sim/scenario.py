@@ -1,6 +1,7 @@
 """Scenario runner: execute a mission profile against the composed system.
 
-A mission is DATA (``config/missions/*.toml``): initial conditions, a
+A mission is DATA (``config/missions/*.txtpb``, schema
+``flatsat/sim/mission.proto``): initial conditions, a
 sequence of phases — each optionally commanding a mode transition — and
 per-phase success criteria. This runner composes the REAL flight chain
 in one process — sensor daemons, actuator daemons, the control loop, and
@@ -26,16 +27,15 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import zenoh
 
 from flatsat.apps.actuator_daemon import ActuatorDaemon
 from flatsat.apps.control_loop import ControlLoop
 from flatsat.apps.sensor_daemon import SensorDaemon
-from flatsat.core.config import VehicleSpec, load_vehicle
+from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle
 from flatsat.core.registry import (
     get_actuator_class,
     get_controller_class,
@@ -43,15 +43,12 @@ from flatsat.core.registry import (
     get_estimator_class,
     get_guidance_class,
 )
+from flatsat.mode import mode_config_pb2
 from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager
 from flatsat.msgs import mode_pb2
+from flatsat.sim import mission_pb2
 from flatsat.sim.plant import LocalPlant
-
-try:  # Python 3.11+ (the ground Mac)
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 (the onboard interpreter)
-    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_MODE_BASE = "test/scn/sys/mode"
@@ -187,53 +184,51 @@ def load_mission(path: Path | str) -> MissionSpec:
     """Load and validate a mission profile.
 
     Args:
-        path: Mission file, e.g. ``config/missions/detumble_test.toml``.
+        path: Mission file, e.g. ``config/missions/detumble_test.txtpb``.
 
     Returns:
         The parsed mission.
 
     Raises:
-        KeyError: If a required key is missing (fail loud, not mid-run).
-        ValueError: If a mode name does not exist.
+        ValueError: On a mode name that does not exist or bad dimensions.
+        text_format.ParseError: On any unknown field (fail loud).
     """
-    data: dict[str, Any] = tomllib.loads(Path(path).read_text())
+    cfg = mission_pb2.MissionConfig()
+    load_textproto(path, cfg)
     phases: list[PhaseSpec] = []
-    for row in data["phases"]:
-        request_mode = row.get("request_mode")
-        if request_mode is not None:
-            _mode_value(str(request_mode))  # validate at load time
-        raw_success = row.get("success", {})
+    for row in cfg.phases:
+        if row.request_mode:
+            _mode_value(row.request_mode)  # validate at load time
         criteria = SuccessCriteria(
             max_omega_mag_rad_s=(
-                float(raw_success["max_omega_mag_rad_s"])
-                if "max_omega_mag_rad_s" in raw_success
+                row.success.max_omega_mag_rad_s
+                if row.success.HasField("max_omega_mag_rad_s")
                 else None
             ),
-            require_mode=(
-                str(raw_success["require_mode"]) if "require_mode" in raw_success else None
-            ),
-            require_all_acks=bool(raw_success.get("require_all_acks", False)),
+            require_mode=row.success.require_mode or None,
+            require_all_acks=row.success.require_all_acks,
         )
         if criteria.require_mode is not None:
             _mode_value(criteria.require_mode)
         phases.append(
             PhaseSpec(
-                name=str(row["name"]),
-                duration_s=float(row["duration_s"]),
-                request_mode=str(request_mode) if request_mode is not None else None,
-                request_ground_authority=bool(row.get("request_ground_authority", False)),
-                expect_request_refused=bool(row.get("expect_request_refused", False)),
+                name=row.name,
+                duration_s=row.duration_s,
+                request_mode=row.request_mode or None,
+                request_ground_authority=row.request_ground_authority,
+                expect_request_refused=row.expect_request_refused,
                 success=criteria,
             )
         )
-    initial = data["initial"]
-    omega0 = tuple(float(v) for v in initial["omega0_rad_s"])
+    omega0 = tuple(cfg.omega0_rad_s)
+    if len(omega0) != 3:
+        raise ValueError(f"{path}: omega0_rad_s must have 3 values")
     return MissionSpec(
-        name=str(data["name"]),
-        description=str(data.get("description", "")),
-        vehicle_path=str(data["vehicle"]),
+        name=cfg.name,
+        description=cfg.description,
+        vehicle_path=cfg.vehicle,
         omega0_rad_s=(omega0[0], omega0[1], omega0[2]),
-        plant_rate_hz=float(initial.get("plant_rate_hz", 100.0)),
+        plant_rate_hz=cfg.plant_rate_hz if cfg.HasField("plant_rate_hz") else 100.0,
         phases=tuple(phases),
     )
 
@@ -252,9 +247,10 @@ def _truth_topic(vehicle: VehicleSpec) -> str:
             needs a sim-fed vehicle.
     """
     for sensor in vehicle.sensors:
-        if "truth_topic" in sensor.options:
-            return str(sensor.options["truth_topic"])
-    raise KeyError(f"vehicle {vehicle.name!r} has no sim-fed sensor (truth_topic)")
+        if sensor.driver == "basilisk_imu":
+            topic = sensor.options.truth_topic
+            return str(topic) if topic else "sim/truth/state"
+    raise KeyError(f"vehicle {vehicle.name!r} has no sim-fed sensor (basilisk_imu)")
 
 
 class ScenarioRunner:
@@ -280,7 +276,9 @@ class ScenarioRunner:
         vehicle = load_vehicle(REPO_ROOT / self.mission.vehicle_path)
         marker = self._work_dir / "clean-shutdown"
         marker.touch()  # scenario boots are clean boots: system goes NOMINAL
-        mode_entry = replace(vehicle.mode, clean_shutdown_marker=str(marker))
+        mode_entry = mode_config_pb2.ModeConfig()
+        mode_entry.CopyFrom(vehicle.mode)
+        mode_entry.clean_shutdown_marker = str(marker)
 
         session = zenoh.open(zenoh.Config())
         threads: list[threading.Thread] = []

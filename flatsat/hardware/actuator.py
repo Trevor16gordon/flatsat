@@ -16,8 +16,9 @@ Contract for implementers:
   * ``apply()`` receives the command already projected onto the device's
     own axis, in device terms (a wheel: torque about its spin axis). The
     driver applies its internal calibration; it never sees the body frame.
-  * ``from_config()`` builds the driver from the vehicle file's options
-    mapping, coercing types and failing loudly on missing keys.
+  * ``from_config()`` builds the driver from its TYPED options message
+    (its oneof block in vehicle.proto), failing loudly on missing
+    required fields.
 
 Registry: actuators are looked up by the ``driver`` key in a vehicle's
 actuator entry, so adding an actuator to a spacecraft is a config edit
@@ -27,7 +28,7 @@ plus one file here — never a change to the daemon or to any consumer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from typing import Any
 
 from flatsat.core.bus import HalMessage
 from flatsat.core.config import Mounting
@@ -62,12 +63,17 @@ class ActuatorDriver(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> ActuatorDriver:
+    def from_config(
+        cls,
+        name: str,
+        options: Any,  # noqa: ANN401 — each implementation narrows to its own options message
+    ) -> ActuatorDriver:
         """Build a driver instance from a vehicle-file actuator entry.
 
         Args:
             name: Instance name (also the message source).
-            options: Driver-specific options from the vehicle file.
+            options: This driver's TYPED options message (the oneof block
+                the vehicle file filled — see driver_options.proto).
 
         Returns:
             A ready-to-command driver.

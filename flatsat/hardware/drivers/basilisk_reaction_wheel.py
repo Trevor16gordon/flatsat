@@ -16,13 +16,13 @@ messages fall on deaf ears, state telemetry keeps flowing.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
 
 import zenoh
 
 from flatsat.core.bus import HalMessage, SamplePublisher
-from flatsat.core.config import load_wheel_spec
+from flatsat.core.config import Provenance, describe_wheel_spec, load_wheel_spec
 from flatsat.hardware.actuator import ActuatorDriver
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.models.wheel import WheelModel
 from flatsat.msgs import hal_pb2, sim_pb2
 
@@ -47,6 +47,7 @@ class BasiliskReactionWheelDriver(ActuatorDriver):
         name: str,
         model: WheelModel,
         session: zenoh.Session | None = None,
+        provenance: Provenance | None = None,
     ) -> None:
         """Bind the device model and the feedback publisher.
 
@@ -55,26 +56,36 @@ class BasiliskReactionWheelDriver(ActuatorDriver):
             model: Wheel physics bounded by the device spec.
             session: Zenoh session to reuse (tests); the driver opens its
                 own when omitted — the bus IS this device's wire.
+            provenance: The device file's provenance, for describe().
         """
         self._name = name
         self._model = model
+        self._provenance = provenance
         self._owns_session = session is None
         self._session = session if session is not None else zenoh.open(zenoh.Config())
         self._feedback = SamplePublisher(self._session, wheel_torque_topic(name), name)
         self._last_apply_monotonic: float | None = None
 
     @classmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> BasiliskReactionWheelDriver:
+    def from_config(
+        cls, name: str, options: driver_options_pb2.BasiliskReactionWheelOptions
+    ) -> BasiliskReactionWheelDriver:
         """Build from a vehicle-file actuator entry.
 
         Args:
             name: Instance name.
-            options: Must contain ``device`` — the device spec path.
+            options: Typed options; ``device`` is required.
 
         Returns:
             The configured driver.
+
+        Raises:
+            ValueError: If no device file is configured.
         """
-        return cls(name=name, model=WheelModel(load_wheel_spec(str(options["device"]))))
+        if not options.device:
+            raise ValueError(f"actuator {name!r}: basilisk_reaction_wheel requires a device file")
+        spec, prov = load_wheel_spec(options.device)
+        return cls(name=name, model=WheelModel(spec), provenance=prov)
 
     def apply(self, torque_n_m: float) -> int:
         """Run the device model, then feed the applied torque to the sim.
@@ -115,7 +126,10 @@ class BasiliskReactionWheelDriver(ActuatorDriver):
         Returns:
             Lines naming the topic and spec provenance.
         """
+        spec_lines = (
+            describe_wheel_spec(self._model.spec, self._provenance) if self._provenance else []
+        )
         return [
             f"driver: basilisk_reaction_wheel feedback={wheel_torque_topic(self._name)}",
-            *self._model.spec.describe(),
+            *spec_lines,
         ]

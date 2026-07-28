@@ -11,8 +11,9 @@ Contract for implementers:
     validity flag on a publishable message (flag and forward, PLAN §4) —
     a raise would stop the cadence, which downstream cannot distinguish
     from the process dying, a different fault with a different response.
-  * ``from_config()`` builds the driver from the vehicle file's options
-    mapping, coercing types and failing loudly on missing keys.
+  * ``from_config()`` builds the driver from its TYPED options message
+    (its oneof block in vehicle.proto), failing loudly on missing
+    required fields.
 
 Registry: drivers are looked up by the ``driver`` key in a vehicle's sensor
 entry, so adding a device to a spacecraft is a config edit plus one file
@@ -22,7 +23,7 @@ here — never a change to the daemon or to any consumer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from typing import Any
 
 from flatsat.core.bus import HalMessage
 
@@ -32,12 +33,19 @@ class SensorDriver(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> SensorDriver:
+    def from_config(
+        cls,
+        name: str,
+        options: Any,  # noqa: ANN401 — each implementation narrows to its own options message
+    ) -> SensorDriver:
         """Build a driver instance from a vehicle-file sensor entry.
 
         Args:
             name: Instance name (also the message source).
-            options: Driver-specific options from the vehicle file.
+            options: This driver's TYPED options message (the oneof block
+                the vehicle file filled — see driver_options.proto).
+                ``Any`` at the contract so each implementation narrows to
+                its own message type.
 
         Returns:
             A ready-to-read driver.

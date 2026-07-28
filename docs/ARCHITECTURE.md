@@ -99,11 +99,23 @@ into existing registries: an ML controller is a controller, an anomaly
 scorer is a detector, a learned receiver is a modem — same limits, same
 validity rules, same promotion gate as anything hand-written.
 
-## Configuration: device-intrinsic vs integration
+## Configuration: schemas are protos, files are textproto
+
+Config schemas are proto messages COLOCATED with their owners
+(`flatsat/vehicle.proto`, `flatsat/hardware/devices.proto`, per-driver
+options in `flatsat/hardware/drivers/driver_options.proto`, ...); config
+files under `config/` are textproto instances bound to their schema by a
+`# proto-file:` header. One edit point: the proto defines the field, the
+editor validates and command-clicks the config against it, the generated
+stubs type every Python access, and C++ generates from the same file.
+Parsing is STRICT — a misspelled key fails startup, never defaults
+silently. Implementations are selected by filling exactly one oneof
+block; the field name IS the registry key, so the selector and its typed
+options cannot disagree. Committed bindings are drift-guarded in CI.
 
 Two kinds of physical truth, split by where the knowledge comes from:
 
-**`config/devices/*.toml` — device-intrinsic** (true of the unit no matter
+**`config/devices/*.txtpb` — device-intrinsic** (true of the unit no matter
 which spacecraft it's bolted to). A *datasheet* section — torque/momentum
 envelopes, max update rate, noise characteristics, temp limits, power draw
 (designed knowledge) — and a *calibration* section — measured deviations for
@@ -111,7 +123,7 @@ this serial number: scale factors, biases, actual-vs-nominal alignment
 (discovered knowledge, updated by calibration campaigns, never by editing
 the design).
 
-**`config/vehicles/*.toml` — integration** (true of this build of this
+**`config/vehicles/*.txtpb` — integration** (true of this build of this
 spacecraft). Composition (which drivers, strategies, topics, rates), plus
 the physical model: a `[body]` section (mass, inertia tensor) and a
 `mounting` entry per device (position + orientation in the body frame).

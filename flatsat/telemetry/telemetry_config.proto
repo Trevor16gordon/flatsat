@@ -1,0 +1,14 @@
+// Telemetry-recorder composition — the [telemetry] block of a vehicle file.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+message TelemetryConfig {
+  // Bus key expressions to archive. Empty = hal/**, adcs/**, health/**, sys/**.
+  repeated string topics = 1;
+  string output_dir = 2;                // empty = ~/flatsat-telemetry
+  optional uint64 max_file_bytes = 3;   // rotate beyond this size; absent = 64 MiB
+  optional double rotate_every_s = 4;   // or beyond this age; absent = 900
+  optional uint64 max_total_bytes = 5;  // prune oldest beyond this; absent = 4 GiB
+}

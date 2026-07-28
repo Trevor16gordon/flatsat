@@ -8,9 +8,9 @@ import pytest
 import zenoh
 
 from flatsat.apps.telemetry_recorder import RecorderApp
-from flatsat.core.config import TelemetryEntry
 from flatsat.core.health import health_topic
 from flatsat.msgs import health_pb2
+from flatsat.telemetry import telemetry_config_pb2
 from flatsat.telemetry.recorder import Recorder
 
 RECV_TIMEOUT_S = 5.0
@@ -20,8 +20,8 @@ RECV_TIMEOUT_S = 5.0
 def test_recorder_publishes_health(tmp_path: Path) -> None:
     pub_session = zenoh.open(zenoh.Config())
     rec_session = zenoh.open(zenoh.Config())
-    entry = TelemetryEntry(
-        topics=("test/recapp/**",),
+    entry = telemetry_config_pb2.TelemetryConfig(
+        topics=["test/recapp/**"],
         output_dir=str(tmp_path),
         max_file_bytes=64 * 1024 * 1024,
         rotate_every_s=3600.0,

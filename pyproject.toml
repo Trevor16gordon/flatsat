@@ -33,7 +33,9 @@ dependencies = [
 include = ["flatsat*"]
 
 [tool.setuptools.package-data]
-"flatsat.msgs" = ["*.pyi"]
+# Stubs ship everywhere (typed config access on target); protos ship as
+# the human-readable schema reference beside their bindings.
+"*" = ["*.pyi", "*.proto"]
 
 [tool.pytest.ini_options]
 # Tests colocate: one <name>_test.py beside every module, shipped in the

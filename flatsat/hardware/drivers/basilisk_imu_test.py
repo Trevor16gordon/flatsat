@@ -11,11 +11,12 @@ import pytest
 import zenoh
 
 from flatsat.core.config import load_imu_spec
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.basilisk_imu import BasiliskImuDriver
 from flatsat.msgs import hal_pb2, sim_pb2
 
 TOPIC = "test/sim/truth_imu"
-SPEC = load_imu_spec()
+SPEC, _PROV = load_imu_spec()
 
 
 @pytest.fixture(name="truth_session")
@@ -115,7 +116,9 @@ def test_truth_going_stale_flags_again(truth_session: zenoh.Session) -> None:
 def test_from_config_builds_from_vehicle_options() -> None:
     driver = BasiliskImuDriver.from_config(
         "imu_cfg_test",
-        {"spec": "config/devices/imu0.toml", "truth_topic": "test/sim/truth_cfg", "seed": 1},
+        driver_options_pb2.BasiliskImuOptions(
+            spec="config/devices/imu0.txtpb", truth_topic="test/sim/truth_cfg", seed=1
+        ),
     )
     try:
         described = "\n".join(driver.describe())

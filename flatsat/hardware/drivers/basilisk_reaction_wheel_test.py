@@ -10,13 +10,14 @@ from collections.abc import Iterator
 import pytest
 import zenoh
 
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.basilisk_reaction_wheel import (
     BasiliskReactionWheelDriver,
     wheel_torque_topic,
 )
 from flatsat.msgs import hal_pb2, sim_pb2
 
-OPTIONS = {"device": "config/devices/wheel0.toml"}
+OPTIONS = driver_options_pb2.BasiliskReactionWheelOptions(device="config/devices/wheel0.txtpb")
 
 
 @pytest.fixture(name="bridge_session")

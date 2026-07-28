@@ -14,9 +14,9 @@ here so those additions do not touch controllers or the loop application.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import Any
 
+from flatsat.control.attitude import control_options_pb2
 from flatsat.control.attitude.controller import AttitudeReference, Vec3
 
 
@@ -25,11 +25,15 @@ class ReferenceSource(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls, options: Mapping[str, object]) -> ReferenceSource:
+    def from_config(
+        cls,
+        options: Any,  # noqa: ANN401 — each implementation narrows to its own options message
+    ) -> ReferenceSource:
         """Build a reference source from vehicle-file guidance options.
 
         Args:
-            options: Guidance-specific settings.
+            options: This source's TYPED options message (its oneof block
+                in vehicle.proto — see control_options.proto).
 
         Returns:
             A ready-to-use reference source.
@@ -67,19 +71,23 @@ class ConstantRateReference(ReferenceSource):
         self._reference = AttitudeReference(body_rates_rad_s=body_rates_rad_s)
 
     @classmethod
-    def from_config(cls, options: Mapping[str, object]) -> ConstantRateReference:
+    def from_config(cls, options: control_options_pb2.ConstantRateOptions) -> ConstantRateReference:
         """Build from vehicle-file guidance options.
 
         Args:
-            options: Optional ``target_rates_rad_s`` as a 3-element list.
+            options: Optional ``target_rates_rad_s``; empty = detumble.
 
         Returns:
             The configured reference source.
+
+        Raises:
+            ValueError: If target rates are present but not 3 values.
         """
-        raw = options.get("target_rates_rad_s")
-        if raw is None:
+        values = list(options.target_rates_rad_s)
+        if not values:
             return cls()
-        values = [float(v) for v in cast("Sequence[float]", raw)]
+        if len(values) != 3:
+            raise ValueError("target_rates_rad_s must have exactly 3 values")
         return cls((values[0], values[1], values[2]))
 
     def reference_at(self, t_s: float) -> AttitudeReference:

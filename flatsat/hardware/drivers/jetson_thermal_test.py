@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.jetson_thermal import (
     THERMAL_ROOT,
     JetsonThermalDriver,
@@ -48,7 +49,9 @@ def test_missing_zone_fails_loud_at_startup(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(not ON_TARGET, reason="no thermal sysfs (not on target)")
 def test_read_returns_valid_sane_temperature() -> None:
-    driver = JetsonThermalDriver.from_config("tj", {"zone": "tj-thermal"})
+    driver = JetsonThermalDriver.from_config(
+        "tj", driver_options_pb2.JetsonThermalOptions(zone="tj-thermal")
+    )
     msg, flags = driver.read()
     assert flags == hal_pb2.VALIDITY_FLAG_VALID
     assert isinstance(msg, hal_pb2.TemperatureSample)
@@ -58,7 +61,9 @@ def test_read_returns_valid_sane_temperature() -> None:
 @pytest.mark.skipif(not ON_TARGET, reason="no thermal sysfs (not on target)")
 def test_unreadable_zone_flags_comm_without_a_value() -> None:
     """A power-gated zone EAGAINs; the read must flag, not raise or invent."""
-    driver = JetsonThermalDriver.from_config("cv0", {"zone": "cv0-thermal"})
+    driver = JetsonThermalDriver.from_config(
+        "cv0", driver_options_pb2.JetsonThermalOptions(zone="cv0-thermal")
+    )
     msg, flags = driver.read()
     assert isinstance(msg, hal_pb2.TemperatureSample)
     if flags & hal_pb2.VALIDITY_FLAG_COMM:  # CV cluster is actually off

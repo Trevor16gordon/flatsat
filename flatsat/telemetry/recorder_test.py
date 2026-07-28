@@ -7,23 +7,25 @@ from pathlib import Path
 import pytest
 import zenoh
 
-from flatsat.core.config import TelemetryEntry
 from flatsat.msgs import hal_pb2, telemetry_pb2
+from flatsat.telemetry import telemetry_config_pb2
 from flatsat.telemetry.recorder import Recorder, read_records
 
 RECV_TIMEOUT_S = 5.0
 
 
-def _entry(tmp_path: Path, topic_root: str, **overrides: object) -> TelemetryEntry:
+def _entry(
+    tmp_path: Path, topic_root: str, **overrides: object
+) -> telemetry_config_pb2.TelemetryConfig:
     defaults: dict[str, object] = {
-        "topics": (f"{topic_root}/**",),
+        "topics": [f"{topic_root}/**"],
         "output_dir": str(tmp_path),
         "max_file_bytes": 64 * 1024 * 1024,
         "rotate_every_s": 3600.0,
         "max_total_bytes": 1024 * 1024 * 1024,
     }
     defaults.update(overrides)
-    return TelemetryEntry(**defaults)  # type: ignore[arg-type]
+    return telemetry_config_pb2.TelemetryConfig(**defaults)  # type: ignore[arg-type]
 
 
 def _wait_until(predicate: object, timeout_s: float = RECV_TIMEOUT_S) -> bool:

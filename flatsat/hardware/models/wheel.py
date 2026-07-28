@@ -1,7 +1,7 @@
 """Reaction-wheel model: commanded torque -> what the device would do.
 
 PURE state machine driven by a device spec
-(:class:`flatsat.core.config.WheelSpec`), shared by every wheel fake —
+(``flatsat/hardware/devices.proto`` WheelDevice), shared by every wheel fake —
 ``sim_reaction_wheel`` (local, open-loop) and ``basilisk_reaction_wheel``
 (HIL) enforce the SAME envelopes, so swapping them cannot change where
 the device saturates.
@@ -15,14 +15,14 @@ friction, torque ripple, zero-crossing deadband.
 
 from __future__ import annotations
 
-from flatsat.core.config import WheelSpec
+from flatsat.hardware import devices_pb2
 from flatsat.msgs import hal_pb2
 
 
 class WheelModel:
     """Momentum-integrating wheel bounded by its device spec."""
 
-    def __init__(self, spec: WheelSpec) -> None:
+    def __init__(self, spec: devices_pb2.WheelDevice) -> None:
         """Bind the model to its device envelopes.
 
         Args:

@@ -8,8 +8,7 @@ tests pin numerically.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
+from flatsat.control.attitude import control_options_pb2
 from flatsat.control.attitude.controller import (
     AttitudeController,
     AttitudeReference,
@@ -38,17 +37,23 @@ class RateDampingController(AttitudeController):
         self._prev_error: Vec3 = (0.0, 0.0, 0.0)
 
     @classmethod
-    def from_config(cls, options: Mapping[str, object]) -> RateDampingController:
+    def from_config(cls, options: control_options_pb2.RateDampingOptions) -> RateDampingController:
         """Build from vehicle-file control options.
 
         Args:
-            options: Requires ``kp`` and ``kd``; optional ``max_torque_n_m``.
+            options: Typed options; ``kp`` and ``kd`` are required (a gain
+                has no sensible zero), ``max_torque_n_m`` defaults to 1.0.
 
         Returns:
             The configured controller.
+
+        Raises:
+            ValueError: If a required gain is absent.
         """
-        limits = ControlLimits(max_torque_n_m=float(options.get("max_torque_n_m", 1.0)))  # type: ignore[arg-type]
-        return cls(kp=float(options["kp"]), kd=float(options["kd"]), limits=limits)  # type: ignore[arg-type]
+        if not options.HasField("kp") or not options.HasField("kd"):
+            raise ValueError("rate_damping requires kp and kd")
+        limit = options.max_torque_n_m if options.HasField("max_torque_n_m") else 1.0
+        return cls(kp=options.kp, kd=options.kd, limits=ControlLimits(max_torque_n_m=limit))
 
     def update(
         self,

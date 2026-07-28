@@ -91,7 +91,7 @@ Tuning must not require a code change and redeploy; this is also the seam a
 commandable parameter database plugs into.
 """
 verification = "test"
-evidence = "config_test.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.toml and config/devices/imu0.toml"
+evidence = "config_test.py::test_specs_load_with_provenance; config/vehicles/flatsat_v1.txtpb and config/devices/imu0.txtpb (textproto instances of the colocated proto schemas)"
 status = "verified"
 
 [[requirement]]
@@ -107,6 +107,22 @@ anything.
 """
 verification = "test"
 evidence = "control_loop_test.py::test_loop_health_carries_provenance_and_counters"
+status = "verified"
+
+[[requirement]]
+id = "FSW-CFG-004"
+statement = """
+Configuration files shall be validated against their declared schema at
+load: an unknown or misspelled field shall fail startup, never default
+silently.
+"""
+rationale = """
+Config schemas are protos; textproto parsing is strict. A typo'd
+optional key that silently falls back to a default is a config the
+operator believes is in force and is not.
+"""
+verification = "test"
+evidence = "config_test.py::test_misspelled_field_fails_loud and ::test_missing_options_block_fails_loud"
 status = "verified"
 
 [[requirement]]

@@ -1,32 +1,42 @@
-"""Typed, file-backed configuration with provenance.
+"""Typed, file-backed configuration with provenance — schemas are protos.
 
-Every tunable in the flight software is data loaded from ``config/``, never
-a literal in a function signature (PLAN §5: parameters are commandable, not
-reflashed). Each loaded parameter set carries its own provenance — the file
-it came from and a checksum of the bytes — so a recorded run can always be
-traced back to the exact configuration that produced it.
+Every config file under ``config/`` is a TEXTPROTO instance of a proto
+schema colocated with its owner (``flatsat/vehicle.proto``,
+``flatsat/hardware/devices.proto``, ...). The proto is the single place
+a field is defined: the editor resolves a ``.txtpb`` against it (its
+``# proto-file:`` header), Python types flow from the generated stubs,
+and C++ will generate from the same files. Parsing is STRICT — a
+misspelled field is a startup failure, never a silently ignored key.
 
-The loaders return frozen dataclasses: mistyped or missing keys fail loudly
-at startup rather than silently defaulting mid-flight.
+Each loaded parameter set carries provenance — the file it came from and
+a checksum of the bytes — so a recorded run always traces back to the
+exact configuration that produced it.
 
-This module is the seam a real parameter database plugs into later: swap the
-file read for a bus query and nothing downstream changes.
+This module adds the thin behavior protos cannot: provenance, defaults
+for absent optional fields, mounting normalization, and oneof→registry
+resolution (the oneof field name IS the registry key). It defines no
+schema of its own.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypeVar
 
-try:  # Python 3.11+ (the ground Mac)
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10 (the onboard interpreter)
-    import tomli as tomllib
+from google.protobuf import text_format
+from google.protobuf.message import Message
+
+from flatsat import vehicle_pb2
+from flatsat.control.attitude import control_options_pb2
+from flatsat.hardware import devices_pb2
+from flatsat.mode import mode_config_pb2
+from flatsat.telemetry import telemetry_config_pb2
 
 CONFIG_ROOT = Path(__file__).resolve().parents[2] / "config"
+
+_M = TypeVar("_M", bound=Message)
 
 
 @dataclass(frozen=True)
@@ -50,23 +60,29 @@ class Provenance:
         return f"{Path(self.path).name}@{self.checksum}"
 
 
-@dataclass(frozen=True)
-class SensorEntry:
-    """One sensor in a vehicle composition.
+def load_textproto(path: Path | str, message: _M) -> Provenance:
+    """Parse a textproto file into a message, strictly, with provenance.
 
-    Attributes:
-        name: Instance name; becomes the message source and unit name.
-        driver: Registry key naming the driver implementation.
-        topic: Bus key expression the daemon publishes on.
-        rate_hz: Publish cadence.
-        options: Driver-specific settings passed to ``from_config``.
+    Args:
+        path: The ``.txtpb`` file.
+        message: The message instance to fill (its type is the schema).
+
+    Returns:
+        The file's provenance; ``message`` is filled in place.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        text_format.ParseError: On any unknown or malformed field — a
+            typo fails at startup, never silently mid-flight.
     """
+    target = Path(path)
+    raw = target.read_bytes()
+    checksum = hashlib.sha256(raw).hexdigest()[:12]
+    text_format.Parse(raw.decode("utf-8"), message)
+    return Provenance(str(target), checksum)
 
-    name: str
-    driver: str
-    topic: str
-    rate_hz: float
-    options: Mapping[str, object]
+
+# --------------------------------------------------------------- vehicle --
 
 
 @dataclass(frozen=True)
@@ -75,9 +91,9 @@ class Mounting:
 
     Attributes:
         position_m: Device position in the body frame.
-        axis: Unit vector of the device's principal axis in the body frame
-            (a wheel's spin axis). Normalized at load; a zero vector fails
-            loudly.
+        axis: Unit vector of the device's principal axis in the body
+            frame (a wheel's spin axis). Normalized at load; a zero
+            vector fails loudly.
     """
 
     position_m: tuple[float, float, float]
@@ -85,21 +101,37 @@ class Mounting:
 
 
 @dataclass(frozen=True)
-class ActuatorEntry:
-    """One actuator in a vehicle composition.
+class SensorEntry:
+    """One sensor, resolved from its config entry.
 
     Attributes:
         name: Instance name; becomes the message source and unit name.
-        driver: Registry key naming the driver implementation.
+        driver: Registry key — the oneof field the config filled.
+        topic: Bus key expression the daemon publishes on.
+        rate_hz: Publish cadence.
+        options: The driver's TYPED options message.
+    """
+
+    name: str
+    driver: str
+    topic: str
+    rate_hz: float
+    options: Message
+
+
+@dataclass(frozen=True)
+class ActuatorEntry:
+    """One actuator, resolved from its config entry.
+
+    Attributes:
+        name: Instance name; becomes the message source and unit name.
+        driver: Registry key — the oneof field the config filled.
         command_topic: Bus key the daemon consumes body-frame commands from.
         state_topic: Bus key the daemon publishes device state on.
         rate_hz: Apply/publish cadence.
-        stale_zero_s: Command age beyond which the daemon applies ZERO —
-            an actuator must never keep flying a dead controller's last
-            order.
-        mounting: Device placement in the body frame; the daemon projects
-            body-frame commands through it.
-        options: Driver-specific settings passed to ``from_config``.
+        stale_zero_s: Command age beyond which the daemon applies ZERO.
+        mounting: Device placement (axis normalized).
+        options: The driver's TYPED options message.
     """
 
     name: str
@@ -109,16 +141,41 @@ class ActuatorEntry:
     rate_hz: float
     stale_zero_s: float
     mounting: Mounting
-    options: Mapping[str, object]
+    options: Message
+
+
+@dataclass(frozen=True)
+class ControlEntry:
+    """The control loop, resolved from its config entry.
+
+    Attributes:
+        strategy: Registry key — the strategy oneof field filled.
+        objective: Registry key — the objective oneof field filled.
+        estimator: Registry key — the estimator oneof field filled.
+        rate_hz: Control cadence.
+        input_topic: Topic supplying the measurement input.
+        output_topic: Topic for actuator commands.
+        stale_after_s: Input age beyond which the measurement is not fresh.
+        options: The strategy's TYPED options message.
+        objective_options: The guidance source's TYPED options message.
+        estimator_options: The estimator's TYPED options message.
+    """
+
+    strategy: str
+    objective: str
+    estimator: str
+    rate_hz: float
+    input_topic: str
+    output_topic: str
+    stale_after_s: float
+    options: Message
+    objective_options: Message
+    estimator_options: Message
 
 
 @dataclass(frozen=True)
 class BodySpec:
     """The vehicle's rigid-body physical model (integration truth).
-
-    Read by the flight software for control scaling (later) and by the sim
-    bridge to build its plant — the same numbers, so sim and flight cannot
-    disagree about the spacecraft by accident.
 
     Attributes:
         mass_kg: Total vehicle mass.
@@ -134,101 +191,12 @@ class BodySpec:
 
 
 @dataclass(frozen=True)
-class ControlEntry:
-    """The control loop in a vehicle composition.
-
-    Attributes:
-        strategy: Registry key naming the control implementation.
-        objective: Registry key naming the guidance/reference source.
-        estimator: Registry key naming the state estimator sitting between
-            the sensor topic and the controller.
-        rate_hz: Control cadence.
-        input_topic: Topic supplying the measurement input.
-        output_topic: Topic for actuator commands.
-        stale_after_s: Input age beyond which the measurement is not fresh.
-        options: Strategy-specific settings (gains, limits, model paths).
-        objective_options: Guidance-specific settings (targets).
-        estimator_options: Estimator-specific settings (filter tunings).
-    """
-
-    strategy: str
-    objective: str
-    estimator: str
-    rate_hz: float
-    input_topic: str
-    output_topic: str
-    stale_after_s: float
-    options: Mapping[str, object]
-    objective_options: Mapping[str, object]
-    estimator_options: Mapping[str, object]
-
-
-@dataclass(frozen=True)
-class ModeEntry:
-    """The mode manager's composition.
-
-    Attributes:
-        apps: Apps that must ack every mode transition; a missing ack is
-            surfaced as a fault in ModeHealth.
-        ack_timeout_s: How long apps have to ack a transition.
-        min_dwell_s: Minimum time in a mode before an away-from-safety
-            transition out of it is honored (anti-flap).
-        clean_shutdown_marker: File whose presence at boot means the
-            previous shutdown was deliberate; consumed at startup, so a
-            crash always leaves the next boot marker-less — and Safe.
-    """
-
-    apps: tuple[str, ...]
-    ack_timeout_s: float
-    min_dwell_s: float
-    clean_shutdown_marker: str
-
-
-DEFAULT_MODE = ModeEntry(
-    apps=(),
-    ack_timeout_s=2.0,
-    min_dwell_s=1.0,
-    clean_shutdown_marker="~/flatsat-state/clean-shutdown",
-)
-
-
-@dataclass(frozen=True)
-class TelemetryEntry:
-    """The telemetry recorder's composition.
-
-    Attributes:
-        topics: Bus key expressions to archive.
-        output_dir: Directory the archive lives in.
-        max_file_bytes: Rotate the current file beyond this size.
-        rotate_every_s: Rotate the current file after this many seconds
-            regardless of size (bounds data-loss window per file).
-        max_total_bytes: Prune oldest files beyond this total — recording
-            must never fill the flight computer's disk.
-    """
-
-    topics: tuple[str, ...]
-    output_dir: str
-    max_file_bytes: int
-    rotate_every_s: float
-    max_total_bytes: int
-
-
-DEFAULT_TELEMETRY = TelemetryEntry(
-    topics=("hal/**", "adcs/**", "health/**", "sys/**"),
-    output_dir="~/flatsat-telemetry",
-    max_file_bytes=64 * 1024 * 1024,
-    rotate_every_s=900.0,
-    max_total_bytes=4 * 1024 * 1024 * 1024,
-)
-
-
-@dataclass(frozen=True)
 class VehicleSpec:
-    """What a spacecraft IS: its sensors and how it is flown.
+    """What a spacecraft IS, loaded and validated.
 
     A different vehicle — more sensors, simulated instead of real, an ML
-    controller instead of PD — is a different file of this shape, not
-    different code.
+    controller instead of PD — is a different ``.txtpb`` of the
+    VehicleConfig schema, not different code.
 
     Attributes:
         name: Vehicle identifier.
@@ -236,13 +204,10 @@ class VehicleSpec:
         sensors: Sensor complement.
         actuators: Actuator complement.
         control: Control loop composition.
-        body: Rigid-body physical model; None until a vehicle declares
-            ``[body]`` (consumers that need it fail loudly).
-        telemetry: Recorder composition; defaults cover ``hal/**``,
-            ``adcs/**``, ``health/**``, and ``sys/**`` when the file has
-            no ``[telemetry]`` section.
-        mode: Mode-manager composition; defaults apply when the file has
-            no ``[mode]`` section.
+        body: Rigid-body physical model; None until the config declares
+            ``body`` (consumers that need it fail loudly).
+        mode: Mode-manager composition, defaults filled.
+        telemetry: Recorder composition, defaults filled.
         provenance: Source file and checksum.
     """
 
@@ -252,8 +217,8 @@ class VehicleSpec:
     actuators: tuple[ActuatorEntry, ...]
     control: ControlEntry
     body: BodySpec | None
-    telemetry: TelemetryEntry
-    mode: ModeEntry
+    mode: mode_config_pb2.ModeConfig
+    telemetry: telemetry_config_pb2.TelemetryConfig
     provenance: Provenance
 
     def sensor(self, name: str) -> SensorEntry:
@@ -294,13 +259,13 @@ class VehicleSpec:
         """Return the physical model, failing loudly when absent.
 
         Returns:
-            The declared ``[body]`` section.
+            The declared body section.
 
         Raises:
-            KeyError: If the vehicle file declares no physical model.
+            KeyError: If the vehicle config declares no physical model.
         """
         if self.body is None:
-            raise KeyError(f"vehicle {self.name!r} declares no [body] physical model")
+            raise KeyError(f"vehicle {self.name!r} declares no body physical model")
         return self.body
 
     def describe(self) -> list[str]:
@@ -318,120 +283,23 @@ class VehicleSpec:
         ]
 
 
-@dataclass(frozen=True)
-class ImuSpec:
-    """What an IMU device is: limits, resolution, and noise character.
-
-    Read by BOTH the flight-side driver (to know the device) and the
-    simulation's sensor model (to corrupt truth the way the device would).
-
-    Attributes:
-        name: Device instance name (becomes the message source).
-        rate_hz: Native output data rate.
-        gyro_noise_rad_s: White-noise sigma per gyro axis.
-        gyro_full_scale_rad_s: Measurement limit; beyond it the device rails.
-        gyro_lsb_rad_s: Quantization step of the gyro output.
-        accel_noise_m_s2: White-noise sigma per accelerometer axis.
-        accel_full_scale_m_s2: Accelerometer measurement limit.
-        temperature_c: Nominal reported die temperature.
-        provenance: Source file and checksum.
-    """
-
-    name: str
-    rate_hz: float
-    gyro_noise_rad_s: float
-    gyro_full_scale_rad_s: float
-    gyro_lsb_rad_s: float
-    accel_noise_m_s2: float
-    accel_full_scale_m_s2: float
-    temperature_c: float
-    provenance: Provenance
-
-    def describe(self) -> list[str]:
-        """Render the spec for logs/telemetry echo.
-
-        Returns:
-            Lines naming the device characteristics in effect.
-        """
-        return [
-            f"imu spec: {self.provenance.describe()} ({self.name})",
-            f"imu spec: noise {self.gyro_noise_rad_s:g} rad/s, "
-            f"full scale ±{self.gyro_full_scale_rad_s:g} rad/s, "
-            f"lsb {self.gyro_lsb_rad_s:g} rad/s",
-        ]
-
-
-@dataclass(frozen=True)
-class WheelSpec:
-    """What a reaction wheel device is: torque and momentum envelopes.
-
-    Device-intrinsic (datasheet) truth — true of the unit no matter which
-    spacecraft it is bolted to. Calibration keys (measured alignment,
-    friction) land here when a physical wheel is first characterized.
-
-    Attributes:
-        name: Device instance name (becomes the message source).
-        max_torque_n_m: Torque the wheel can apply; commands clip to it.
-        max_momentum_n_m_s: Momentum storage envelope; beyond it the wheel
-            is saturated and torque authority in that direction is gone.
-        rotor_inertia_kg_m2: Rotor inertia; speed = momentum / inertia.
-        provenance: Source file and checksum.
-    """
-
-    name: str
-    max_torque_n_m: float
-    max_momentum_n_m_s: float
-    rotor_inertia_kg_m2: float
-    provenance: Provenance
-
-    def describe(self) -> list[str]:
-        """Render the spec for logs/telemetry echo.
-
-        Returns:
-            Lines naming the device envelopes in effect.
-        """
-        return [
-            f"wheel spec: {self.provenance.describe()} ({self.name})",
-            f"wheel spec: max torque {self.max_torque_n_m:g} N·m, "
-            f"max momentum {self.max_momentum_n_m_s:g} N·m·s, "
-            f"rotor inertia {self.rotor_inertia_kg_m2:g} kg·m²",
-        ]
-
-
-def _load_toml(path: Path) -> tuple[dict[str, Any], Provenance]:
-    """Read a TOML file and compute its provenance.
+def _parse_mounting(raw: vehicle_pb2.MountingConfig, device: str) -> Mounting:
+    """Validate and normalize one device's mounting.
 
     Args:
-        path: File to read.
-
-    Returns:
-        Tuple of (parsed mapping, provenance).
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-    """
-    raw = path.read_bytes()
-    checksum = hashlib.sha256(raw).hexdigest()[:12]
-    return tomllib.loads(raw.decode("utf-8")), Provenance(str(path), checksum)
-
-
-def _parse_mounting(raw: Mapping[str, Any], device: str) -> Mounting:
-    """Parse and validate one device's mounting entry.
-
-    Args:
-        raw: The ``mounting`` table from the vehicle file.
+        raw: The mounting message from the vehicle config.
         device: Device name, for error messages.
 
     Returns:
         The mounting with a normalized axis.
 
     Raises:
-        ValueError: If the axis is (near) zero-length — a device pointing
-            nowhere is a config error to catch at startup, not a NaN to
-            chase through the control chain.
+        ValueError: If dimensions are wrong or the axis is (near) zero —
+            a device pointing nowhere is a config error to catch at
+            startup, not a NaN to chase through the control chain.
     """
-    position = tuple(float(v) for v in raw["position_m"])
-    axis = tuple(float(v) for v in raw["axis"])
+    position = tuple(raw.position_m)
+    axis = tuple(raw.axis)
     if len(position) != 3 or len(axis) != 3:
         raise ValueError(f"mounting for {device!r}: position_m and axis must have 3 elements")
     norm = (axis[0] ** 2 + axis[1] ** 2 + axis[2] ** 2) ** 0.5
@@ -441,171 +309,226 @@ def _parse_mounting(raw: Mapping[str, Any], device: str) -> Mounting:
     return Mounting(position_m=(position[0], position[1], position[2]), axis=unit)
 
 
+def _which(message: Message, oneof: str, owner: str) -> str:
+    """Resolve which oneof field a config entry filled.
+
+    Args:
+        message: The config message carrying the oneof.
+        oneof: The oneof name (``options``, ``strategy``, ...).
+        owner: Human-readable owner, for the error message.
+
+    Returns:
+        The filled field name — the registry key.
+
+    Raises:
+        ValueError: If no field of the oneof was filled.
+    """
+    which = message.WhichOneof(oneof)
+    if which is None:
+        raise ValueError(f"{owner}: no {oneof} selected — fill exactly one {oneof} block")
+    return str(which)
+
+
+def mode_with_defaults(cfg: mode_config_pb2.ModeConfig) -> mode_config_pb2.ModeConfig:
+    """Fill an (possibly absent) mode config's defaults.
+
+    Args:
+        cfg: The declared config, possibly the empty default instance.
+
+    Returns:
+        A copy with every absent optional filled.
+    """
+    out = mode_config_pb2.ModeConfig()
+    out.CopyFrom(cfg)
+    if not out.HasField("ack_timeout_s"):
+        out.ack_timeout_s = 2.0
+    if not out.HasField("min_dwell_s"):
+        out.min_dwell_s = 1.0
+    if not out.clean_shutdown_marker:
+        out.clean_shutdown_marker = "~/flatsat-state/clean-shutdown"
+    return out
+
+
+def telemetry_with_defaults(
+    cfg: telemetry_config_pb2.TelemetryConfig,
+) -> telemetry_config_pb2.TelemetryConfig:
+    """Fill an (possibly absent) telemetry config's defaults.
+
+    Args:
+        cfg: The declared config, possibly the empty default instance.
+
+    Returns:
+        A copy with every absent optional filled.
+    """
+    out = telemetry_config_pb2.TelemetryConfig()
+    out.CopyFrom(cfg)
+    if not out.topics:
+        out.topics.extend(["hal/**", "adcs/**", "health/**", "sys/**"])
+    if not out.output_dir:
+        out.output_dir = "~/flatsat-telemetry"
+    if not out.HasField("max_file_bytes"):
+        out.max_file_bytes = 64 * 1024 * 1024
+    if not out.HasField("rotate_every_s"):
+        out.rotate_every_s = 900.0
+    if not out.HasField("max_total_bytes"):
+        out.max_total_bytes = 4 * 1024 * 1024 * 1024
+    return out
+
+
 def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
     """Load a vehicle composition file.
 
     Args:
-        path: Override file; defaults to ``config/vehicles/flatsat_v1.toml``.
+        path: Override file; defaults to
+            ``config/vehicles/flatsat_v1.txtpb``.
 
     Returns:
-        The composition, with provenance.
+        The composition, validated, with provenance.
 
     Raises:
-        KeyError: If a required key is missing (fail loud at startup).
+        ValueError: On an unselected oneof or invalid mounting.
+        text_format.ParseError: On any unknown field (fail loud).
     """
-    target = Path(path) if path else CONFIG_ROOT / "vehicles" / "flatsat_v1.toml"
-    data, prov = _load_toml(target)
+    target = Path(path) if path else CONFIG_ROOT / "vehicles" / "flatsat_v1.txtpb"
+    cfg = vehicle_pb2.VehicleConfig()
+    prov = load_textproto(target, cfg)
 
-    sensors: list[SensorEntry] = []
-    actuators: list[ActuatorEntry] = []
-    for row in data.get("actuators", []):
-        known = {
-            "name",
-            "driver",
-            "command_topic",
-            "state_topic",
-            "rate_hz",
-            "stale_zero_s",
-            "mounting",
-        }
-        actuators.append(
-            ActuatorEntry(
-                name=str(row["name"]),
-                driver=str(row["driver"]),
-                command_topic=str(row["command_topic"]),
-                state_topic=str(row["state_topic"]),
-                rate_hz=float(row["rate_hz"]),
-                stale_zero_s=float(row["stale_zero_s"]),
-                mounting=_parse_mounting(row["mounting"], str(row["name"])),
-                options={k: v for k, v in row.items() if k not in known},
-            )
+    sensors = tuple(
+        SensorEntry(
+            name=s.name,
+            driver=_which(s, "options", f"sensor {s.name!r}"),
+            topic=s.topic,
+            rate_hz=s.rate_hz,
+            options=getattr(s, _which(s, "options", f"sensor {s.name!r}")),
         )
-    for row in data.get("sensors", []):
-        known = {"name", "driver", "topic", "rate_hz"}
-        sensors.append(
-            SensorEntry(
-                name=str(row["name"]),
-                driver=str(row["driver"]),
-                topic=str(row["topic"]),
-                rate_hz=float(row["rate_hz"]),
-                options={k: v for k, v in row.items() if k not in known},
-            )
-        )
-
-    ctrl = data["control"]
-    known_ctrl = {
-        "strategy",
-        "objective",
-        "estimator",
-        "rate_hz",
-        "input_topic",
-        "output_topic",
-        "stale_after_s",
-        "objective_options",
-        "estimator_options",
-    }
-    control = ControlEntry(
-        strategy=str(ctrl["strategy"]),
-        objective=str(ctrl.get("objective", "constant_rate")),
-        estimator=str(ctrl.get("estimator", "passthrough")),
-        rate_hz=float(ctrl["rate_hz"]),
-        input_topic=str(ctrl["input_topic"]),
-        output_topic=str(ctrl["output_topic"]),
-        stale_after_s=float(ctrl["stale_after_s"]),
-        options={k: v for k, v in ctrl.items() if k not in known_ctrl},
-        objective_options=dict(ctrl.get("objective_options", {})),
-        estimator_options=dict(ctrl.get("estimator_options", {})),
+        for s in cfg.sensors
     )
-    telemetry = DEFAULT_TELEMETRY
-    if "telemetry" in data:
-        tel = data["telemetry"]
-        telemetry = TelemetryEntry(
-            topics=tuple(str(t) for t in tel.get("topics", DEFAULT_TELEMETRY.topics)),
-            output_dir=str(tel.get("output_dir", DEFAULT_TELEMETRY.output_dir)),
-            max_file_bytes=int(tel.get("max_file_bytes", DEFAULT_TELEMETRY.max_file_bytes)),
-            rotate_every_s=float(tel.get("rotate_every_s", DEFAULT_TELEMETRY.rotate_every_s)),
-            max_total_bytes=int(tel.get("max_total_bytes", DEFAULT_TELEMETRY.max_total_bytes)),
+    actuators = tuple(
+        ActuatorEntry(
+            name=a.name,
+            driver=_which(a, "options", f"actuator {a.name!r}"),
+            command_topic=a.command_topic,
+            state_topic=a.state_topic,
+            rate_hz=a.rate_hz,
+            stale_zero_s=a.stale_zero_s,
+            mounting=_parse_mounting(a.mounting, a.name),
+            options=getattr(a, _which(a, "options", f"actuator {a.name!r}")),
         )
+        for a in cfg.actuators
+    )
 
-    mode = DEFAULT_MODE
-    if "mode" in data:
-        raw_mode = data["mode"]
-        mode = ModeEntry(
-            apps=tuple(str(a) for a in raw_mode.get("apps", DEFAULT_MODE.apps)),
-            ack_timeout_s=float(raw_mode.get("ack_timeout_s", DEFAULT_MODE.ack_timeout_s)),
-            min_dwell_s=float(raw_mode.get("min_dwell_s", DEFAULT_MODE.min_dwell_s)),
-            clean_shutdown_marker=str(
-                raw_mode.get("clean_shutdown_marker", DEFAULT_MODE.clean_shutdown_marker)
-            ),
-        )
+    ctrl = cfg.control
+    strategy = _which(ctrl, "strategy", "control")
+    objective = ctrl.WhichOneof("objective") or "constant_rate"
+    estimator = ctrl.WhichOneof("estimator") or "passthrough"
+    control = ControlEntry(
+        strategy=strategy,
+        objective=objective,
+        estimator=estimator,
+        rate_hz=ctrl.rate_hz,
+        input_topic=ctrl.input_topic,
+        output_topic=ctrl.output_topic,
+        stale_after_s=ctrl.stale_after_s,
+        options=getattr(ctrl, strategy),
+        objective_options=(
+            getattr(ctrl, objective)
+            if ctrl.WhichOneof("objective")
+            else control_options_pb2.ConstantRateOptions()
+        ),
+        estimator_options=(
+            getattr(ctrl, estimator)
+            if ctrl.WhichOneof("estimator")
+            else control_options_pb2.PassthroughOptions()
+        ),
+    )
 
     body: BodySpec | None = None
-    if "body" in data:
-        raw_inertia = data["body"]["inertia_kg_m2"]
-        rows = tuple(tuple(float(v) for v in line) for line in raw_inertia)
-        if len(rows) != 3 or any(len(line) != 3 for line in rows):
-            raise ValueError(f"{target}: [body] inertia_kg_m2 must be a 3x3 matrix")
-        body = BodySpec(
-            mass_kg=float(data["body"]["mass_kg"]),
-            inertia_kg_m2=(rows[0], rows[1], rows[2]),  # type: ignore[arg-type]
+    if cfg.HasField("body"):
+        flat = tuple(cfg.body.inertia_kg_m2)
+        if len(flat) != 9:
+            raise ValueError(f"{target}: body inertia_kg_m2 must have 9 values (3x3 row-major)")
+        rows = (
+            (flat[0], flat[1], flat[2]),
+            (flat[3], flat[4], flat[5]),
+            (flat[6], flat[7], flat[8]),
         )
+        body = BodySpec(mass_kg=cfg.body.mass_kg, inertia_kg_m2=rows)
 
     return VehicleSpec(
-        name=str(data["name"]),
-        description=str(data.get("description", "")),
-        sensors=tuple(sensors),
-        actuators=tuple(actuators),
+        name=cfg.name,
+        description=cfg.description,
+        sensors=sensors,
+        actuators=actuators,
         control=control,
         body=body,
-        telemetry=telemetry,
-        mode=mode,
+        mode=mode_with_defaults(cfg.mode),
+        telemetry=telemetry_with_defaults(cfg.telemetry),
         provenance=prov,
     )
 
 
-def load_imu_spec(path: Path | str | None = None) -> ImuSpec:
+# ---------------------------------------------------------------- devices --
+
+
+def load_imu_spec(path: Path | str | None = None) -> tuple[devices_pb2.ImuDevice, Provenance]:
     """Load an IMU device specification.
 
     Args:
-        path: Override file; defaults to ``config/devices/imu0.toml``.
+        path: Override file; defaults to ``config/devices/imu0.txtpb``.
 
     Returns:
-        The device spec, with provenance.
-
-    Raises:
-        KeyError: If a required key is missing (fail loud at startup).
+        Tuple of (device spec, provenance).
     """
-    data, prov = _load_toml(Path(path) if path else CONFIG_ROOT / "devices" / "imu0.toml")
-    return ImuSpec(
-        name=str(data["name"]),
-        rate_hz=float(data["rate_hz"]),
-        gyro_noise_rad_s=float(data["gyro_noise_rad_s"]),
-        gyro_full_scale_rad_s=float(data["gyro_full_scale_rad_s"]),
-        gyro_lsb_rad_s=float(data["gyro_lsb_rad_s"]),
-        accel_noise_m_s2=float(data["accel_noise_m_s2"]),
-        accel_full_scale_m_s2=float(data["accel_full_scale_m_s2"]),
-        temperature_c=float(data["temperature_c"]),
-        provenance=prov,
-    )
+    spec = devices_pb2.ImuDevice()
+    prov = load_textproto(Path(path) if path else CONFIG_ROOT / "devices" / "imu0.txtpb", spec)
+    return spec, prov
 
 
-def load_wheel_spec(path: Path | str) -> WheelSpec:
+def describe_imu_spec(spec: devices_pb2.ImuDevice, prov: Provenance) -> list[str]:
+    """Render an IMU spec for logs/telemetry echo.
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device characteristics in effect.
+    """
+    return [
+        f"imu spec: {prov.describe()} ({spec.name})",
+        f"imu spec: noise {spec.gyro_noise_rad_s:g} rad/s, "
+        f"full scale ±{spec.gyro_full_scale_rad_s:g} rad/s, "
+        f"lsb {spec.gyro_lsb_rad_s:g} rad/s",
+    ]
+
+
+def load_wheel_spec(path: Path | str) -> tuple[devices_pb2.WheelDevice, Provenance]:
     """Load a reaction-wheel device specification.
 
     Args:
-        path: Device file, e.g. ``config/devices/wheel0.toml``.
+        path: Device file, e.g. ``config/devices/wheel0.txtpb``.
 
     Returns:
-        The device spec, with provenance.
-
-    Raises:
-        KeyError: If a required key is missing (fail loud at startup).
+        Tuple of (device spec, provenance).
     """
-    data, prov = _load_toml(Path(path))
-    return WheelSpec(
-        name=str(data["name"]),
-        max_torque_n_m=float(data["max_torque_n_m"]),
-        max_momentum_n_m_s=float(data["max_momentum_n_m_s"]),
-        rotor_inertia_kg_m2=float(data["rotor_inertia_kg_m2"]),
-        provenance=prov,
-    )
+    spec = devices_pb2.WheelDevice()
+    prov = load_textproto(Path(path), spec)
+    return spec, prov
+
+
+def describe_wheel_spec(spec: devices_pb2.WheelDevice, prov: Provenance) -> list[str]:
+    """Render a wheel spec for logs/telemetry echo.
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device envelopes in effect.
+    """
+    return [
+        f"wheel spec: {prov.describe()} ({spec.name})",
+        f"wheel spec: max torque {spec.max_torque_n_m:g} N·m, "
+        f"max momentum {spec.max_momentum_n_m_s:g} N·m·s, "
+        f"rotor inertia {spec.rotor_inertia_kg_m2:g} kg·m²",
+    ]

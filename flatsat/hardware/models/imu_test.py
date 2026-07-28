@@ -9,7 +9,7 @@ from flatsat.core.config import load_imu_spec
 from flatsat.hardware.models.imu import apply_gyro_model
 from flatsat.msgs import hal_pb2
 
-SPEC = load_imu_spec()
+SPEC, _PROV = load_imu_spec()
 
 
 def test_noise_matches_configured_sigma() -> None:

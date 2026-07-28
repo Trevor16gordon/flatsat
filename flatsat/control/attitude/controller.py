@@ -28,8 +28,8 @@ so changing how a spacecraft is flown is a config edit.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 Vec3 = tuple[float, float, float]
 
@@ -95,11 +95,15 @@ class AttitudeController(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls, options: Mapping[str, object]) -> AttitudeController:
+    def from_config(
+        cls,
+        options: Any,  # noqa: ANN401 — each implementation narrows to its own options message
+    ) -> AttitudeController:
         """Build a controller from the vehicle file's control options.
 
         Args:
-            options: Strategy-specific options (gains, limits, model paths).
+            options: This strategy's TYPED options message (its oneof
+                block in vehicle.proto — see control_options.proto).
 
         Returns:
             A ready-to-run controller.

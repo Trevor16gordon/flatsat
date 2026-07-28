@@ -18,6 +18,23 @@ jobs:
           python-version: "3.10"   # match onboard Python
       - uses: pre-commit/action@v3.0.1
 
+  proto-drift:
+    # Generated bindings are committed; regenerating them must be a no-op.
+    # This is what makes "edit the .proto, commit" the whole workflow — a
+    # stale binding cannot land.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install proto toolchain
+        run: pip install grpcio-tools mypy-protobuf
+      - name: Regenerate bindings
+        run: FLATSAT_ML_VENV="$(dirname "$(dirname "$(which python)")")" ./tools/gen-protos.sh
+      - name: Fail on drift
+        run: git diff --exit-code -- '*_pb2.py' '*_pb2.pyi'
+
   traceability:
     # Requirements must stay linked to their verification. Fails on an
     # unverified test-verified requirement or a test citing an unknown ID.

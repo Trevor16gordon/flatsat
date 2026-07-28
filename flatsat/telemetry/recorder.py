@@ -28,8 +28,8 @@ from typing import BinaryIO
 
 import zenoh
 
-from flatsat.core.config import TelemetryEntry
 from flatsat.msgs import telemetry_pb2
+from flatsat.telemetry import telemetry_config_pb2
 
 _LEN = struct.Struct("<I")
 FILE_SUFFIX = ".rec"
@@ -61,7 +61,7 @@ def read_records(path: Path | str) -> Iterator[telemetry_pb2.RecordedSample]:
 class Recorder:
     """Archives configured bus topics to rotating, size-capped files."""
 
-    def __init__(self, entry: TelemetryEntry, session: zenoh.Session) -> None:
+    def __init__(self, entry: telemetry_config_pb2.TelemetryConfig, session: zenoh.Session) -> None:
         """Open the archive and subscribe to every configured topic.
 
         Args:

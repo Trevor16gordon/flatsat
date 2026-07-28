@@ -4,6 +4,7 @@ import pytest
 import zenoh
 
 from flatsat.apps.control_loop import ControlLoop, LoopReport
+from flatsat.control.attitude import control_options_pb2
 from flatsat.core.config import ControlEntry
 from flatsat.core.registry import (
     get_controller_class,
@@ -22,9 +23,9 @@ def _entry() -> ControlEntry:
         input_topic="test/health/in",
         output_topic="test/health/out",
         stale_after_s=0.05,
-        options={"kp": 0.02, "kd": 0.005},
-        objective_options={},
-        estimator_options={},
+        options=control_options_pb2.RateDampingOptions(kp=0.02, kd=0.005),
+        objective_options=control_options_pb2.ConstantRateOptions(),
+        estimator_options=control_options_pb2.PassthroughOptions(),
     )
 
 

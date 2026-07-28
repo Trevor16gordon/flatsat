@@ -1,0 +1,39 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# MISSION PROFILE — safing mid-mission. Phase 1 detumbles under NOMINAL;
+# phase 2 plays the FDIR role and requests SAFE (toward safety: no
+# authority needed), then verifies the whole composed system heard it.
+# Phase 3 verifies the asymmetry: an unauthorized attempt to leave SAFE
+# must be refused.
+
+name: "safe-entry-test"
+description: "Safing is automatic, heard by every app, and one-way without ground"
+vehicle: "config/vehicles/test_scenario.txtpb"
+
+omega0_rad_s: [0.3, 0.2, -0.2]
+plant_rate_hz: 100
+
+phases {
+  name: "settle-nominal"
+  duration_s: 4.0
+  success { require_mode: "NOMINAL" }
+}
+
+phases {
+  name: "fdir-requests-safe"
+  duration_s: 2.0
+  request_mode: "SAFE"           # played by the runner, sourced "fdir"
+  success {
+    require_mode: "SAFE"
+    require_all_acks: true       # the safing command reached every app
+  }
+}
+
+phases {
+  name: "unauthorized-recovery-refused"
+  duration_s: 1.0
+  request_mode: "RECOVERY"       # NO ground authority — must be refused
+  expect_request_refused: true
+  success { require_mode: "SAFE" }  # still safe: software cannot un-safe itself
+}

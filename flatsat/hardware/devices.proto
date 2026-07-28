@@ -1,0 +1,34 @@
+// Device-intrinsic truth — the datasheet a config/devices/*.txtpb file
+// fills out. True of the unit no matter which spacecraft it is bolted
+// to; where a device POINTS is integration truth (vehicle.proto
+// MountingConfig), never here.
+//
+// Calibration fields (measured scale factors, biases, alignment) land
+// here when a characterization campaign first produces them —
+// discovered knowledge updates the data file, never the design.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// IMU: limits, resolution, and noise character. Read by BOTH the
+// flight-side driver (to know the device) and the simulation's sensor
+// model (to corrupt truth the way the device would).
+message ImuDevice {
+  string name = 1;                    // instance name (becomes the message source)
+  double rate_hz = 2;                 // native output data rate
+  double gyro_noise_rad_s = 3;        // white-noise sigma per gyro axis
+  double gyro_full_scale_rad_s = 4;   // measurement limit; beyond it the device rails
+  double gyro_lsb_rad_s = 5;          // quantization step of the gyro output
+  double accel_noise_m_s2 = 6;        // white-noise sigma per accelerometer axis
+  double accel_full_scale_m_s2 = 7;   // accelerometer measurement limit
+  double temperature_c = 8;           // nominal reported die temperature
+}
+
+// Reaction wheel: torque and momentum envelopes.
+message WheelDevice {
+  string name = 1;                    // instance name (becomes the message source)
+  double max_torque_n_m = 2;          // torque envelope; commands clip (and flag) beyond
+  double max_momentum_n_m_s = 3;      // momentum storage; SATURATED at the rail
+  double rotor_inertia_kg_m2 = 4;     // speed = momentum / inertia
+}

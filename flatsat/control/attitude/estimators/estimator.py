@@ -19,7 +19,7 @@ key; ``passthrough`` is the default and is today's behavior made explicit.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from typing import Any
 
 from flatsat.control.attitude.controller import AttitudeState
 from flatsat.msgs import hal_pb2
@@ -30,11 +30,15 @@ class StateEstimator(ABC):
 
     @classmethod
     @abstractmethod
-    def from_config(cls, options: Mapping[str, object]) -> StateEstimator:
+    def from_config(
+        cls,
+        options: Any,  # noqa: ANN401 — each implementation narrows to its own options message
+    ) -> StateEstimator:
         """Build an estimator from the vehicle file's estimator options.
 
         Args:
-            options: Estimator-specific settings (filter tunings, models).
+            options: This estimator's TYPED options message (its oneof
+                block in vehicle.proto — see control_options.proto).
 
         Returns:
             A ready-to-run estimator.

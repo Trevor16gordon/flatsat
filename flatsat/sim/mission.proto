@@ -1,0 +1,39 @@
+// MISSION PROFILE SCHEMA — what a config/missions/*.txtpb file fills out.
+//
+// A mission is data: initial conditions, a phase timeline (each phase
+// optionally commanding a mode transition), and per-phase success
+// criteria, executed by the generic scenario runner
+// (flatsat/sim/scenario.py). The same files script real Basilisk HIL
+// campaigns — the Mac's bridge stands behind the same topics as the
+// local plant.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// What must be true at the end of a phase.
+message SuccessCriteriaConfig {
+  optional double max_omega_mag_rad_s = 1;  // plant |omega| bound; absent skips
+  string require_mode = 2;                  // bare mode name (NOMINAL, SAFE, ...); empty skips
+  bool require_all_acks = 3;                // every registered app acked the current seq
+}
+
+// One phase of the timeline.
+message PhaseConfig {
+  string name = 1;
+  double duration_s = 2;                // how long the phase runs before judgment
+  string request_mode = 3;              // bare mode name to request at start; empty = none
+  bool request_ground_authority = 4;    // runner plays ground (true) vs FDIR (false)
+  bool expect_request_refused = 5;      // phase EXPECTS refusal — asserts the asymmetry
+  SuccessCriteriaConfig success = 6;
+}
+
+// The whole mission.
+message MissionConfig {
+  string name = 1;
+  string description = 2;
+  string vehicle = 3;                   // vehicle file the mission flies
+  repeated double omega0_rad_s = 4;     // initial plant body rates, 3 values
+  optional double plant_rate_hz = 5;    // absent = 100
+  repeated PhaseConfig phases = 6;
+}

@@ -98,18 +98,21 @@ def test_late_joiner_learns_mode_via_query(
         Args:
             query: The incoming zenoh query.
         """
-        query.reply("sys/mode", current.SerializeToString())
+        query.reply(topic, current.SerializeToString())
 
-    queryable = mgr_session.declare_queryable("sys/mode", answer)
+    # Test-only key: the production sys/mode now has a LIVE mode manager
+    # answering queries on this box.
+    topic = "test/bus/sys_mode"
+    queryable = mgr_session.declare_queryable(topic, answer)
     time.sleep(0.5)  # let peer discovery + queryable propagate
 
     # The "late joiner": queries AFTER the last broadcast happened.
     answers: list[bytes] = []
-    for reply in late_session.get("sys/mode", timeout=RECV_TIMEOUT_S):
+    for reply in late_session.get(topic, timeout=RECV_TIMEOUT_S):
         if reply.ok is not None:
             answers.append(bytes(reply.ok.payload.to_bytes()))
 
-    assert answers, "late joiner got no answer from sys/mode queryable"
+    assert answers, "late joiner got no answer from the queryable"
     state = mode_pb2.ModeState.FromString(answers[0])
     assert state.mode == mode_pb2.SYSTEM_MODE_SAFE
     assert state.mode_seq == 7

@@ -3,7 +3,7 @@
 
 Three inputs, three separate concerns, joined only here:
 
-  * ``config/vehicles/<name>.toml`` — WHAT the spacecraft is (sensors,
+  * ``config/vehicles/<name>.txtpb`` — WHAT the spacecraft is (sensors,
     control strategy). Portable across flight computers.
   * ``deployment.toml`` — HOW its processes run (RT policy,
     priority, core ROLE, memory budget). Portable across boards.
@@ -33,7 +33,12 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VEHICLE = REPO_ROOT / "config" / "vehicles" / "flatsat_v1.toml"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))  # allow `python tools/gen-units.py` from anywhere
+
+from flatsat.core.config import VehicleSpec, load_vehicle  # noqa: E402
+
+DEFAULT_VEHICLE = REPO_ROOT / "config" / "vehicles" / "flatsat_v1.txtpb"
 DEFAULT_DEPLOYMENT = REPO_ROOT / "deployment.toml"
 DEFAULT_PROFILE = REPO_ROOT / "tools" / "host-profiles" / "jetson-orin-nano.env"
 DEFAULT_OUT = REPO_ROOT / "units" / "generated"
@@ -162,7 +167,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
 
-    vehicle = load_toml(args.vehicle)
+    vehicle: VehicleSpec = load_vehicle(args.vehicle)
     deployment = load_toml(args.deployment)
     profile = load_profile(args.profile)
     header = HEADER.format(
@@ -177,12 +182,12 @@ def main() -> int:
     vehicle_rel = args.vehicle.relative_to(REPO_ROOT)
     written: list[str] = []
 
-    for sensor in vehicle.get("sensors", []):
-        name = str(sensor["name"])
+    for sensor in vehicle.sensors:
+        name = sensor.name
         deploy = {**sensor_defaults, **sensor_overrides.get(name, {})}
         unit = render_service(
             unit_name=name,
-            description=f"{name} sensor daemon ({sensor['driver']}) — {vehicle['name']}",
+            description=f"{name} sensor daemon ({sensor.driver}) — {vehicle.name}",
             exec_args=[
                 "-m",
                 "flatsat.apps.sensor_daemon",
@@ -198,12 +203,12 @@ def main() -> int:
         (args.out / f"flatsat-{name}.service").write_text(unit)
         written.append(f"flatsat-{name}.service")
 
-    for actuator in vehicle.get("actuators", []):
-        name = str(actuator["name"])
+    for actuator in vehicle.actuators:
+        name = actuator.name
         deploy = {**actuator_defaults, **actuator_overrides.get(name, {})}
         unit = render_service(
             unit_name=name,
-            description=f"{name} actuator daemon ({actuator['driver']}) — {vehicle['name']}",
+            description=f"{name} actuator daemon ({actuator.driver}) — {vehicle.name}",
             exec_args=[
                 "-m",
                 "flatsat.apps.actuator_daemon",
@@ -221,7 +226,7 @@ def main() -> int:
 
     mode_unit = render_service(
         unit_name="mode",
-        description=f"system mode manager — {vehicle['name']}",
+        description=f"system mode manager — {vehicle.name}",
         exec_args=[
             "-m",
             "flatsat.apps.mode_manager",
@@ -237,7 +242,7 @@ def main() -> int:
 
     recorder_unit = render_service(
         unit_name="recorder",
-        description=f"telemetry recorder — {vehicle['name']}",
+        description=f"telemetry recorder — {vehicle.name}",
         exec_args=[
             "-m",
             "flatsat.apps.telemetry_recorder",
@@ -255,8 +260,8 @@ def main() -> int:
     control_unit = render_service(
         unit_name="adcs",
         description=(
-            f"ADCS control loop ({vehicle['control']['strategy']}, "
-            f"{vehicle['control']['objective']}) — {vehicle['name']}"
+            f"ADCS control loop ({vehicle.control.strategy}, "
+            f"{vehicle.control.objective}) — {vehicle.name}"
         ),
         exec_args=[
             "-m",
@@ -269,10 +274,7 @@ def main() -> int:
         deploy=control_deploy,
         profile=profile,
         header=header,
-        after=[
-            str(entry["name"])
-            for entry in (*vehicle.get("sensors", []), *vehicle.get("actuators", []))
-        ],
+        after=[*(s.name for s in vehicle.sensors), *(a.name for a in vehicle.actuators)],
     )
     (args.out / "flatsat-adcs.service").write_text(control_unit)
     written.append("flatsat-adcs.service")
@@ -281,7 +283,7 @@ def main() -> int:
         [
             header,
             "[Unit]",
-            f"Description=flatsat onboard segment — {vehicle['name']}",
+            f"Description=flatsat onboard segment — {vehicle.name}",
             "Wants=" + " ".join(written),
             "",
             "[Install]",

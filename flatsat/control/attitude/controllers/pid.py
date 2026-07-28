@@ -14,8 +14,7 @@ config keys — and the application running it does not change at all.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
+from flatsat.control.attitude import control_options_pb2
 from flatsat.control.attitude.controller import (
     AttitudeController,
     AttitudeReference,
@@ -58,23 +57,29 @@ class PidRateController(AttitudeController):
         self._prev_error: Vec3 = (0.0, 0.0, 0.0)
 
     @classmethod
-    def from_config(cls, options: Mapping[str, object]) -> PidRateController:
+    def from_config(cls, options: control_options_pb2.PidOptions) -> PidRateController:
         """Build from vehicle-file control options.
 
         Args:
-            options: Requires ``kp``, ``ki``, ``kd``; optional
-                ``integral_limit`` and ``max_torque_n_m``.
+            options: Typed options; ``kp``, ``ki``, ``kd`` are required,
+                ``integral_limit`` and ``max_torque_n_m`` default to 1.0.
 
         Returns:
             The configured controller.
+
+        Raises:
+            ValueError: If a required gain is absent.
         """
-        limits = ControlLimits(max_torque_n_m=float(options.get("max_torque_n_m", 1.0)))  # type: ignore[arg-type]
+        for gain in ("kp", "ki", "kd"):
+            if not options.HasField(gain):
+                raise ValueError(f"pid requires {gain}")
+        limit = options.max_torque_n_m if options.HasField("max_torque_n_m") else 1.0
         return cls(
-            kp=float(options["kp"]),  # type: ignore[arg-type]
-            ki=float(options["ki"]),  # type: ignore[arg-type]
-            kd=float(options["kd"]),  # type: ignore[arg-type]
-            integral_limit=float(options.get("integral_limit", 1.0)),  # type: ignore[arg-type]
-            limits=limits,
+            kp=options.kp,
+            ki=options.ki,
+            kd=options.kd,
+            integral_limit=(options.integral_limit if options.HasField("integral_limit") else 1.0),
+            limits=ControlLimits(max_torque_n_m=limit),
         )
 
     def update(

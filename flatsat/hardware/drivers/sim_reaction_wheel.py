@@ -16,11 +16,11 @@ are not the point.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
 
 from flatsat.core.bus import HalMessage
-from flatsat.core.config import load_wheel_spec
+from flatsat.core.config import Provenance, describe_wheel_spec, load_wheel_spec
 from flatsat.hardware.actuator import ActuatorDriver
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.models.wheel import WheelModel
 from flatsat.msgs import hal_pb2
 
@@ -28,27 +28,37 @@ from flatsat.msgs import hal_pb2
 class SimReactionWheelDriver(ActuatorDriver):
     """Wheel fake integrating the shared model against the wall clock."""
 
-    def __init__(self, model: WheelModel) -> None:
+    def __init__(self, model: WheelModel, provenance: Provenance | None = None) -> None:
         """Bind the fake to its device model.
 
         Args:
             model: Wheel physics bounded by the device spec.
+            provenance: The device file's provenance, for describe().
         """
         self._model = model
+        self._provenance = provenance
         self._last_apply_monotonic: float | None = None
 
     @classmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> SimReactionWheelDriver:
+    def from_config(
+        cls, name: str, options: driver_options_pb2.SimReactionWheelOptions
+    ) -> SimReactionWheelDriver:
         """Build from a vehicle-file actuator entry.
 
         Args:
             name: Instance name (unused; the spec names the device).
-            options: Must contain ``device`` — the device spec path.
+            options: Typed options; ``device`` is required.
 
         Returns:
             The configured simulated wheel.
+
+        Raises:
+            ValueError: If no device file is configured.
         """
-        return cls(model=WheelModel(load_wheel_spec(str(options["device"]))))
+        if not options.device:
+            raise ValueError(f"actuator {name!r}: sim_reaction_wheel requires a device file")
+        spec, prov = load_wheel_spec(options.device)
+        return cls(model=WheelModel(spec), provenance=prov)
 
     def apply(self, torque_n_m: float) -> int:
         """Integrate the commanded torque into stored momentum.
@@ -79,6 +89,7 @@ class SimReactionWheelDriver(ActuatorDriver):
         Returns:
             Lines naming the fake and the device spec in force.
         """
-        return ["driver: sim_reaction_wheel (local fake, no physics feedback)"] + (
-            self._model.spec.describe()
+        spec_lines = (
+            describe_wheel_spec(self._model.spec, self._provenance) if self._provenance else []
         )
+        return ["driver: sim_reaction_wheel (local fake, no physics feedback)", *spec_lines]

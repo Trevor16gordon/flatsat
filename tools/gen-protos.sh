@@ -24,6 +24,19 @@ mkdir -p "$OUT"
   --mypy_out="$OUT" \
   "$REPO"/protos/*.proto
 
+# CONFIG schemas live COLOCATED with their owners (flatsat/**/*.proto) and
+# generate colocated bindings: a proto at flatsat/hardware/devices.proto
+# yields flatsat/hardware/devices_pb2.py right next to it, with correct
+# package-absolute imports — no sed needed. Config files (config/*.txtpb)
+# are textproto instances of these schemas; the editor resolves them via
+# their `# proto-file:` headers.
+CONFIG_PROTOS=$(find "$REPO/flatsat" -name '*.proto' | sort)
+"$VENV/bin/python" -m grpc_tools.protoc -I "$REPO" \
+  --plugin=protoc-gen-mypy="$VENV/bin/protoc-gen-mypy" \
+  --python_out="$REPO" \
+  --mypy_out="$REPO" \
+  $CONFIG_PROTOS
+
 # protoc emits flat sibling imports (`import hal_pb2`) that assume the output
 # dir is on sys.path; rewrite them package-relative so the modules work as
 # flatsat.msgs.* without path hacks.

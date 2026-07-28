@@ -1,0 +1,37 @@
+// Per-driver configuration options — one message per registered driver.
+//
+// The vehicle file selects a driver by filling exactly one of these
+// inside a SensorConfig/ActuatorConfig oneof (vehicle.proto); the oneof
+// field name IS the registry key, so the selector and its options can
+// never disagree. A new driver adds its message here and a oneof entry
+// there — the loaders never change.
+//
+// `optional` marks numeric fields whose absence must be distinguishable
+// from zero (a default applies when absent; zero is a real value).
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// jetson_thermal: one kernel thermal zone as a temperature sensor.
+message JetsonThermalOptions {
+  string zone = 1;  // kernel zone type name, e.g. "tj-thermal" (required)
+}
+
+// basilisk_imu: the sim bridge's truth stream through the device model.
+message BasiliskImuOptions {
+  string spec = 1;                    // device file; empty = config/devices/imu0.txtpb
+  string truth_topic = 2;             // empty = sim/truth/state
+  optional double stale_after_s = 3;  // absent = 0.5
+  optional int64 seed = 4;            // corruption RNG seed; absent = unseeded
+}
+
+// sim_reaction_wheel: local wheel fake, no physics feedback.
+message SimReactionWheelOptions {
+  string device = 1;  // wheel device file, e.g. config/devices/wheel0.txtpb (required)
+}
+
+// basilisk_reaction_wheel: wheel fake whose applied torque feeds the sim.
+message BasiliskReactionWheelOptions {
+  string device = 1;  // wheel device file (required)
+}

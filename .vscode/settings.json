@@ -1,0 +1,11 @@
+{
+  // Proto command-click + validation: schemas resolve from the repo root
+  // (import paths like "flatsat/hardware/devices.proto"), and .txtpb
+  // config files bind to their schema via the `# proto-file:` header.
+  "protoc": {
+    "options": ["--proto_path=${workspaceRoot}", "--proto_path=${workspaceRoot}/protos"]
+  },
+  "files.associations": {
+    "*.txtpb": "prototext"
+  }
+}

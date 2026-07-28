@@ -11,15 +11,16 @@ import time
 import pytest
 
 from flatsat.core.config import load_wheel_spec
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.drivers.sim_reaction_wheel import SimReactionWheelDriver
 from flatsat.msgs import hal_pb2
 
-OPTIONS = {"device": "config/devices/wheel0.toml"}
+OPTIONS = driver_options_pb2.SimReactionWheelOptions(device="config/devices/wheel0.txtpb")
 
 
 def test_from_config_reads_device_spec() -> None:
     driver = SimReactionWheelDriver.from_config("wheel0", OPTIONS)
-    assert "wheel0.toml" in "\n".join(driver.describe())
+    assert "wheel0.txtpb" in "\n".join(driver.describe())
 
 
 def test_momentum_integrates_torque_against_the_wall_clock() -> None:
@@ -32,7 +33,7 @@ def test_momentum_integrates_torque_against_the_wall_clock() -> None:
     assert isinstance(msg, hal_pb2.WheelState)
     # ~0.04 N·m for ~50 ms → ~2e-3 N·m·s; generous margin for sleep jitter
     assert 5e-4 < msg.momentum_n_m_s < 2e-2
-    spec = load_wheel_spec("config/devices/wheel0.toml")
+    spec, _prov = load_wheel_spec("config/devices/wheel0.txtpb")
     assert msg.speed_rad_s == pytest.approx(msg.momentum_n_m_s / spec.rotor_inertia_kg_m2)
 
 

@@ -1,6 +1,6 @@
 """Sensor models: physics truth -> what a specific device would report.
 
-PURE functions driven by a device spec (``flatsat.core.config.ImuSpec``), so the
+PURE functions driven by a device spec (``flatsat.hardware.devices.proto``), so the
 simulation corrupts truth using the SAME numbers the flight-side driver
 knows the hardware by. A HIL run is only meaningful if the simulated sensor
 is the sensor that exists; a noise constant living in a sim script is not
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import random
 
-from flatsat.core.config import ImuSpec
+from flatsat.hardware import devices_pb2
 from flatsat.msgs import hal_pb2
 
 Vec3 = tuple[float, float, float]
@@ -28,7 +28,7 @@ Vec3 = tuple[float, float, float]
 
 def apply_gyro_model(
     truth_rates: Vec3,
-    spec: ImuSpec,
+    spec: devices_pb2.ImuDevice,
     rng: random.Random | None = None,
 ) -> tuple[Vec3, int]:
     """Convert true body rates into what the gyro would report.

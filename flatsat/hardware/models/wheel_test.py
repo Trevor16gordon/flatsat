@@ -2,19 +2,19 @@
 
 import pytest
 
-from flatsat.core.config import WheelSpec, load_wheel_spec
+from flatsat.core.config import load_wheel_spec
+from flatsat.hardware import devices_pb2
 from flatsat.hardware.models.wheel import WheelModel
 from flatsat.msgs import hal_pb2
 
 
-def _spec(max_torque: float = 0.05, max_momentum: float = 0.5) -> WheelSpec:
-    real = load_wheel_spec("config/devices/wheel0.toml")
-    return WheelSpec(
+def _spec(max_torque: float = 0.05, max_momentum: float = 0.5) -> devices_pb2.WheelDevice:
+    real, _prov = load_wheel_spec("config/devices/wheel0.txtpb")
+    return devices_pb2.WheelDevice(
         name="test_wheel",
         max_torque_n_m=max_torque,
         max_momentum_n_m_s=max_momentum,
         rotor_inertia_kg_m2=real.rotor_inertia_kg_m2,
-        provenance=real.provenance,
     )
 
 

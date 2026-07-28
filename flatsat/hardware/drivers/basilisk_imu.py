@@ -20,12 +20,13 @@ from __future__ import annotations
 import random
 import threading
 import time
-from collections.abc import Mapping
 
 import zenoh
 
 from flatsat.core.bus import HalMessage
-from flatsat.core.config import ImuSpec, load_imu_spec
+from flatsat.core.config import Provenance, describe_imu_spec, load_imu_spec
+from flatsat.hardware import devices_pb2
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.models.imu import apply_gyro_model
 from flatsat.hardware.sensor import SensorDriver
 from flatsat.msgs import hal_pb2, sim_pb2
@@ -38,11 +39,12 @@ class BasiliskImuDriver(SensorDriver):
 
     def __init__(
         self,
-        spec: ImuSpec,
+        spec: devices_pb2.ImuDevice,
         truth_topic: str = DEFAULT_TRUTH_TOPIC,
         stale_after_s: float = 0.5,
         seed: int | None = None,
         session: zenoh.Session | None = None,
+        provenance: Provenance | None = None,
     ) -> None:
         """Subscribe to the truth stream.
 
@@ -53,8 +55,10 @@ class BasiliskImuDriver(SensorDriver):
             seed: RNG seed; None uses the shared generator.
             session: Zenoh session to reuse (tests); the driver opens its
                 own when omitted — the bus IS this device's wire.
+            provenance: The spec file's provenance, for describe().
         """
         self._spec = spec
+        self._provenance = provenance
         self._truth_topic = truth_topic
         self._stale_after_ns = int(stale_after_s * 1e9)
         self._rng = random.Random(seed) if seed is not None else None
@@ -77,24 +81,25 @@ class BasiliskImuDriver(SensorDriver):
             self._recv_ns = time.monotonic_ns()
 
     @classmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> BasiliskImuDriver:
+    def from_config(
+        cls, name: str, options: driver_options_pb2.BasiliskImuOptions
+    ) -> BasiliskImuDriver:
         """Build from a vehicle-file sensor entry.
 
         Args:
             name: Instance name (unused; the spec names the device).
-            options: Optional ``spec`` path, ``truth_topic``,
-                ``stale_after_s``, ``seed``.
+            options: Typed options; every field has a default.
 
         Returns:
             The configured driver.
         """
-        spec_path = options.get("spec")
-        spec = load_imu_spec(str(spec_path)) if spec_path else load_imu_spec()
+        spec, prov = load_imu_spec(options.spec) if options.spec else load_imu_spec()
         return cls(
             spec=spec,
-            truth_topic=str(options.get("truth_topic", DEFAULT_TRUTH_TOPIC)),
-            stale_after_s=float(options.get("stale_after_s", 0.5)),  # type: ignore[arg-type]
-            seed=int(options["seed"]) if "seed" in options else None,  # type: ignore[call-overload]
+            truth_topic=options.truth_topic or DEFAULT_TRUTH_TOPIC,
+            stale_after_s=(options.stale_after_s if options.HasField("stale_after_s") else 0.5),
+            seed=options.seed if options.HasField("seed") else None,
+            provenance=prov,
         )
 
     def read(self) -> tuple[HalMessage, int]:
@@ -131,8 +136,9 @@ class BasiliskImuDriver(SensorDriver):
         Returns:
             Lines naming the topic and spec provenance.
         """
+        spec_lines = describe_imu_spec(self._spec, self._provenance) if self._provenance else []
         return [
             f"driver: basilisk_imu truth={self._truth_topic} "
             f"stale-after {self._stale_after_ns / 1e9:g} s",
-            *self._spec.describe(),
+            *spec_lines,
         ]

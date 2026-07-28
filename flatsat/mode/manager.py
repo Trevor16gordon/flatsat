@@ -26,8 +26,8 @@ from pathlib import Path
 import zenoh
 
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import ModeEntry
 from flatsat.core.health import health_topic
+from flatsat.mode import mode_config_pb2
 from flatsat.mode.machine import BOOT_SOURCE, Decision, ModeStateMachine
 from flatsat.msgs import health_pb2, mode_pb2
 
@@ -62,7 +62,10 @@ class ModeManager:
     """Owns the latched system mode and its distribution contract."""
 
     def __init__(
-        self, entry: ModeEntry, session: zenoh.Session, base_topic: str = MODE_TOPIC
+        self,
+        entry: mode_config_pb2.ModeConfig,
+        session: zenoh.Session,
+        base_topic: str = MODE_TOPIC,
     ) -> None:
         """Apply boot policy and declare the distribution endpoints.
 

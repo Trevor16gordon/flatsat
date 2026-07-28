@@ -13,10 +13,10 @@ BlockingIOError, which becomes a COMM flag.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
 from pathlib import Path
 
 from flatsat.core.bus import HalMessage
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.hardware.sensor import SensorDriver
 from flatsat.msgs import hal_pb2
 
@@ -58,17 +58,24 @@ class JetsonThermalDriver(SensorDriver):
         self._temp_path = find_zone_temp_path(zone_type)
 
     @classmethod
-    def from_config(cls, name: str, options: Mapping[str, object]) -> JetsonThermalDriver:
+    def from_config(
+        cls, name: str, options: driver_options_pb2.JetsonThermalOptions
+    ) -> JetsonThermalDriver:
         """Build from a vehicle-file sensor entry.
 
         Args:
             name: Instance name (unused; the zone identifies the device).
-            options: Must contain ``zone``.
+            options: Typed options; ``zone`` is required.
 
         Returns:
             The driver bound to that thermal zone.
+
+        Raises:
+            ValueError: If no zone is configured.
         """
-        return cls(zone_type=str(options["zone"]))
+        if not options.zone:
+            raise ValueError(f"sensor {name!r}: jetson_thermal requires a zone")
+        return cls(zone_type=options.zone)
 
     def read(self) -> tuple[HalMessage, int]:
         """Read the zone once; EAGAIN/garbage becomes a COMM-flagged sample.

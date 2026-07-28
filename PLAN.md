@@ -2,19 +2,18 @@
 
 v1.2 — July 2026 · Trevor · single merged plan (architecture + working status)
 
-**Status (2026-07-27): architecture v2 migration COMPLETE — all three
-commits landed, telemetry recorder live.** Jetson bring-up complete
-(PREEMPT_RT live, 69 µs cyclictest under load) · radio proven one-radio
-end to end (framed data at BER 0, BER-vs-SNR waterfall) ·
-**cross-machine HIL closed**: Basilisk on the Mac detumbled by the
-Jetson's 100 Hz FIFO control loop over WiFi · 2026-07-27 design session
-settled the target architecture — single `flatsat/` package, actuator
-layer, Basilisk-as-drivers, device-intrinsic vs integration config
-split, four versioning tiers (decision log + `docs/ARCHITECTURE.md`) ·
-migration commits 1–3 + the telemetry recorder landed same day (113
-tests, 43 requirements) · pending hands-on: unit reinstall (sudo) + Mac
-`git pull` + HIL re-validation · next: A1 core isolation, ground Pluto
-unboxing, P3 + mode manager.
+**Status (2026-07-28): architecture v2 flying on the bench; config is
+protos end to end.** Jetson bring-up complete (PREEMPT_RT live, 69 µs
+cyclictest under load) · radio proven one-radio end to end (framed data
+at BER 0, BER-vs-SNR waterfall) · **cross-machine HIL closed** on the
+pre-migration stack · architecture v2 landed 07-27: `flatsat/` package,
+actuator layer, Basilisk-as-drivers, telemetry recorder, mode manager
+(§7), scenario harness + mission profiles · 07-28: config schemas moved
+into colocated protos, all config files strictly-parsed `.txtpb`,
+oneof-selected implementations, CI drift guard (**142 tests, 55
+requirements**) · units reinstalled, 6 services live (quiet state) ·
+pending: Mac `git pull` + HIL re-validation on the new driver chain ·
+next: mode-request CLI, FDIR, A1 core isolation, ground Pluto, P3.
 
 ---
 
@@ -95,6 +94,15 @@ estimator/registry/driver-level coverage). `deployment.toml` at repo root,
 units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
+
+**Config-as-protos rewrite (2026-07-28).** All config schemas moved into
+colocated protos; every config file is now a strictly-parsed `.txtpb`
+(vehicle, devices, missions). Driver/strategy/estimator selection via
+oneof (field name = registry key — selector and options cannot
+disagree); `from_config` signatures fully typed; gen-units reads the
+typed loader; `.vscode/` ships proto tooling config; CI drift guard
+keeps committed bindings honest. FSW-CFG-004 (typo-proof config) added,
+test-verified. **142 tests, 55 requirements.**
 
 **Scenario harness + mission profiles (2026-07-28) — the system-level
 test tier.** A mission is data: `config/missions/*.toml` declares
@@ -183,6 +191,7 @@ test-verified; **93 tests green**.
 
 | Date | Decision | Rationale / consequence |
 |------|----------|-------------------------|
+| 2026-07-28 | **Config schemas are protos; config files are textproto.** Schemas colocated with their owners (`flatsat/vehicle.proto`, `devices.proto`, per-driver/strategy options protos); `config/*.txtpb` instances bound by `# proto-file:` headers; implementations selected by oneof — the FIELD NAME is the registry key. Strict parsing: unknown fields fail startup (FSW-CFG-004). Committed colocated bindings, CI drift guard. TOML remains only for deployment.toml + requirements (tooling, not flight config). | One edit point for wire AND config: proto → Python stubs (mypy/IDE) → C++ later → editor validation of configs. Kills the silent-typo options dict. Config-as-proto is also the Tier-3 uplink wire format for free. `Any` escape hatch reserved for uplinked Tier-2 components when C1 needs it. |
 | 2026-07-23 | **No conda.** GNU Radio self-managed; stay on apt 3.10.1.1 for now (deviates from the radioconda 3.10.11+ pin in v1.0 §3). | Simpler env story (system python + venvs only). Open risk: Mac ground modem must version-match before any cross-machine BER baseline; revisit before B2. |
 | 2026-07-23 | **Pluto firmware stays v0.37** for now; v0.39 upgrade deferred to just before comparative baselines. | Unit is modern + already reports ad9364; flashing is the riskiest Pluto op — defer until it buys something. P1 exit amended accordingly. |
 | 2026-07-23 | **Serial→role assignment.** `104473b04a06000602001c00dd1f84cfaa` = **flat-sat radio** (on the Jetson). Second unit = **ground radio** (eventually on the Mac). | Recorded per §2; ground segment on Mac is future work — both radios live on the Jetson until the ground segment stands up. |

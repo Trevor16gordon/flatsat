@@ -14,7 +14,7 @@ the product.
 
 What "done" looks like, concretely:
 
-**A spacecraft is a config file.** `config/vehicles/*.toml` names the
+**A spacecraft is a config file.** `config/vehicles/*.txtpb` names the
 sensors, actuators, control strategy, estimator, and objective — and carries
 the physical model: mass, inertia, and where every device is mounted. Code
 resolves those names through a registry. Swapping PD → PID, simulated → real

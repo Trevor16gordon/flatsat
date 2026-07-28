@@ -1,0 +1,23 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.ImuDevice
+#
+# IMU device specification — ONE source of truth for two consumers: the
+# flight-side driver reads this to know the device; the simulation's
+# sensor model reads THE SAME file to corrupt truth the way this device
+# would. Values are placeholder/representative (a consumer MEMS gyro
+# class part) until a physical IMU is on the bench.
+
+name: "imu0"
+rate_hz: 100
+
+# Gyro
+gyro_noise_rad_s: 0.002        # white noise sigma per axis
+gyro_full_scale_rad_s: 4.363   # ±250 °/s — saturates (and flags) beyond
+gyro_lsb_rad_s: 1.33e-4        # quantization step (16-bit over full scale)
+
+# Accelerometer (published but unused by rate damping)
+accel_noise_m_s2: 0.02
+accel_full_scale_m_s2: 156.9   # ±16 g
+
+# Housekeeping
+temperature_c: 25.0

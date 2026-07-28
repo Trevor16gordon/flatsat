@@ -15,6 +15,7 @@ from flatsat.apps.actuator_daemon import ActuatorDaemon
 from flatsat.core.config import ActuatorEntry, Mounting
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_actuator_class
+from flatsat.hardware.drivers import driver_options_pb2
 from flatsat.msgs import adcs_pb2, hal_pb2, health_pb2
 
 RECV_TIMEOUT_S = 5.0
@@ -29,7 +30,7 @@ def _entry(name: str, axis: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> Act
         rate_hz=50.0,
         stale_zero_s=0.15,
         mounting=Mounting(position_m=(0.0, 0.0, 0.0), axis=axis),
-        options={"device": "config/devices/wheel0.toml"},
+        options=driver_options_pb2.SimReactionWheelOptions(device="config/devices/wheel0.txtpb"),
     )
 
 

@@ -19,7 +19,7 @@ MISSIONS = Path("config/missions")
 @pytest.mark.verifies("FSW-SYS-001", "FSW-SYS-002")
 def test_detumble_mission_succeeds(tmp_path: Path) -> None:
     """A tumbling vehicle is brought to rest by the composed flight chain."""
-    mission = load_mission(MISSIONS / "detumble_test.toml")
+    mission = load_mission(MISSIONS / "detumble_test.txtpb")
     result = ScenarioRunner(mission, tmp_path).run()
     assert result.passed, result.describe()
 
@@ -27,23 +27,19 @@ def test_detumble_mission_succeeds(tmp_path: Path) -> None:
 @pytest.mark.verifies("FSW-SYS-002", "FSW-SYS-003")
 def test_safe_entry_mission_succeeds(tmp_path: Path) -> None:
     """Safing mid-mission: automatic in, acked by all, ground-only out."""
-    mission = load_mission(MISSIONS / "safe_entry_test.toml")
+    mission = load_mission(MISSIONS / "safe_entry_test.txtpb")
     result = ScenarioRunner(mission, tmp_path).run()
     assert result.passed, result.describe()
 
 
 def test_mission_loader_rejects_unknown_modes(tmp_path: Path) -> None:
-    bad = tmp_path / "bad_mission.toml"
+    bad = tmp_path / "bad_mission.txtpb"
     bad.write_text(
         """
-name = "bad"
-vehicle = "config/vehicles/test_scenario.toml"
-[initial]
-omega0_rad_s = [0.1, 0.0, 0.0]
-[[phases]]
-name = "p1"
-duration_s = 1.0
-request_mode = "WARP"
+name: "bad"
+vehicle: "config/vehicles/test_scenario.txtpb"
+omega0_rad_s: [0.1, 0.0, 0.0]
+phases { name: "p1" duration_s: 1.0 request_mode: "WARP" }
 """
     )
     with pytest.raises(ValueError, match="unknown mode"):
@@ -52,7 +48,7 @@ request_mode = "WARP"
 
 def test_mission_files_parse() -> None:
     """Every checked-in mission profile must at least load cleanly."""
-    missions = sorted(MISSIONS.glob("*.toml"))
+    missions = sorted(MISSIONS.glob("*.txtpb"))
     assert missions, "no mission profiles found"
     for path in missions:
         mission = load_mission(path)

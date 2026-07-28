@@ -1,0 +1,94 @@
+// VEHICLE COMPOSITION SCHEMA — what a config/vehicles/*.txtpb file fills out.
+//
+// A spacecraft is a config file: sensors, actuators, control strategy,
+// estimator, objective — plus the physical model ([body] + per-device
+// mounting). Implementations are selected by filling exactly one entry
+// of a oneof; the oneof FIELD NAME is the registry key
+// (flatsat/core/registry.py), so the selector and its typed options can
+// never disagree, and a misspelled field is a parse error, not a
+// silently ignored key.
+//
+// Deployment concerns (RT priority, cores, memory) live in
+// deployment.toml; board topology in tools/host-profiles/. Same vehicle,
+// different flight computers.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "flatsat/control/attitude/control_options.proto";
+import "flatsat/hardware/drivers/driver_options.proto";
+import "flatsat/mode/mode_config.proto";
+import "flatsat/telemetry/telemetry_config.proto";
+
+// Where and how a device sits in the body frame (integration truth).
+message MountingConfig {
+  repeated double position_m = 1;  // 3 values, body frame
+  repeated double axis = 2;        // 3 values; normalized at load, zero vector fails
+}
+
+// The vehicle's rigid-body physical model. Read by flight software AND
+// by the sim bridge to build its plant — the same numbers, so sim and
+// flight cannot disagree about the spacecraft by accident.
+message BodyConfig {
+  double mass_kg = 1;
+  repeated double inertia_kg_m2 = 2;  // 3x3 tensor, row-major, 9 values
+}
+
+// One sensor: identity + cadence + exactly one driver's options.
+message SensorConfig {
+  string name = 1;     // instance name; becomes the message source and unit name
+  string topic = 2;    // bus key the daemon publishes on
+  double rate_hz = 3;  // publish cadence
+
+  oneof options {
+    JetsonThermalOptions jetson_thermal = 10;
+    BasiliskImuOptions basilisk_imu = 11;
+  }
+}
+
+// One actuator: identity + topics + mounting + exactly one driver's options.
+message ActuatorConfig {
+  string name = 1;
+  string command_topic = 2;      // body-frame commands consumed from here
+  string state_topic = 3;        // device state published here
+  double rate_hz = 4;            // apply/publish cadence
+  double stale_zero_s = 5;       // command age beyond which the daemon applies ZERO
+  MountingConfig mounting = 6;   // the daemon projects body commands through this
+
+  oneof options {
+    SimReactionWheelOptions sim_reaction_wheel = 10;
+    BasiliskReactionWheelOptions basilisk_reaction_wheel = 11;
+  }
+}
+
+// The control loop: cadence + topics + one strategy, objective, estimator.
+message ControlConfig {
+  double rate_hz = 1;
+  string input_topic = 2;    // measurement input
+  string output_topic = 3;   // actuator commands
+  double stale_after_s = 4;  // input age beyond which the measurement is not fresh
+
+  oneof strategy {
+    RateDampingOptions rate_damping = 10;
+    PidOptions pid = 11;
+  }
+  oneof objective {  // absent = constant_rate (detumble)
+    ConstantRateOptions constant_rate = 20;
+  }
+  oneof estimator {  // absent = passthrough
+    PassthroughOptions passthrough = 30;
+  }
+}
+
+// The whole spacecraft.
+message VehicleConfig {
+  string name = 1;
+  string description = 2;
+  BodyConfig body = 3;  // absent is allowed until a consumer needs it
+  repeated SensorConfig sensors = 4;
+  repeated ActuatorConfig actuators = 5;
+  ControlConfig control = 6;
+  ModeConfig mode = 7;            // absent = defaults
+  TelemetryConfig telemetry = 8;  // absent = defaults
+}

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import zenoh
 
-from flatsat.core.config import ModeEntry
+from flatsat.mode import mode_config_pb2
 from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager, request_topic
 from flatsat.msgs import mode_pb2
@@ -18,9 +18,11 @@ RECV_TIMEOUT_S = 5.0
 BASE = "test/sys/mode"
 
 
-def _entry(tmp_path: Path, apps: tuple[str, ...] = (), ack_timeout_s: float = 0.5) -> ModeEntry:
-    return ModeEntry(
-        apps=apps,
+def _entry(
+    tmp_path: Path, apps: tuple[str, ...] = (), ack_timeout_s: float = 0.5
+) -> mode_config_pb2.ModeConfig:
+    return mode_config_pb2.ModeConfig(
+        apps=list(apps),
         ack_timeout_s=ack_timeout_s,
         min_dwell_s=0.05,
         clean_shutdown_marker=str(tmp_path / "clean-shutdown"),

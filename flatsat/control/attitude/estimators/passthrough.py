@@ -9,8 +9,7 @@ replaces by config edit.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
+from flatsat.control.attitude import control_options_pb2
 from flatsat.control.attitude.controller import AttitudeState
 from flatsat.control.attitude.estimators.estimator import StateEstimator
 from flatsat.msgs import hal_pb2
@@ -20,11 +19,11 @@ class PassthroughEstimator(StateEstimator):
     """Forwards gyro measurements unfiltered as the state estimate."""
 
     @classmethod
-    def from_config(cls, options: Mapping[str, object]) -> PassthroughEstimator:
+    def from_config(cls, options: control_options_pb2.PassthroughOptions) -> PassthroughEstimator:
         """Build from vehicle-file estimator options.
 
         Args:
-            options: Unused — passthrough has nothing to configure.
+            options: Empty by design — passthrough has nothing to configure.
 
         Returns:
             The estimator.

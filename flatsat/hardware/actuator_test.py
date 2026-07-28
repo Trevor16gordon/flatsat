@@ -1,12 +1,23 @@
 """Actuator contract tests: projection math + every registered driver."""
 
 import pytest
+from google.protobuf.message import Message
 
 from flatsat.core.config import Mounting
 from flatsat.core.registry import ACTUATORS, get_actuator_class
 from flatsat.hardware.actuator import ActuatorDriver, project_body_torque
+from flatsat.hardware.drivers import driver_options_pb2
 
-WHEEL_OPTIONS = {"device": "config/devices/wheel0.toml"}
+# One typed options instance per registered driver — a newly registered
+# actuator must add its entry here (the KeyError below is the reminder).
+DRIVER_OPTIONS: dict[str, Message] = {
+    "sim_reaction_wheel": driver_options_pb2.SimReactionWheelOptions(
+        device="config/devices/wheel0.txtpb"
+    ),
+    "basilisk_reaction_wheel": driver_options_pb2.BasiliskReactionWheelOptions(
+        device="config/devices/wheel0.txtpb"
+    ),
+}
 
 
 def _mounting(axis: tuple[float, float, float]) -> Mounting:
@@ -46,7 +57,7 @@ def test_projection_orthogonal_command_is_zero() -> None:
 
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
 def test_registry_builds_every_actuator_driver(name: str) -> None:
-    driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
+    driver = get_actuator_class(name).from_config("test_act", DRIVER_OPTIONS[name])
     try:
         assert isinstance(driver, ActuatorDriver)
         assert driver.describe()
@@ -57,7 +68,7 @@ def test_registry_builds_every_actuator_driver(name: str) -> None:
 @pytest.mark.parametrize("name", sorted(ACTUATORS))
 @pytest.mark.verifies("FSW-ACT-003")
 def test_every_actuator_applies_and_reports_without_raising(name: str) -> None:
-    driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
+    driver = get_actuator_class(name).from_config("test_act", DRIVER_OPTIONS[name])
     try:
         flags = driver.apply(0.01)
         assert isinstance(flags, int)
@@ -72,7 +83,7 @@ def test_every_actuator_applies_and_reports_without_raising(name: str) -> None:
 @pytest.mark.verifies("FSW-ACT-003")
 def test_every_actuator_survives_absurd_commands(name: str) -> None:
     """Infinite or huge commands degrade to flags, never to exceptions."""
-    driver = get_actuator_class(name).from_config("test_act", WHEEL_OPTIONS)
+    driver = get_actuator_class(name).from_config("test_act", DRIVER_OPTIONS[name])
     try:
         for command in (1e9, -1e9, 0.0):
             flags = driver.apply(command)
