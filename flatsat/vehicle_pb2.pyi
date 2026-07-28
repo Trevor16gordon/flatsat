@@ -76,30 +76,20 @@ class BodyConfig(_message.Message):
 
     MASS_KG_FIELD_NUMBER: _builtins.int
     INERTIA_KG_M2_FIELD_NUMBER: _builtins.int
-    BOX_DIMS_M_FIELD_NUMBER: _builtins.int
     mass_kg: _builtins.float
     @_builtins.property
     def inertia_kg_m2(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
         """3x3 tensor, row-major, 9 values"""
-
-    @_builtins.property
-    def box_dims_m(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
-        """Visual body dimensions (x, y, z) for the 3D view. Optional: when
-        empty, the display shows the uniform box IMPLIED by mass + inertia
-        (the shape the physics says you are). Display only — dynamics come
-        from the inertia tensor above.
-        """
 
     def __init__(
         self,
         *,
         mass_kg: _builtins.float = ...,
         inertia_kg_m2: _abc.Iterable[_builtins.float] | None = ...,
-        box_dims_m: _abc.Iterable[_builtins.float] | None = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["box_dims_m", b"box_dims_m", "inertia_kg_m2", b"inertia_kg_m2", "mass_kg", b"mass_kg"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["inertia_kg_m2", b"inertia_kg_m2", "mass_kg", b"mass_kg"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
