@@ -14,9 +14,13 @@ oneof-selected implementations, CI drift guard (**142 tests, 55
 requirements**) · distributed HIL
 re-validation PASSED (41.8 min, 39 link stalls all handled; services
 now run unprivileged) · FDIR live in code with census-derived
-thresholds + fault-injection missions + ground-commanding CLI (**160
-tests, 59 requirements**) · pending: install the fdir unit (sudo) ·
-next: A1 core isolation, ground Pluto, P3, mode table.
+thresholds + fault-injection missions + ground-commanding CLI · **comms
+stack + C1 uplink**: swappable PHY/framing/link, store-and-forward with
+contact windows, artifact uplink with sha256 staging and gated
+activate/rollback (**218 tests, 73 requirements**) · pending: install
+the fdir/link/uplink units (sudo); graduate the Pluto TX flowgraph from
+radio/ with a cabled BER re-verification · next: A1 core isolation,
+ground Pluto unboxing, two-radio P3, mode table.
 
 ---
 
