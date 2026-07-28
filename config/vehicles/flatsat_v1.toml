@@ -69,3 +69,10 @@ max_torque_n_m = 0.05        # reaction-wheel envelope; commands clip to it
 
 [control.objective_options]
 target_rates_rad_s = [0.0, 0.0, 0.0]   # zero = detumble
+
+[telemetry]                  # the recorder: what gets archived, and where
+topics = ["hal/**", "adcs/**", "health/**"]
+output_dir = "~/flatsat-telemetry"
+max_file_bytes = 67108864    # 64 MiB per file
+rotate_every_s = 900         # or every 15 min, whichever first
+max_total_bytes = 4294967296 # 4 GiB cap — oldest files pruned beyond this

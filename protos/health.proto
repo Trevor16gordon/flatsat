@@ -75,3 +75,14 @@ message ActuatorHealth {
   uint64 flagged_cycles = 6;      // cycles where apply()/state() raised a flag
   uint32 flag_union = 7;          // bitwise OR of every flag seen in the window
 }
+
+// Health of the telemetry recorder over one reporting window.
+message RecorderHealth {
+  Header header = 1;
+
+  uint64 window_records = 2;  // messages recorded this window
+  uint64 window_bytes = 3;    // bytes appended this window
+  uint64 files = 4;           // archive files currently on disk
+  uint64 total_bytes = 5;     // archive size currently on disk
+  string current_file = 6;    // basename of the file being written
+}

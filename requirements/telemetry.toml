@@ -1,0 +1,78 @@
+# Telemetry recording: what the archive must guarantee.
+#
+# The recorder is the gate everything downstream waits behind: regression
+# comparison, FDIR analysis, and the ML corpus all read what it wrote.
+
+[[requirement]]
+id = "FSW-TLM-001"
+statement = """
+The recorder shall archive each message from its configured topics with
+the concrete topic, an arrival timestamp, and the payload byte-exact as
+it appeared on the bus.
+"""
+rationale = """
+The archive is evidence. Parsing or re-encoding at record time couples
+the recorder to every message type and can silently alter what was
+actually said on the bus.
+"""
+verification = "test"
+evidence = "recorder_test.py::test_records_are_byte_exact_with_topic_and_time"
+status = "verified"
+
+[[requirement]]
+id = "FSW-TLM-002"
+statement = """
+The recorder shall rotate its output file when a configured size or age
+bound is reached.
+"""
+rationale = """
+Bounded files are what make transfer, pruning, and partial-loss containment
+possible; one unbounded file fails all three at once.
+"""
+verification = "test"
+evidence = "recorder_test.py::test_rotation_bounds_file_size"
+status = "verified"
+
+[[requirement]]
+id = "FSW-TLM-003"
+statement = """
+The archive shall not exceed a configured total size; the oldest files
+shall be pruned first, and the file currently being written shall never
+be pruned.
+"""
+rationale = """
+An indefinite recording service must never fill the flight computer's
+disk. Losing the oldest data is a decision taken visibly here, not an
+accident discovered at the next write failure.
+"""
+verification = "test"
+evidence = "recorder_test.py::test_retention_prunes_oldest_first"
+status = "verified"
+
+[[requirement]]
+id = "FSW-TLM-004"
+statement = """
+A truncated final record (crash or power loss mid-write) shall not
+prevent reading the records before it.
+"""
+rationale = """
+The last frame is the one a crash corrupts; an archive reader that gives
+up on the whole file turns a bounded loss into a total one.
+"""
+verification = "test"
+evidence = "recorder_test.py::test_truncated_tail_reads_cleanly"
+status = "verified"
+
+[[requirement]]
+id = "FSW-TLM-005"
+statement = """
+The recorder shall publish health telemetry per window containing record
+and byte counts and the archive's current footprint.
+"""
+rationale = """
+A recorder that silently stopped recording is worse than none; its own
+vitals must be on the bus — where, note, they are also recorded.
+"""
+verification = "test"
+evidence = "telemetry_recorder_test.py::test_recorder_publishes_health"
+status = "verified"

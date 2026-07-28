@@ -3,18 +3,18 @@
 v1.2 — July 2026 · Trevor · single merged plan (architecture + working status)
 
 **Status (2026-07-27): architecture v2 migration COMPLETE — all three
-commits landed.** Jetson bring-up complete (PREEMPT_RT live, 69 µs
-cyclictest under load) · radio proven one-radio end to end (framed data
-at BER 0, BER-vs-SNR waterfall) · **cross-machine HIL closed**: Basilisk
-on the Mac detumbled by the Jetson's 100 Hz FIFO control loop over WiFi ·
-2026-07-27 design session settled the target architecture — single
-`flatsat/` package, actuator layer, Basilisk-as-drivers, device-intrinsic
-vs integration config split, four versioning tiers (decision log +
-`docs/ARCHITECTURE.md`) · migration commits 1–3 landed same day:
-`flatsat/` package + colocated tests + estimator seam, actuator layer,
-Basilisk-as-drivers (107 tests) · pending hands-on: unit reinstall
-(sudo) + Mac `git pull` + HIL re-validation · next: the telemetry
-recorder.
+commits landed, telemetry recorder live.** Jetson bring-up complete
+(PREEMPT_RT live, 69 µs cyclictest under load) · radio proven one-radio
+end to end (framed data at BER 0, BER-vs-SNR waterfall) ·
+**cross-machine HIL closed**: Basilisk on the Mac detumbled by the
+Jetson's 100 Hz FIFO control loop over WiFi · 2026-07-27 design session
+settled the target architecture — single `flatsat/` package, actuator
+layer, Basilisk-as-drivers, device-intrinsic vs integration config
+split, four versioning tiers (decision log + `docs/ARCHITECTURE.md`) ·
+migration commits 1–3 + the telemetry recorder landed same day (113
+tests, 43 requirements) · pending hands-on: unit reinstall (sudo) + Mac
+`git pull` + HIL re-validation · next: A1 core isolation, ground Pluto
+unboxing, P3 + mode manager.
 
 ---
 
@@ -95,6 +95,20 @@ estimator/registry/driver-level coverage). `deployment.toml` at repo root,
 units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
+
+**Telemetry recorder (2026-07-27) — the first flight organ after
+migration.** `flatsat/telemetry/recorder.py` + `apps/telemetry_recorder`:
+subscribes the vehicle file's `[telemetry]` topics (default `hal/**`,
+`adcs/**`, `health/**`) and archives bus traffic VERBATIM — topic,
+arrival time, byte-exact payload, never parsed — as
+`[len][RecordedSample]` frames in `telemetry-<stamp>-<seq>.rec` files.
+Bounded by design: rotate at 64 MiB / 15 min, prune oldest past a 4 GiB
+cap (never the live file) — an indefinite run cannot fill the disk.
+`read_records()` treats a truncated tail (crash mid-write) as
+end-of-file, pinned by test. RecorderHealth on `health/recorder` (which
+the recorder itself records). `flatsat-recorder.service` generated.
+FSW-TLM-001…005 added, test-verified; **113 tests green**. Regression
+comparison, FDIR inputs, and the ML corpus are now unblocked.
 
 **Migration commit 3 — Basilisk as drivers (2026-07-27).** The universe
 fake now shows up to flight software as ordinary drivers: `basilisk_imu`
@@ -210,10 +224,7 @@ still boxed.
 3. ~~Migration commit 3 — Basilisk as drivers~~ **DONE 2026-07-27** (see
    §0 Done). Cross-machine HIL re-validation with the new driver chain
    still pending (needs the Mac).
-4. **Telemetry recorder** (highest leverage after migration): subscribe to
-   `hal/**`, `adcs/**`, `health/**`, write time-series to disk with
-   rotation. Regression comparison, FDIR inputs, and the ML corpus are all
-   blocked on it.
+4. ~~Telemetry recorder~~ **DONE 2026-07-27** (see §0 Done).
 5. **A1 core isolation** (sudo + reboot session, N3-style runbook):
    isolcpus/nohz_full/IRQ affinity/idle-state cap on RT_CORE from the host
    profile, then re-run the cyclictest gate and the loop's own report

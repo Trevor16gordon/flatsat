@@ -219,6 +219,22 @@ def main() -> int:
         (args.out / f"flatsat-{name}.service").write_text(unit)
         written.append(f"flatsat-{name}.service")
 
+    recorder_unit = render_service(
+        unit_name="recorder",
+        description=f"telemetry recorder — {vehicle['name']}",
+        exec_args=[
+            "-m",
+            "flatsat.apps.telemetry_recorder",
+            "--vehicle",
+            str(vehicle_rel),
+        ],
+        deploy=deployment.get("recorder", {}),
+        profile=profile,
+        header=header,
+    )
+    (args.out / "flatsat-recorder.service").write_text(recorder_unit)
+    written.append("flatsat-recorder.service")
+
     control_deploy = deployment.get("control", {})
     control_unit = render_service(
         unit_name="adcs",

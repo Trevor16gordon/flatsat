@@ -5,11 +5,11 @@
 # Do not edit — change an input and regenerate.
 
 [Unit]
-Description=imu0 sensor daemon (basilisk_imu) — flatsat-v1
+Description=telemetry recorder — flatsat-v1
 PartOf=flatsat.target
 
 [Service]
-ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flatsat.apps.sensor_daemon --sensor imu0 --vehicle config/vehicles/flatsat_v1.toml
+ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flatsat.apps.telemetry_recorder --vehicle config/vehicles/flatsat_v1.toml
 WorkingDirectory=/home/trevor/flatsat
 Environment=PYTHONUNBUFFERED=1
 Restart=on-failure

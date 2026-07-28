@@ -31,3 +31,7 @@ memory_max = "512M"
 # [sensors.imu0]
 # rt_policy = "fifo"
 # rt_priority = 70
+
+[recorder]
+memory_max = "256M"
+# no core_role: archive writing is housekeeping, keeping the RT core clean

@@ -1,0 +1,22 @@
+// Telemetry recording format — the archive every later consumer reads.
+//
+// The recorder stores bus traffic VERBATIM: topic, arrival time, and the
+// exact payload bytes that were on the wire. It never parses payloads —
+// a new message type or topic needs no recorder change, and the archive
+// is byte-exact evidence of what the bus carried (regression comparison,
+// FDIR replay, and the ML corpus all read from here).
+//
+// On disk: a stream of [4-byte little-endian length][RecordedSample]
+// frames. A truncated final frame (power loss mid-write) is expected and
+// readers must treat it as end-of-file, not corruption of the archive.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+// One bus message as the recorder saw it.
+message RecordedSample {
+  string topic = 1;           // concrete key the message arrived on
+  fixed64 recv_time_ns = 2;   // flight-clock (wall) time of arrival
+  bytes payload = 3;          // the serialized message, byte-exact
+}

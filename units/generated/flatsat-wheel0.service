@@ -5,7 +5,7 @@
 # Do not edit — change an input and regenerate.
 
 [Unit]
-Description=wheel0 actuator daemon (sim_reaction_wheel) — flatsat-v1
+Description=wheel0 actuator daemon (basilisk_reaction_wheel) — flatsat-v1
 PartOf=flatsat.target
 
 [Service]

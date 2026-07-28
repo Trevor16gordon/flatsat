@@ -213,3 +213,45 @@ class ActuatorHealth(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ActuatorHealth: _TypeAlias = ActuatorHealth  # noqa: Y015
+
+@_typing.final
+class RecorderHealth(_message.Message):
+    """Health of the telemetry recorder over one reporting window."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    WINDOW_RECORDS_FIELD_NUMBER: _builtins.int
+    WINDOW_BYTES_FIELD_NUMBER: _builtins.int
+    FILES_FIELD_NUMBER: _builtins.int
+    TOTAL_BYTES_FIELD_NUMBER: _builtins.int
+    CURRENT_FILE_FIELD_NUMBER: _builtins.int
+    window_records: _builtins.int
+    """messages recorded this window"""
+    window_bytes: _builtins.int
+    """bytes appended this window"""
+    files: _builtins.int
+    """archive files currently on disk"""
+    total_bytes: _builtins.int
+    """archive size currently on disk"""
+    current_file: _builtins.str
+    """basename of the file being written"""
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        window_records: _builtins.int = ...,
+        window_bytes: _builtins.int = ...,
+        files: _builtins.int = ...,
+        total_bytes: _builtins.int = ...,
+        current_file: _builtins.str = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["current_file", b"current_file", "files", b"files", "header", b"header", "total_bytes", b"total_bytes", "window_bytes", b"window_bytes", "window_records", b"window_records"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___RecorderHealth: _TypeAlias = RecorderHealth  # noqa: Y015

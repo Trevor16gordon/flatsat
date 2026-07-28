@@ -164,6 +164,36 @@ class ControlEntry:
 
 
 @dataclass(frozen=True)
+class TelemetryEntry:
+    """The telemetry recorder's composition.
+
+    Attributes:
+        topics: Bus key expressions to archive.
+        output_dir: Directory the archive lives in.
+        max_file_bytes: Rotate the current file beyond this size.
+        rotate_every_s: Rotate the current file after this many seconds
+            regardless of size (bounds data-loss window per file).
+        max_total_bytes: Prune oldest files beyond this total — recording
+            must never fill the flight computer's disk.
+    """
+
+    topics: tuple[str, ...]
+    output_dir: str
+    max_file_bytes: int
+    rotate_every_s: float
+    max_total_bytes: int
+
+
+DEFAULT_TELEMETRY = TelemetryEntry(
+    topics=("hal/**", "adcs/**", "health/**"),
+    output_dir="~/flatsat-telemetry",
+    max_file_bytes=64 * 1024 * 1024,
+    rotate_every_s=900.0,
+    max_total_bytes=4 * 1024 * 1024 * 1024,
+)
+
+
+@dataclass(frozen=True)
 class VehicleSpec:
     """What a spacecraft IS: its sensors and how it is flown.
 
@@ -179,6 +209,9 @@ class VehicleSpec:
         control: Control loop composition.
         body: Rigid-body physical model; None until a vehicle declares
             ``[body]`` (consumers that need it fail loudly).
+        telemetry: Recorder composition; defaults cover ``hal/**``,
+            ``adcs/**``, and ``health/**`` when the file has no
+            ``[telemetry]`` section.
         provenance: Source file and checksum.
     """
 
@@ -188,6 +221,7 @@ class VehicleSpec:
     actuators: tuple[ActuatorEntry, ...]
     control: ControlEntry
     body: BodySpec | None
+    telemetry: TelemetryEntry
     provenance: Provenance
 
     def sensor(self, name: str) -> SensorEntry:
@@ -450,6 +484,17 @@ def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
         objective_options=dict(ctrl.get("objective_options", {})),
         estimator_options=dict(ctrl.get("estimator_options", {})),
     )
+    telemetry = DEFAULT_TELEMETRY
+    if "telemetry" in data:
+        tel = data["telemetry"]
+        telemetry = TelemetryEntry(
+            topics=tuple(str(t) for t in tel.get("topics", DEFAULT_TELEMETRY.topics)),
+            output_dir=str(tel.get("output_dir", DEFAULT_TELEMETRY.output_dir)),
+            max_file_bytes=int(tel.get("max_file_bytes", DEFAULT_TELEMETRY.max_file_bytes)),
+            rotate_every_s=float(tel.get("rotate_every_s", DEFAULT_TELEMETRY.rotate_every_s)),
+            max_total_bytes=int(tel.get("max_total_bytes", DEFAULT_TELEMETRY.max_total_bytes)),
+        )
+
     body: BodySpec | None = None
     if "body" in data:
         raw_inertia = data["body"]["inertia_kg_m2"]
@@ -468,6 +513,7 @@ def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
         actuators=tuple(actuators),
         control=control,
         body=body,
+        telemetry=telemetry,
         provenance=prov,
     )
 
