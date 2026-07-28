@@ -95,6 +95,23 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Distributed HIL re-validation PASSED (2026-07-28) — the migrated
+stack against real physics over WiFi.** Jetson bench (6 services, now
+running as trevor — see the User= fix) ↔ Mac Basilisk bridge, 41.8 min
+closed loop: STALE→VALID loop closure on bridge start; first-cycle
+torque −0.043 N·m matching the PD derivative kick analytically; ω_x
+driven to the one-wheel floor on the predicted ~45 s time constant
+(|ω| 99 → ~58–70 mrad/s band, y/z uncontrollable with a single x wheel
+— honest physics, unlike the old 3-axis TorqueSink). **39 link-stall
+episodes (2.2% of the window, median just over the 0.5 s threshold,
+max ~33 s manual bridge kills)** — every one: flag, wheel zeroed ≤100 ms,
+seamless resume, zero daemon restarts. Full session archived by the
+recorder (first replayable HIL dataset on the new stack); stall census
+extracted from the archive is the first empirical input to the FDIR
+rulebook. Found + fixed in the same session: units ran services as
+root (User= now emitted from the host profile; LimitMEMLOCK for the RT
+unit).
+
 **Mission runner + 3D demo (2026-07-28).** The scenario runner now
 takes its universe-fake by choice: `--plant local` (rigid body,
 anywhere) or `--plant basilisk` (real dynamics, ground machine) behind
