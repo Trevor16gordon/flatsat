@@ -1,9 +1,13 @@
 {
+  // Python language services: use the project venv so Pylance indexes the
+  // workspace package + its deps (protobuf, zenoh) for go-to-definition.
+  "python.defaultInterpreterPath": "~/venvs/flatsat-ml/bin/python",
+
   // Proto command-click + validation: schemas resolve from the repo root
   // (import paths like "flatsat/hardware/devices.proto"), and .txtpb
   // config files bind to their schema via the `# proto-file:` header.
   "protoc": {
-    "options": ["--proto_path=${workspaceRoot}", "--proto_path=${workspaceRoot}/protos"]
+    "options": ["--proto_path=${workspaceRoot}"]
   },
   "files.associations": {
     "*.txtpb": "prototext"
