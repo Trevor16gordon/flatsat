@@ -98,12 +98,21 @@ def main() -> int:
     )
     parser.add_argument("--uri", default="ip:192.168.2.1", help="Pluto IIO URI")
     parser.add_argument("--freq", type=float, default=915e6, help="LO frequency [Hz]")
-    parser.add_argument("--rate", type=float, default=2e6, help="sample rate [Sa/s]")
+    # Defaults are the 2026-07-23 bench point that measured BER 0.00, not
+    # freshly invented "safe-looking" numbers: changing two link
+    # parameters at once is how a working configuration gets lost.
+    parser.add_argument("--rate", type=float, default=2.084e6, help="sample rate [Sa/s]")
     parser.add_argument("--tx-atten", type=float, default=60.0, help="TX attenuation [dB]")
-    parser.add_argument("--rx-gain", type=float, default=40.0, help="RX manual gain [dB]")
+    parser.add_argument("--rx-gain", type=float, default=30.0, help="RX manual gain [dB]")
     parser.add_argument("--frames", type=int, default=100, help="frames to transmit")
     parser.add_argument("--payload", type=int, default=64, help="payload bytes per frame")
-    parser.add_argument("--gap", type=float, default=0.05, help="seconds between frames")
+    parser.add_argument("--gap", type=float, default=0.02, help="seconds between frames")
+    parser.add_argument(
+        "--warmup",
+        type=float,
+        default=1.0,
+        help="seconds of idle carrier before the first frame, to let clock recovery lock",
+    )
     parser.add_argument("--settle", type=float, default=2.0, help="seconds to drain at the end")
     args = parser.parse_args()
 
@@ -138,7 +147,16 @@ def main() -> int:
         if modem.start_error:
             eprint(f"FAIL: could not open the radio: {modem.start_error}")
             return 2
-        print(f"[ok] radio open; transmitting {args.frames} frames", flush=True)
+        print("[ok] radio open; carrier up (idle fill)", flush=True)
+
+        # Let the idle carrier run before the first frame: the
+        # demodulator's clock recovery locks on 0x55's transitions, and
+        # a frame sent into an unlocked receiver is simply wasted.
+        deadline = time.monotonic() + args.warmup
+        while time.monotonic() < deadline:
+            modem.receive()
+            time.sleep(0.05)
+        print(f"[ok] warm; transmitting {args.frames} frames", flush=True)
 
         for index in range(args.frames):
             payload = payload_for(index, args.payload)
@@ -158,8 +176,24 @@ def main() -> int:
         modem.close()  # silences TX on every path, including exceptions
         print("[ok] transmitter silenced, radio released", flush=True)
 
+    print("-" * 72)
+    print(f"  bits demodulated : {modem.rx_bits_demodulated}")
+    print(f"  sync detections  : {modem.sync_detections}")
+    print(f"  sends dropped    : {modem.dropped_sends} (transmit queue full)")
+
     if not recovered:
-        eprint("FAIL: no frames recovered — check cabling, pads, and RX gain")
+        # Say which failure this is. The three have different fixes and
+        # guessing between them costs a bench session each time.
+        if modem.rx_bits_demodulated == 0:
+            eprint("FAIL: no bits demodulated at all — RX chain never delivered samples.")
+            eprint("      Suspect the flowgraph or the radio, not the link budget.")
+        elif modem.sync_detections == 0:
+            eprint("FAIL: bits are flowing but the sync marker never correlated.")
+            eprint("      The receiver hears noise: check pads, --tx-atten, --rx-gain.")
+        else:
+            eprint("FAIL: sync locked but no frame survived the CRC.")
+            eprint(f"      {framer.dropped_frames} frames dropped — the link is marginal,")
+            eprint("      not absent. Try a lower --tx-atten or a longer --warmup.")
         return 3
 
     matched = 0

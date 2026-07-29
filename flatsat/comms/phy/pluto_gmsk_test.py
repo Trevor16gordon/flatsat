@@ -7,12 +7,16 @@ arbitrary phase. The parts that genuinely need a radio (modulation,
 BER through the cabled path) belong to the bench campaign, not to CI.
 """
 
+import contextlib
+import os
+import threading
+
 import numpy as np
 import pytest
 
 from flatsat.comms import comms_config_pb2
 from flatsat.comms.framing.ccsds import CcsdsFramer
-from flatsat.comms.phy.pluto_gmsk import PREAMBLE, PlutoGmskModem, _sync_bits
+from flatsat.comms.phy.pluto_gmsk import IDLE_BYTE, PREAMBLE, PlutoGmskModem, _sync_bits
 from flatsat.msgs import hal_pb2
 
 
@@ -101,6 +105,67 @@ def test_radio_failure_is_a_flag_not_a_crash() -> None:
     assert modem.send(b"frame") & hal_pb2.VALIDITY_FLAG_COMM
     assert modem.receive() == []
     assert modem.start_error, "the failure reason must be retained, not swallowed"
+
+
+# ------------------------------------------------------ continuous carrier --
+
+
+def _feed_once(modem: PlutoGmskModem, read_size: int) -> bytes:
+    """Run the transmit feeder for exactly one write and return what it wrote.
+
+    Args:
+        modem: The modem under test.
+        read_size: Bytes to read back from the pipe.
+
+    Returns:
+        The bytes the feeder placed on the wire.
+    """
+    read_fd, write_fd = os.pipe()
+    try:
+        modem._tx_running = True  # noqa: SLF001
+        thread = threading.Thread(target=modem._feed_tx, args=(write_fd,), daemon=True)  # noqa: SLF001
+        thread.start()
+        written = os.read(read_fd, read_size)
+        modem._tx_running = False  # noqa: SLF001
+        os.close(read_fd)
+        thread.join(timeout=2.0)
+        return written
+    finally:
+        for fd in (write_fd,):
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
+
+@pytest.mark.verifies("FSW-LINK-008")
+def test_idle_fill_keeps_the_modulator_running() -> None:
+    """With nothing queued the feeder must still supply symbols.
+
+    A silent gap costs the demodulator its clock lock — the regression
+    that produced 100 frames sent and 0 recovered on 2026-07-29.
+    """
+    modem = _modem(transmit_ack=True)
+    written = _feed_once(modem, 64)
+    assert written == bytes([IDLE_BYTE]) * 64, "gaps must be filled, never left empty"
+
+
+@pytest.mark.verifies("FSW-LINK-008")
+def test_queued_frames_take_precedence_over_idle() -> None:
+    """A queued frame goes out ahead of filler, preamble first."""
+    modem = _modem(transmit_ack=True)
+    modem._tx_queue.append(PREAMBLE + b"frame-bytes")  # noqa: SLF001
+    written = _feed_once(modem, len(PREAMBLE) + 11)
+    assert written == PREAMBLE + b"frame-bytes"
+
+
+def test_send_pushes_back_instead_of_queueing_without_limit() -> None:
+    """When the air is slower than the caller, say so rather than lag."""
+    modem = _modem(transmit_ack=True)
+    modem._flowgraph = object()  # pretend the radio is open  # noqa: SLF001
+    modem._tx_running = True  # noqa: SLF001
+    accepted = sum(1 for _ in range(200) if modem.send(b"frame") == 0)
+    assert accepted == 64, "the queue must be bounded"
+    assert modem.dropped_sends == 136
+    assert modem.send(b"frame") & hal_pb2.VALIDITY_FLAG_COMM
 
 
 # -------------------------------------------------- bit synchronization --

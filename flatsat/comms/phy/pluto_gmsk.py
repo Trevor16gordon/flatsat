@@ -14,6 +14,17 @@ Two design points carried over from the bench, both hard-won:
     DC-correction loops sit at baseband centre; a signal placed there
     measured BER 1.8e-1 versus 0.00 offset-tuned. The modulator output
     is rotated up by ``offset_hz`` and translated back down on receive.
+  * **The carrier never stops.** A GMSK demodulator's clock recovery
+    holds lock on symbol transitions; take the carrier away between
+    frames and every frame must re-acquire from its own preamble, on a
+    transmit DMA that has meanwhile run dry. A dedicated feeder thread
+    therefore owns the transmit pipe and writes ``IDLE_BYTE`` whenever
+    no frame is queued, so the modulator runs continuously from the
+    moment the radio opens until ``close()``. Its blocking writes are
+    also the flow control: the pipe drains at exactly the modulator's
+    rate, so the feeder is paced by the radio rather than by a clock.
+    Consequently an *open* transmit chain radiates continuously —
+    going quiet is ``silence_tx()``/``close()``, not idleness.
   * **Frame synchronization is a PHY function.** GMSK demodulation
     yields a bit stream with arbitrary phase, so this driver hunts the
     attached sync marker at BIT level and emits BYTE-ALIGNED blocks from
@@ -49,6 +60,7 @@ import fcntl
 import math
 import os
 import threading
+from collections import deque
 from typing import Any
 
 from flatsat.comms import comms_config_pb2
@@ -65,6 +77,9 @@ PREAMBLE = (
 IDLE_BYTE = 0x55  # keeps the modulator running between frames
 _MAX_SYNC_BIT_ERRORS = 2
 _RX_BIT_BUFFER_LIMIT = 1 << 22  # ~4 Mbit: bound memory if nothing ever syncs
+_IDLE_CHUNK_BYTES = 256  # idle written per feeder pass; also the queue latency grain
+_TX_PIPE_BYTES = 4096  # SMALL on purpose: pipe depth is transmit latency
+_TX_QUEUE_LIMIT = 64  # frames awaiting the modulator before send() pushes back
 
 
 def _sync_bits(sync_hex: str) -> list[int]:
@@ -128,15 +143,22 @@ class PlutoGmskModem(Modem):
         self._transmit_ack = transmit_ack
 
         self._tx_lock = threading.Lock()
+        self._tx_queue: deque[bytes] = deque()
+        self._tx_thread: threading.Thread | None = None
+        self._tx_running = False
         self._rx_bits = bytearray()
         self._rx_lock = threading.Lock()
         self._tx_write_fd: int | None = None
+        self._tx_read_fd: int | None = None
         self._rx_read_fd: int | None = None
         self._pipe_fds: list[int] = []
         self._flowgraph: Any | None = None
         self._tx_sink: Any | None = None
         self._start_error: str = ""
         self._refused = 0
+        self._dropped_sends = 0
+        self._rx_bits_seen = 0
+        self._sync_detections = 0
 
     @classmethod
     def from_config(
@@ -194,6 +216,27 @@ class PlutoGmskModem(Modem):
         """Why the radio failed to open, if it did."""
         return self._start_error
 
+    @property
+    def dropped_sends(self) -> int:
+        """Frames declined because the transmit queue was already full."""
+        return self._dropped_sends
+
+    @property
+    def rx_bits_demodulated(self) -> int:
+        """Bits the demodulator has produced since the radio opened.
+
+        Zero means no signal path at all — the radio never delivered
+        samples. Non-zero with no ``sync_detections`` means the opposite
+        problem: bits are flowing but nothing locks. A failed bench run
+        needs to tell those two apart.
+        """
+        return self._rx_bits_seen
+
+    @property
+    def sync_detections(self) -> int:
+        """Sync-marker correlations found in the demodulated bit stream."""
+        return self._sync_detections
+
     def _build(self) -> Any:  # noqa: ANN401 — an opaque GNU Radio top_block
         """Construct the flowgraph: RX always, TX only when acknowledged.
 
@@ -238,8 +281,9 @@ class PlutoGmskModem(Modem):
 
         # ---- transmit chain (ONLY when acknowledged) ----
         if self._transmit_ack:
-            tx_read, tx_write = self._make_pipe()
+            tx_read, tx_write = self._make_pipe(_TX_PIPE_BYTES)
             self._tx_write_fd = tx_write
+            self._tx_read_fd = tx_read
             byte_source = blocks.file_descriptor_source(gr.sizeof_char, tx_read)
             modulator = digital.gmsk_mod(samples_per_symbol=self._sps, bt=0.35)
             scale = blocks.multiply_const_cc(self._amplitude)
@@ -254,6 +298,17 @@ class PlutoGmskModem(Modem):
             self._tx_sink = sink
 
         top.start()
+        if self._tx_write_fd is not None:
+            # Only now: the feeder's first write must have a running
+            # flowgraph to drain it, or it blocks on a pipe nobody reads.
+            self._tx_running = True
+            self._tx_thread = threading.Thread(
+                target=self._feed_tx,
+                args=(self._tx_write_fd,),
+                name=f"{self._name}-tx-feed",
+                daemon=True,
+            )
+            self._tx_thread.start()
         return top
 
     def _ensure_started(self) -> bool:
@@ -285,22 +340,47 @@ class PlutoGmskModem(Modem):
 
         Returns:
             0 when queued for transmission; ``VALIDITY_FLAG_COMM`` when
-            refused for want of acknowledgement or when the radio could
-            not be opened. Never raises, never radiates unacknowledged.
+            refused for want of acknowledgement, when the radio could
+            not be opened, or when the modulator is already further
+            behind than ``_TX_QUEUE_LIMIT`` frames. Never raises, never
+            radiates unacknowledged.
         """
         if not self._transmit_ack:
             self._refused += 1
             return int(hal_pb2.VALIDITY_FLAG_COMM)
         if not self._ensure_started():
             return int(hal_pb2.VALIDITY_FLAG_COMM)
-        try:
-            with self._tx_lock:
-                if self._tx_write_fd is None:
-                    return int(hal_pb2.VALIDITY_FLAG_COMM)
-                os.write(self._tx_write_fd, PREAMBLE + frame)
-        except OSError:
-            return int(hal_pb2.VALIDITY_FLAG_COMM)
+        with self._tx_lock:
+            if not self._tx_running:
+                return int(hal_pb2.VALIDITY_FLAG_COMM)
+            if len(self._tx_queue) >= _TX_QUEUE_LIMIT:
+                # The air is slower than the caller. Dropping here and
+                # saying so beats an unbounded queue that turns into
+                # minutes of stale telemetry arriving late.
+                self._dropped_sends += 1
+                return int(hal_pb2.VALIDITY_FLAG_COMM)
+            self._tx_queue.append(PREAMBLE + frame)
         return 0
+
+    def _feed_tx(self, write_fd: int) -> None:
+        """Keep the modulator fed: queued frames, otherwise idle.
+
+        Runs until ``close()`` clears the running flag. Every write is
+        blocking, which is precisely the point — the pipe drains at the
+        modulator's rate, so this thread cannot outrun the radio and
+        cannot starve it either.
+
+        Args:
+            write_fd: The transmit pipe's write end, owned by this thread.
+        """
+        idle = bytes([IDLE_BYTE]) * _IDLE_CHUNK_BYTES
+        while self._tx_running:
+            with self._tx_lock:
+                chunk = self._tx_queue.popleft() if self._tx_queue else idle
+            try:
+                os.write(write_fd, chunk)
+            except OSError:
+                return  # pipe closed under us during shutdown
 
     def receive(self) -> list[bytes]:
         """Collect byte-aligned blocks recovered since the last call.
@@ -350,6 +430,7 @@ class PlutoGmskModem(Modem):
                 self._rx_bits = bytearray(tail.tobytes()) + self._rx_bits
             return []
 
+        self._sync_detections += int(hits.size)
         start = int(hits[0])
         usable = keep[start:]
         whole_bytes = (usable.size // 8) * 8
@@ -372,15 +453,20 @@ class PlutoGmskModem(Modem):
             self._rx_bits = bytearray(usable[whole_bytes:].tobytes()) + self._rx_bits
         return [packed.tobytes()]
 
-    def _make_pipe(self) -> tuple[int, int]:
+    def _make_pipe(self, size_bytes: int = 1 << 20) -> tuple[int, int]:
         """Create a pipe for the sample path and remember both ends.
+
+        Args:
+            size_bytes: Requested pipe capacity. Roomy on receive, so
+                demodulated bits never back-pressure the radio; small on
+                transmit, because a deep pipe is transmit latency.
 
         Returns:
             Tuple of (read fd, write fd).
         """
         read_fd, write_fd = os.pipe()
-        try:  # a roomy buffer keeps demodulated bits from back-pressuring the radio
-            fcntl.fcntl(read_fd, 1031, 1 << 20)  # F_SETPIPE_SZ
+        try:
+            fcntl.fcntl(read_fd, 1031, size_bytes)  # F_SETPIPE_SZ
         except OSError:
             pass
         self._pipe_fds.extend([read_fd, write_fd])
@@ -399,6 +485,7 @@ class PlutoGmskModem(Modem):
                 return
             if not block:
                 return
+            self._rx_bits_seen += len(block)
             with self._rx_lock:
                 self._rx_bits.extend(bytes(byte & 1 for byte in block))
                 if len(self._rx_bits) > _RX_BIT_BUFFER_LIMIT:
@@ -427,8 +514,29 @@ class PlutoGmskModem(Modem):
         from ``stop()`` until its input reaches EOF.
         """
         self.silence_tx()
+        # Stop the feeder BEFORE its pipe goes away. It is blocked in a
+        # write at most one pipe-depth long, and the flowgraph is still
+        # draining, so this returns promptly; the timeout is the
+        # backstop for a flowgraph that has already died.
+        self._tx_running = False
+        feeder_stopped = True
+        if self._tx_thread is not None:
+            self._tx_thread.join(timeout=2.0)
+            feeder_stopped = not self._tx_thread.is_alive()
+            self._tx_thread = None
         with self._tx_lock:
-            if self._tx_write_fd is not None:
+            self._tx_queue.clear()
+            if not feeder_stopped:
+                # The feeder is wedged on a flowgraph that stopped
+                # consuming. Leak the descriptor rather than close it:
+                # fd numbers are reused, and a stray idle write into
+                # somebody else's descriptor is a far worse failure than
+                # one leaked fd on a pathological shutdown. Closing the
+                # read end below still frees the writer with EPIPE.
+                self._pipe_fds = [fd for fd in self._pipe_fds if fd != self._tx_write_fd]
+                self._tx_write_fd = None
+                self._close_tx_read()  # EPIPE frees the writer; EOF frees stop()
+            elif self._tx_write_fd is not None:
                 try:
                     os.close(self._tx_write_fd)
                 except OSError:
@@ -448,9 +556,21 @@ class PlutoGmskModem(Modem):
             except OSError:
                 pass
         self._pipe_fds = []
+        self._tx_read_fd = None
         self._rx_read_fd = None
         self._flowgraph = None
         self._tx_sink = None
+
+    def _close_tx_read(self) -> None:
+        """Close the transmit pipe's read end, if it is still open."""
+        if self._tx_read_fd is None:
+            return
+        try:
+            os.close(self._tx_read_fd)
+        except OSError:
+            pass
+        self._pipe_fds = [fd for fd in self._pipe_fds if fd != self._tx_read_fd]
+        self._tx_read_fd = None
 
     def describe(self) -> list[str]:
         """Describe the radio and, first, whether it may transmit.
@@ -459,7 +579,7 @@ class PlutoGmskModem(Modem):
             Lines naming the transmit gate and the radio settings.
         """
         gate = (
-            "TRANSMIT ENABLED (cabled + 30 dB pads only)"
+            "TRANSMIT ENABLED (cabled + 30 dB pads only; CONTINUOUS carrier once open)"
             if self._transmit_ack
             else "receive-only (no transmit_ack in config; TX chain not built)"
         )
