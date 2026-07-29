@@ -140,3 +140,125 @@ def test_frame_loss_costs_only_the_lost_messages() -> None:
     delivered = ground.poll(0)
     assert 0 < len(delivered) < 30
     assert all(payload.startswith(b"payload ") for _, payload in delivered)
+
+
+# ------------------------------------------------- contact windows and RF --
+
+
+class _KeyedModem(LoopbackModem):
+    """A loopback modem that also remembers keying, like a real radio would.
+
+    The loopback PHY radiates nothing, so it inherits the no-op keying
+    default. Contact-window gating still has to be provable without a
+    radio, so this records the calls a real transmitter would receive.
+    """
+
+    def __init__(self, name: str, channel: str, latency_s: float = 0.0) -> None:
+        """Build a keyed loopback modem.
+
+        Args:
+            name: Instance name.
+            channel: Loopback channel.
+            latency_s: Pipeline depth to report to the link.
+        """
+        super().__init__(name, channel, seed=3)
+        self.keyings: list[bool] = []
+        self._latency_s = latency_s
+
+    def key_transmitter(self, on: bool) -> None:
+        """Record the keying.
+
+        Args:
+            on: Whether the carrier was raised.
+        """
+        self.keyings.append(on)
+
+    @property
+    def pipeline_latency_s(self) -> float:
+        """Configured pipeline depth."""
+        return self._latency_s
+
+
+def _keyed_link(channel: str, latency_s: float = 0.0) -> tuple[Link, _KeyedModem]:
+    """Build a link whose transmitter records keying, on a 10 s / 4 s pass.
+
+    Args:
+        channel: Loopback channel name.
+        latency_s: Pipeline depth the modem reports.
+
+    Returns:
+        Tuple of (link, its modem).
+    """
+    modem = _KeyedModem("flight", channel, latency_s=latency_s)
+    link = Link(
+        modem,
+        CcsdsFramer(),
+        contact=ContactSchedule(period_s=10.0, duration_s=4.0),
+    )
+    return link, modem
+
+
+@pytest.mark.verifies("FSW-LINK-004", "FSW-RADIO-002")
+def test_carrier_is_keyed_down_when_the_window_closes() -> None:
+    """A closed window must stop RADIATION, not merely stop queueing.
+
+    A PHY holding a carrier up between frames goes on transmitting
+    through a closed pass unless it is keyed down explicitly.
+    """
+    link, modem = _keyed_link("test/link/keying")
+    link.send_pending(1 * S)  # inside the 4 s pass
+    assert modem.keyings == [True]
+    link.send_pending(6 * S)  # pass has closed
+    assert modem.keyings == [True, False]
+
+
+@pytest.mark.verifies("FSW-LINK-004")
+def test_keying_happens_only_on_transitions() -> None:
+    """Keying is an edge, not a level — no attribute write every cycle."""
+    link, modem = _keyed_link("test/link/edges")
+    for elapsed in (0, 1, 2, 3):
+        link.send_pending(elapsed * S)
+    assert modem.keyings == [True], "one key-up for one pass"
+
+
+@pytest.mark.verifies("FSW-LINK-004")
+def test_a_link_that_starts_out_of_contact_never_raises_a_carrier() -> None:
+    """Silence is the default; nothing radiates before the first pass."""
+    link, modem = _keyed_link("test/link/quiet")
+    link.send_pending(5 * S)  # between passes
+    assert modem.keyings == [False] or modem.keyings == []
+    assert True not in modem.keyings
+
+
+@pytest.mark.verifies("FSW-LINK-004", "FSW-RADIO-002")
+def test_frames_that_would_radiate_after_the_window_are_held() -> None:
+    """The guard band: a deep pipeline must not spill past a pass.
+
+    With a 0.7 s pipeline, a message handed over at t=3.5 s of a 4 s
+    pass would leave the antenna at 4.2 s — outside the window. It waits
+    for the next pass instead, which is what the queue is for.
+    """
+    # Control: the SAME instant with an instant PHY sends, so what
+    # follows is the guard band acting and not the window being shut.
+    instant, _ = _keyed_link("test/link/guard-control", latency_s=0.0)
+    instant.enqueue("hal/imu0/sample", b"late telemetry")
+    assert instant.send_pending(int(3.5 * S)) == 1, "t=3.5 s is inside the pass"
+
+    link, modem = _keyed_link("test/link/guard", latency_s=0.7)
+    link.enqueue("hal/imu0/sample", b"late telemetry")
+    assert link.send_pending(int(3.5 * S)) == 0, "must not radiate past the window"
+    assert link.queued == 1, "held, not dropped"
+    assert link.messages_held_for_window >= 1
+
+    # Early in the NEXT pass the same message goes out untouched.
+    assert link.send_pending(int(10.5 * S)) == 1
+    assert link.queued == 0
+
+
+@pytest.mark.verifies("FSW-RADIO-002")
+def test_close_contact_silences_regardless_of_schedule() -> None:
+    """Shutdown must not leave a carrier up waiting for a cycle that never comes."""
+    link, modem = _keyed_link("test/link/shutdown")
+    link.send_pending(1 * S)
+    link.close_contact()
+    assert modem.keyings[-1] is False

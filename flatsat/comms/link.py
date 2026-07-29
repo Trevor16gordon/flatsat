@@ -146,6 +146,10 @@ class Link:
         self.messages_delivered = 0
         self.messages_incomplete = 0
         self.messages_dropped_queue = 0
+        self.messages_held_for_window = 0
+        # None means "never keyed": the first send_pending decides, so a
+        # link that starts out of contact never raises a carrier at all.
+        self._keyed: bool | None = None
 
     # ------------------------------------------------------------ outbound --
 
@@ -200,7 +204,19 @@ class Link:
         ]
 
     def send_pending(self, elapsed_ns: int, max_messages: int = 64) -> int:
-        """Transmit queued messages if a pass is open.
+        """Transmit queued messages if a pass is open, and key the carrier.
+
+        Two distinct things are gated here, and conflating them was a
+        real bug: WHAT is queued, and WHETHER the radio radiates at all.
+        A PHY that holds a carrier up between frames keeps transmitting
+        through a closed window unless something keys it down, so the
+        window edges are applied to the transmitter itself.
+
+        The guard band is the second half. A frame handed to the modem
+        takes ``pipeline_latency_s`` to reach the air, so anything
+        offered later than that before the window shuts would radiate
+        after it closed. Those messages stay queued for the next pass —
+        which is what store-and-forward is for.
 
         Args:
             elapsed_ns: Monotonic nanoseconds since the link started.
@@ -211,7 +227,18 @@ class Link:
             Messages transmitted (0 when out of contact — the queue is
             the point of store-and-forward).
         """
-        if not self._contact.in_contact(elapsed_ns):
+        in_contact = self._contact.in_contact(elapsed_ns)
+        if in_contact != self._keyed:
+            self._modem.key_transmitter(in_contact)
+            self._keyed = in_contact
+        if not in_contact:
+            return 0
+        # Would a frame handed over NOW still be inside the window when
+        # it actually radiates? If not, hold it.
+        guard_ns = int(self._modem.pipeline_latency_s * 1e9)
+        if guard_ns and not self._contact.in_contact(elapsed_ns + guard_ns):
+            with self._lock:
+                self.messages_held_for_window += len(self._queue)
             return 0
         sent = 0
         for _ in range(max_messages):
@@ -285,6 +312,15 @@ class Link:
             True when transmission is permitted.
         """
         return self._contact.in_contact(elapsed_ns)
+
+    def close_contact(self) -> None:
+        """Silence the transmitter regardless of schedule.
+
+        For shutdown and for tests: leaving a carrier up because nobody
+        called send_pending again is exactly the failure this guards.
+        """
+        self._modem.key_transmitter(False)
+        self._keyed = False
 
     @property
     def dropped_frames(self) -> int:

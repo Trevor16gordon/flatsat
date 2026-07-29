@@ -139,6 +139,10 @@ _TX_MAX_SYMBOL_ITEMS = 4096  # bits/symbols in the modulator, ~16 ms at 250 kbau
 # starving it is what produces underruns.
 _TX_DMA_SAMPLES = 1 << 16
 _GMSK_BT = 0.35  # Gaussian bandwidth-time product; the bench's measured value
+# Measured send()-to-air depth, 0.53-0.63 s across repeated cabled runs.
+# Rounded UP: this is used as a guard band, and guessing high costs a
+# little throughput while guessing low radiates outside a contact window.
+_PIPELINE_LATENCY_S = 0.7
 # LINK BUDGET — these two are MEASURED, not chosen. Together with 30 dB of
 # cabled pads they are the 2026-07-23 operating point that produced BER 0.00:
 # amplitude 0.5 at 20 dB attenuation is about -19 dBm at the TX port and
@@ -396,7 +400,14 @@ class PlutoGmskModem(Modem):
             # every frame sent in the last 3.5 s of a run.
             #
             # set_max_output_buffer is the standard mechanism and must be
-            # called before the flowgraph starts.
+            # called before the flowgraph starts. GNU Radio treats these
+            # as REQUESTS and clamps them to its own per-block minimums,
+            # warning on stdout when it does (rotator_cc, for one, takes
+            # 131584 samples however small a value it is handed). So the
+            # real pipeline depth is bounded below by the scheduler, not
+            # by these numbers — which is part of why 0.55 s is a floor
+            # here and not a knob. Those warnings are invisible under
+            # the bench's DmaWatch, which captures fd 1.
             byte_source.set_max_output_buffer(_TX_MAX_BYTES_IN_FLIGHT)
 
             # digital.gmsk_mod is a hier_block2, and set_max_output_buffer
@@ -707,6 +718,38 @@ class PlutoGmskModem(Modem):
             self._tx_sink.set_attenuation(0, MAX_ATTENUATION_DB)
         except Exception:  # noqa: BLE001 — best effort; never mask the exit path
             return
+
+    def key_transmitter(self, on: bool) -> None:
+        """Raise or silence the carrier at a contact-window edge.
+
+        Silencing is the attenuator, not the flowgraph: it takes effect
+        on the device immediately instead of waiting behind the ~0.6 s
+        of buffered idle, and it leaves the modulator running so the
+        next window does not have to rebuild the whole chain.
+
+        Args:
+            on: True to restore the configured attenuation, False to go
+                to the Pluto's floor.
+        """
+        if self._tx_sink is None:
+            return
+        try:
+            self._tx_sink.set_attenuation(
+                0, float(self._tx_attenuation_db) if on else MAX_ATTENUATION_DB
+            )
+        except Exception:  # noqa: BLE001 — keying is best effort, never fatal
+            return
+
+    @property
+    def pipeline_latency_s(self) -> float:
+        """Measured depth from send() to the air.
+
+        0.53-0.63 s over repeated cabled runs (2026-07-29), dominated by
+        buffering deliberately kept FULL of idle so the carrier never
+        stops. The link uses this as a guard band at the end of a
+        contact window.
+        """
+        return _PIPELINE_LATENCY_S
 
     def close(self) -> None:
         """Stop the flowgraph, silencing the transmitter first.

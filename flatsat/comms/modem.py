@@ -67,6 +67,32 @@ class Modem(ABC):
             frame-aligned — the framer resynchronizes.
         """
 
+    def key_transmitter(self, on: bool) -> None:
+        """Raise or silence the carrier, independent of any traffic.
+
+        Contact windows gate RADIATION, not just queueing, and the two
+        are not the same thing: a PHY that keeps a carrier up between
+        frames goes on radiating through a closed window unless it is
+        explicitly keyed down. The link calls this at window edges.
+
+        Args:
+            on: True to permit radiation, False to go quiet.
+
+        The default is a no-op, which is correct for any PHY that does
+        not radiate at all (loopback, files, simulation).
+        """
+        return
+
+    @property
+    def pipeline_latency_s(self) -> float:
+        """Seconds between ``send()`` returning and the bits leaving the antenna.
+
+        Zero for PHYs that deliver immediately. A real radio buffers,
+        and the link must not hand it a frame so late in a contact
+        window that it would radiate after the window shut.
+        """
+        return 0.0
+
     def close(self) -> None:
         """Release radio resources. Local fakes inherit the no-op."""
         return

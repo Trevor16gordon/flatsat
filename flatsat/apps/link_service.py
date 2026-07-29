@@ -183,7 +183,13 @@ class LinkService:
         self._stop.set()
 
     def close(self) -> None:
-        """Undeclare bus resources."""
+        """Silence the transmitter, then undeclare bus resources.
+
+        Keying down FIRST: a service that stops pumping leaves the
+        carrier wherever the last window put it, and "up" is not an
+        acceptable state to exit in (FSW-RADIO-002).
+        """
+        self._link.close_contact()
         for sub in self._subs:
             sub.undeclare()
 
