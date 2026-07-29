@@ -75,13 +75,33 @@ def fixture_rig(tmp_path: Path) -> Iterator[tuple[UplinkService, zenoh.Session, 
     )
     time.sleep(0.5)  # discovery
 
-    def pump(seconds: float = 2.0) -> None:
-        """Run both link ends for a while (the 'pass')."""
-        deadline = time.monotonic() + seconds
+    def pump(until: object = None, timeout_s: float = 15.0) -> None:
+        """Run both link ends until a condition holds (a 'pass').
+
+        Fixed-duration pumping is a latent flake: under load the pass
+        can end before delivery. Pump until the caller's condition is
+        true, or until the timeout makes the failure honest.
+
+        Args:
+            until: Zero-arg predicate; None pumps for a short settle.
+            timeout_s: Give-up horizon.
+        """
+        deadline = time.monotonic() + timeout_s
+        settle_until = time.monotonic() + 0.75
         while time.monotonic() < deadline:
             ground_link.pump()
             flight_link.pump()
             time.sleep(0.02)
+            if until is None:
+                if time.monotonic() >= settle_until:
+                    return
+            elif until():  # type: ignore[operator]
+                # Keep pumping briefly so trailing frames land too.
+                for _ in range(20):
+                    ground_link.pump()
+                    flight_link.pump()
+                    time.sleep(0.02)
+                return
 
     yield service, ground_session, pump
     service.close()
@@ -105,7 +125,7 @@ def test_artifact_crosses_the_link_and_stages(
         uplink_pb2.ARTIFACT_KIND_MODEL,
         chunk_bytes=1024,
     )
-    pump(3.0)  # type: ignore[operator]
+    pump(lambda: bool(service._receiver.staged()))  # type: ignore[operator]  # noqa: SLF001
 
     status = service.publish_status()
     assert "ml_policy@2026-07-28a" in list(status.staged), service.last_event
@@ -129,7 +149,9 @@ def test_activate_then_rollback_over_the_link(
             uplink_pb2.ARTIFACT_KIND_MODEL,
             chunk_bytes=512,
         )
-        pump(1.5)  # type: ignore[operator]
+        pump(  # type: ignore[operator]
+            lambda v=version: f"ml_policy@{v}" in service._receiver.staged()  # noqa: SLF001
+        )
     assert len(service.publish_status().staged) == 2, service.last_event
 
     for version in ("v1", "v2"):
@@ -141,7 +163,9 @@ def test_activate_then_rollback_over_the_link(
             ground_authority=True,
             reason="test activation",
         )
-        pump(1.5)  # type: ignore[operator]
+        pump(  # type: ignore[operator]
+            lambda v=version: service._slots.state("ml_policy").active_version == v  # noqa: SLF001
+        )
     slots = service._slots  # noqa: SLF001
     live = slots.active_path("ml_policy")
     assert live is not None and live.read_bytes() == b"regressing weights"
@@ -154,7 +178,7 @@ def test_activate_then_rollback_over_the_link(
         ground_authority=False,  # rollback needs none
         reason="regression detected",
     )
-    pump(1.5)  # type: ignore[operator]
+    pump(lambda: slots.state("ml_policy").active_version == "v1")  # type: ignore[operator]
     live = slots.active_path("ml_policy")
     assert live is not None and live.read_bytes() == b"known good weights"
 
@@ -166,7 +190,7 @@ def test_unauthorized_activation_is_refused_over_the_link(
     """Bytes arriving over RF do not deploy themselves."""
     service, ground_session, pump = rig
     send_artifact(ground_session, "ml_policy", "v1", b"weights", uplink_pb2.ARTIFACT_KIND_MODEL)
-    pump(1.5)  # type: ignore[operator]
+    pump(lambda: bool(service._receiver.staged()))  # type: ignore[operator]  # noqa: SLF001
     send_control(
         ground_session,
         uplink_pb2.ArtifactControl.ACTION_ACTIVATE,
@@ -175,7 +199,7 @@ def test_unauthorized_activation_is_refused_over_the_link(
         ground_authority=False,
         reason="sneaky",
     )
-    pump(1.5)  # type: ignore[operator]
+    pump(lambda: service._slots.refused_activations > 0)  # type: ignore[operator]  # noqa: SLF001
 
     status = service.publish_status()
     assert status.refused_activations >= 1, service.last_event

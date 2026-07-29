@@ -102,6 +102,22 @@ units at `units/generated/`, `pyproject` gained `[project]` packaging.
 Requirement evidence strings updated to the new file names; traceability
 `--strict` clean.
 
+**Pluto GMSK PHY graduated (2026-07-28).** The bench flowgraph moved
+out of `radio/` into `flatsat/comms/phy/pluto_gmsk.py` as a streaming
+modem: fmcomms2 source → freq-xlating LPF → GMSK demod → **bit-level
+ASM hunt** → byte-aligned blocks (GMSK yields arbitrary bit phase, so
+frame synchronization is a PHY function; once correlation identifies
+the marker the driver repairs it, and the CRC above still judges the
+frame). TX mirrors it: preamble + frame → GMSK mod → rotate off DC →
+fmcomms2 sink. No Python blocks anywhere (see the decision log —
+they segfault on this build); bytes cross via OS pipes and stock C++
+`file_descriptor` blocks. **Verified on the real Pluto, receive-only**:
+radio opens, the chain demodulates, unlocked bits retain exactly the
+marker-length tail, TX chain provably not built, clean shutdown. Bit
+sync is unit-tested at five bit phases and with a corrupted marker, on
+any machine. **Still owed: a cabled TX/BER re-verification** (needs
+per-instance RF approval) before the PHY is trusted end to end.
+
 **Comms + C1 uplink (2026-07-28) — remote data and reprogramming over
 the SDR path.** `flatsat/comms/` layers the link the same way everything
 else is layered — contracts, named implementations, oneof-selected
@@ -279,6 +295,7 @@ test-verified; **93 tests green**.
 
 | Date | Decision | Rationale / consequence |
 |------|----------|-------------------------|
+| 2026-07-28 | **No Python-defined GNU Radio blocks on this platform.** A *minimal* `gr.sync_block` subclass segfaults GNU Radio 3.10.1.1 (apt, JetPack aarch64) under both the venv and system Python with identical numpy 1.21.5. The pluto_gmsk driver therefore moves bytes across the flowgraph boundary through OS pipes read by stock C++ `file_descriptor_source/sink`. | Reproduced minimally before designing around it. The workaround is also the better design: no Python on the sample path, so no GIL and no numpy ABI surface in the radio chain. Gotcha recorded: a `file_descriptor_source` blocked on an empty pipe will not return from `stop()` — close the write end FIRST. |
 | 2026-07-28 | **Config schemas are protos; config files are textproto.** Schemas colocated with their owners (`flatsat/vehicle.proto`, `devices.proto`, per-driver/strategy options protos); `config/*.txtpb` instances bound by `# proto-file:` headers; implementations selected by oneof — the FIELD NAME is the registry key. Strict parsing: unknown fields fail startup (FSW-CFG-004). Committed colocated bindings, CI drift guard. TOML remains only for deployment.toml + requirements (tooling, not flight config). | One edit point for wire AND config: proto → Python stubs (mypy/IDE) → C++ later → editor validation of configs. Kills the silent-typo options dict. Config-as-proto is also the Tier-3 uplink wire format for free. `Any` escape hatch reserved for uplinked Tier-2 components when C1 needs it. |
 | 2026-07-23 | **No conda.** GNU Radio self-managed; stay on apt 3.10.1.1 for now (deviates from the radioconda 3.10.11+ pin in v1.0 §3). | Simpler env story (system python + venvs only). Open risk: Mac ground modem must version-match before any cross-machine BER baseline; revisit before B2. |
 | 2026-07-23 | **Pluto firmware stays v0.37** for now; v0.39 upgrade deferred to just before comparative baselines. | Unit is modern + already reports ad9364; flashing is the riskiest Pluto op — defer until it buys something. P1 exit amended accordingly. |
