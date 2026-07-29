@@ -38,12 +38,18 @@ Three design points, each learned the hard way:
   * **Buffering is latency, and latency looks exactly like loss.** GNU
     Radio sizes inter-block buffers in ITEMS, and the item entering the
     modulator is a PACKED byte worth 8 symbols, so a stock ~32 KiB
-    buffer is a full SECOND of air. Measured end to end, send() to
-    demodulator, this pipeline ran 3.5 s deep — and a bench script that
-    drained for 2 s duly reported that two thirds of its frames had been
-    lost, when every one of them was still in flight. The transmit
-    blocks are capped with set_max_output_buffer to bound this; anything
-    measuring this link must drain for longer than the pipeline is deep.
+    buffer is a full SECOND of air. Uncapped, this pipeline ran ~2.5 s
+    deep end to end, and a bench script that drained for 2 s duly
+    reported that two thirds of its frames had been lost when every one
+    of them was still in flight. Capping the transmit chain with
+    set_max_output_buffer brings it to ~0.55 s, measured send() to
+    demodulator. Anything benchmarking this link must drain for longer
+    than the pipeline is deep, or it measures its own impatience.
+
+    Two things that are NOT where the latency lives, both checked so
+    nobody re-checks them: the ``ip:`` URI's TCP path (a ``usb:`` URI
+    measures identically) and gmsk_mod's internal stages (capping every
+    one of them changed nothing).
 
 RF SAFETY, structurally enforced:
   * ``send()`` refuses and returns a COMM flag unless the configuration
@@ -124,11 +130,13 @@ DEFAULT_MAX_FRAME_BYTES = 4096 + 16
 # One byte is 8 symbols, so this is ~31 ms of air at 250 kbit/s; the
 # stock buffer is ~32 KiB, which is a full second.
 _TX_MAX_BYTES_IN_FLIGHT = 1024
-_TX_MAX_SAMPLES_IN_FLIGHT = 1 << 16  # complex samples, ~31 ms at 2.084 MSa/s
-# libiio transmit buffer. Shrinking this to 1<<14 bought only 0.1 s of
-# the 1.5 s pipeline and cost 3 underruns in a 9 s run — the DMA is the
-# one buffer that genuinely needs slack, because nothing downstream of
-# it can wait. Latency is bought upstream instead, where it is free.
+_TX_MAX_SAMPLES_IN_FLIGHT = 1 << 15  # samples, ~16 ms at 2.084 MSa/s
+_TX_MAX_SYMBOL_ITEMS = 4096  # bits/symbols in the modulator, ~16 ms at 250 kbaud
+# libiio transmit buffer. Swept 1<<16 / 1<<14 / 1<<12 against end-to-end
+# latency: 1.73 / 1.59 / 1.66 s, i.e. no measurable effect across a 16x
+# range — run-to-run scatter is +/-0.07 s and swamps it. Kept large
+# because the DMA is the one buffer with no downstream slack, and
+# starving it is what produces underruns.
 _TX_DMA_SAMPLES = 1 << 16
 _GMSK_BT = 0.35  # Gaussian bandwidth-time product; the bench's measured value
 # LINK BUDGET — these two are MEASURED, not chosen. Together with 30 dB of
@@ -328,7 +336,8 @@ class PlutoGmskModem(Modem):
             Exception: Any GNU Radio or gr-iio failure; callers convert
                 it to a COMM flag rather than propagating.
         """
-        from gnuradio import blocks, digital, gr
+        import numpy as np
+        from gnuradio import analog, blocks, digital, gr
         from gnuradio import filter as gr_filter
         from gnuradio.filter import firdes
 
@@ -389,7 +398,30 @@ class PlutoGmskModem(Modem):
             # set_max_output_buffer is the standard mechanism and must be
             # called before the flowgraph starts.
             byte_source.set_max_output_buffer(_TX_MAX_BYTES_IN_FLIGHT)
-            modulator = digital.gmsk_mod(samples_per_symbol=self._sps, bt=_GMSK_BT)
+
+            # digital.gmsk_mod is a hier_block2, and set_max_output_buffer
+            # on a hier block caps only its terminal edge — the four
+            # stages inside keep stock ~32 KiB buffers. Inlined here
+            # block for block, EXACTLY as gnuradio/digital/gmsk.py builds
+            # it (same taps, same sensitivity), purely so every internal
+            # edge can be capped. This is stock GNU Radio unrolled for
+            # latency control, not a reimplementation of the modulation.
+            ntaps = 4 * self._sps
+            taps = np.convolve(
+                np.array(firdes.gaussian(1.0, self._sps, _GMSK_BT, ntaps)),
+                np.ones(self._sps),
+            )
+            unpack = blocks.packed_to_unpacked_bb(1, gr.GR_MSB_FIRST)
+            nrz = digital.chunks_to_symbols_bf([-1, 1], 1)
+            shaper = gr_filter.interp_fir_filter_fff(self._sps, taps)
+            modulator = analog.frequency_modulator_fc((math.pi / 2) / self._sps)
+            for stage, cap in (
+                (unpack, _TX_MAX_SYMBOL_ITEMS),
+                (nrz, _TX_MAX_SYMBOL_ITEMS),
+                (shaper, _TX_MAX_SAMPLES_IN_FLIGHT),
+                (modulator, _TX_MAX_SAMPLES_IN_FLIGHT),
+            ):
+                stage.set_max_output_buffer(cap)
             scale = blocks.multiply_const_cc(self._amplitude)
             rotate = blocks.rotator_cc(2.0 * math.pi * self._offset_hz / self._sample_rate_hz)
             # Same reasoning downstream, in complex samples this time:
@@ -402,14 +434,13 @@ class PlutoGmskModem(Modem):
             # is the only cushion against a late feeder. The trailing
             # False is cyclic mode — which must stay off, since cyclic
             # would replay the last buffer forever after we stop.
-            modulator.set_max_output_buffer(_TX_MAX_SAMPLES_IN_FLIGHT)
             sink = iio.fmcomms2_sink_fc32(self._uri, [True, True], _TX_DMA_SAMPLES, False)
             sink.set_len_tag_key("")
             sink.set_frequency(int(self._center_freq_hz))
             sink.set_samplerate(int(self._sample_rate_hz))
             sink.set_attenuation(0, float(self._tx_attenuation_db))
             sink.set_filter_params("Auto", "", 0.0, 0.0)
-            top.connect(byte_source, modulator, scale, rotate, sink)
+            top.connect(byte_source, unpack, nrz, shaper, modulator, scale, rotate, sink)
             self._tx_sink = sink
 
         top.start()

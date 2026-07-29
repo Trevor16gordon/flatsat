@@ -61,7 +61,13 @@ def payload_for(index: int, size: int) -> bytes:
     return (head + bytes(range(256)) * 4)[:size]
 
 
-def analyse(bits: np.ndarray, frames: int, payload_len: int, baud: float, gap: float) -> None:
+def analyse(
+    bits: np.ndarray,
+    frames: int,
+    payload_len: int,
+    baud: float,
+    sent_at: dict[int, float],
+) -> None:
     """Report what the captured bitstream actually contains.
 
     Args:
@@ -69,7 +75,10 @@ def analyse(bits: np.ndarray, frames: int, payload_len: int, baud: float, gap: f
         frames: How many frames were transmitted.
         payload_len: Payload bytes per frame.
         baud: Symbol rate, for turning bit offsets into arrival times.
-        gap: Seconds between sends, for turning an index into a send time.
+        sent_at: MEASURED send time of each frame, seconds since the
+            capture began. Deriving this from index*gap instead silently
+            adds the warmup to every latency — which is exactly how a
+            0.55 s pipeline was once reported as 1.65 s.
     """
     pattern = np.asarray(_sync_bits("1acffc1d"), dtype=np.int8) * 2 - 1
     correlation = np.correlate(bits.astype(np.int8) * 2 - 1, pattern, mode="valid")
@@ -128,7 +137,14 @@ def analyse(bits: np.ndarray, frames: int, payload_len: int, baud: float, gap: f
         print("-" * 72)
         print("  index  arrival_s  send_s  latency_s")
         for i in order[:3] + order[len(order) // 2 : len(order) // 2 + 2] + order[-3:]:
-            print(f"  {i:5d}  {arrival[i]:9.3f}  {i * gap:6.3f}  {arrival[i] - i * gap:9.3f}")
+            if i in sent_at:
+                print(
+                    f"  {i:5d}  {arrival[i]:9.3f}  {sent_at[i]:6.3f}  "
+                    f"{arrival[i] - sent_at[i]:9.3f}"
+                )
+        span = [arrival[i] - sent_at[i] for i in order if i in sent_at]
+        if span:
+            print(f"  pipeline latency : {min(span):.3f}..{max(span):.3f} s")
     print("-" * 72)
 
 
@@ -188,17 +204,22 @@ def main() -> int:
             captured.extend(modem._rx_bits)  # noqa: SLF001
             modem._rx_bits.clear()  # noqa: SLF001
 
+    sent_at: dict[int, float] = {}
     try:
         modem.receive()  # opens the radio (and starts the carrier)
         if modem.start_error:
             eprint(f"FAIL: could not open the radio: {modem.start_error}")
             return 2
-        deadline = time.monotonic() + args.warmup
+        # Time zero is the first harvest: the capture and the clock must
+        # share an origin or every latency is offset by the warmup.
+        capture_start = time.monotonic()
+        deadline = capture_start + args.warmup
         while time.monotonic() < deadline:
             harvest()
             time.sleep(0.05)
 
         for index in range(args.frames):
+            sent_at[index] = time.monotonic() - capture_start
             modem.send(framer.frame(payload_for(index, args.payload)))
             time.sleep(args.gap)
             harvest()
@@ -222,7 +243,7 @@ def main() -> int:
         args.frames,
         args.payload,
         args.rate / 8.0,
-        args.gap,
+        sent_at,
     )
     print(f"  (a frame is {len(PREAMBLE) + 4 + 2 + args.payload + 4} bytes on the wire)")
     return 0
