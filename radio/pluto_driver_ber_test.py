@@ -23,13 +23,19 @@ What it verifies:
 RF SAFETY (PLAN §2, FSW-RADIO-001/002):
   * refuses to run without ``--transmit``;
   * cabled path with pads inline only — never an antenna;
-  * TX attenuation defaults high, and the transmitter is silenced on
-    EVERY exit path including exceptions, because the Pluto's DMA can
-    replay a stale buffer after a flowgraph stops.
+  * levels default to the 2026-07-23 measured point — amplitude 0.5 at
+    20 dB attenuation, about -19 dBm at the TX port and -49 dBm at RX
+    through the pads. Safety here comes from the 30 dB of pads, whose
+    worst-case budget is derived in pluto_tx_loopback_test.py, NOT from
+    turning the transmitter down: a receiver in the noise fails the test
+    without being any safer.
+  * the transmitter is silenced on EVERY exit path including exceptions,
+    because the Pluto's DMA can replay a stale buffer after a flowgraph
+    stops.
 
 Usage (from the repo root, after Trevor's per-instance go-ahead):
   ~/venvs/flatsat-ml/bin/python radio/pluto_driver_ber_test.py --transmit
-  ... --frames 200 --tx-atten 50      # stronger signal, still padded
+  ... --frames 200 --tx-atten 30      # quieter, still well above the noise
 """
 
 from __future__ import annotations
@@ -102,7 +108,8 @@ def main() -> int:
     # freshly invented "safe-looking" numbers: changing two link
     # parameters at once is how a working configuration gets lost.
     parser.add_argument("--rate", type=float, default=2.084e6, help="sample rate [Sa/s]")
-    parser.add_argument("--tx-atten", type=float, default=60.0, help="TX attenuation [dB]")
+    parser.add_argument("--tx-atten", type=float, default=20.0, help="TX attenuation [dB]")
+    parser.add_argument("--amplitude", type=float, default=0.5, help="baseband amplitude, 0..1")
     parser.add_argument("--rx-gain", type=float, default=30.0, help="RX manual gain [dB]")
     parser.add_argument("--frames", type=int, default=100, help="frames to transmit")
     parser.add_argument("--payload", type=int, default=64, help="payload bytes per frame")
@@ -133,6 +140,7 @@ def main() -> int:
         sample_rate_hz=args.rate,
         tx_attenuation_db=args.tx_atten,
         rx_gain_db=args.rx_gain,
+        amplitude=args.amplitude,
         transmit_ack=True,  # the acknowledgement --transmit stands for
     )
     framer = CcsdsFramer()

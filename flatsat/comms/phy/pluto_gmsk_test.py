@@ -175,6 +175,20 @@ def test_send_pushes_back_instead_of_queueing_without_limit() -> None:
     assert modem.send(b"frame") & hal_pb2.VALIDITY_FLAG_COMM
 
 
+def test_default_link_budget_matches_the_measured_bench_point() -> None:
+    """The transmit levels are measured, not chosen — pin them.
+
+    A run with defaults 44 dB below this produced bits at the right rate
+    and zero sync correlations (2026-07-29). Nothing in the type system
+    distinguishes a safe-looking number from a working one, so this test
+    does: change these only with a bench measurement in hand.
+    """
+    modem = _modem(transmit_ack=True)
+    assert modem._amplitude == 0.5  # noqa: SLF001
+    assert modem._tx_attenuation_db == 20.0  # noqa: SLF001
+    assert "tx_atten=20 dB" in " ".join(modem.describe())
+
+
 # -------------------------------------------------- bit synchronization --
 
 

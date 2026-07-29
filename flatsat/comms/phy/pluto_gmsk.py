@@ -85,6 +85,11 @@ PREAMBLE = (
     bytes([0x55]) * 16
 )  # alternating bits: gives the demod's clock recovery something to lock
 IDLE_BYTE = 0x55  # keeps the modulator running between frames
+# Byte -> its low bit, as a translation table. The receive path masks
+# ~260 kB/s, and a Python-level generator over that holds the GIL long
+# enough to starve the transmit feeder into underruns; bytes.translate
+# does the same work in C.
+_LOW_BIT = bytes(i & 1 for i in range(256))
 _MAX_SYNC_BIT_ERRORS = 2
 _RX_BIT_BUFFER_LIMIT = 1 << 22  # ~4 Mbit: bound memory if nothing ever syncs
 # Idle written per feeder pass. This is the latency grain: a frame queued
@@ -97,7 +102,19 @@ _IDLE_CHUNK_BYTES = 256
 _TX_PIPE_BYTES = 4096
 _TX_QUEUE_LIMIT = 64  # frames awaiting the modulator before send() pushes back
 _GMSK_BT = 0.35  # Gaussian bandwidth-time product; the bench's measured value
-_TX_BACKOFF = 0.3  # modulator output scaling: headroom against DAC clipping
+# LINK BUDGET — these two are MEASURED, not chosen. Together with 30 dB of
+# cabled pads they are the 2026-07-23 operating point that produced BER 0.00:
+# amplitude 0.5 at 20 dB attenuation is about -19 dBm at the TX port and
+# -49 dBm at RX, which the pad budget in radio/pluto_tx_loopback_test.py
+# derives as worst-case safe.
+#
+# Do not "harden" these by raising attenuation. A first attempt at defaults
+# used 0.3/60 dB on the theory that quieter is safer; that is 44 dB below
+# the proven point, and it put the receiver in the noise -- bits demodulated
+# at the correct rate, zero sync correlations, a whole bench session lost.
+# Pad safety comes from the 30 dB of pads, not from starving the modulator.
+_TX_BACKOFF = 0.5
+_DEFAULT_TX_ATTEN_DB = 20.0
 
 
 def _sync_bits(sync_hex: str) -> list[int]:
@@ -124,7 +141,7 @@ class PlutoGmskModem(Modem):
         sample_rate_hz: float,
         offset_hz: float = DEFAULT_OFFSET_HZ,
         samples_per_symbol: int = DEFAULT_SPS,
-        tx_attenuation_db: float = 60.0,
+        tx_attenuation_db: float = _DEFAULT_TX_ATTEN_DB,
         rx_gain_db: float = 40.0,
         amplitude: float = _TX_BACKOFF,
         sync_hex: str = DEFAULT_SYNC_HEX,
@@ -212,7 +229,9 @@ class PlutoGmskModem(Modem):
                 else DEFAULT_SPS
             ),
             tx_attenuation_db=(
-                float(options.tx_attenuation_db) if options.HasField("tx_attenuation_db") else 60.0
+                float(options.tx_attenuation_db)
+                if options.HasField("tx_attenuation_db")
+                else _DEFAULT_TX_ATTEN_DB
             ),
             transmit_ack=options.transmit_ack,
         )
@@ -572,7 +591,7 @@ class PlutoGmskModem(Modem):
                 # The binary slicer already emits 0x00/0x01; masking to
                 # the low bit costs nothing and keeps the correlator's
                 # +/-1 mapping correct if a block ever emits 0xFF.
-                self._rx_bits.extend(bytes(byte & 1 for byte in block))
+                self._rx_bits.extend(block.translate(_LOW_BIT))
                 if len(self._rx_bits) > _RX_BIT_BUFFER_LIMIT:
                     del self._rx_bits[: len(self._rx_bits) - _RX_BIT_BUFFER_LIMIT]
 
