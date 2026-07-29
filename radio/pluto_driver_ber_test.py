@@ -41,7 +41,9 @@ Usage (from the repo root, after Trevor's per-instance go-ahead):
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -60,6 +62,54 @@ def eprint(*args: object) -> None:
         args: Values to print.
     """
     print(*args, file=sys.stderr, flush=True)
+
+
+class DmaWatch:
+    """Capture GNU Radio's underrun/overflow characters and count them.
+
+    gr-iio reports DMA trouble by writing bare ``U`` (transmit underrun)
+    and ``O`` (receive overflow) characters to file descriptor 1 from
+    C++. They cannot be intercepted with ``contextlib.redirect_stdout``,
+    which only rebinds Python's ``sys.stdout`` — so this redirects the
+    descriptor itself and counts what lands there.
+
+    While the descriptor is captured, everything this script prints must
+    go to stderr, or it ends up in the capture and pollutes the count.
+    """
+
+    def __enter__(self) -> DmaWatch:
+        """Redirect fd 1 to a temporary file.
+
+        Returns:
+            This watch.
+        """
+        self.raw = ""
+        self._tmp = tempfile.TemporaryFile()
+        self._saved_fd = os.dup(1)
+        os.dup2(self._tmp.fileno(), 1)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Restore fd 1 and read back what was captured.
+
+        Args:
+            exc: Exception triple, unused; restoration happens regardless.
+        """
+        os.dup2(self._saved_fd, 1)
+        os.close(self._saved_fd)
+        self._tmp.seek(0)
+        self.raw = self._tmp.read().decode("utf-8", "replace")
+        self._tmp.close()
+
+    @property
+    def underruns(self) -> int:
+        """Transmit underruns: the modulator was starved of samples."""
+        return self.raw.count("U")
+
+    @property
+    def overflows(self) -> int:
+        """Receive overflows: samples arrived faster than they were consumed."""
+        return self.raw.count("O")
 
 
 def payload_for(index: int, size: int) -> bytes:
@@ -149,45 +199,53 @@ def main() -> int:
 
     sent: dict[bytes, int] = {}
     recovered: list[bytes] = []
-    try:
-        # Opening RX first lets the receiver settle before anything radiates.
-        modem.receive()
-        if modem.start_error:
-            eprint(f"FAIL: could not open the radio: {modem.start_error}")
-            return 2
-        print("[ok] radio open; carrier up (idle fill)", flush=True)
-
-        # Let the idle carrier run before the first frame: the
-        # demodulator's clock recovery locks on 0x55's transitions, and
-        # a frame sent into an unlocked receiver is simply wasted.
-        deadline = time.monotonic() + args.warmup
-        while time.monotonic() < deadline:
+    # fd 1 is captured for the whole radio session, so every progress
+    # line below goes to stderr instead — see DmaWatch.
+    with DmaWatch() as dma:
+        try:
+            # Opening RX first lets the receiver settle before anything radiates.
             modem.receive()
-            time.sleep(0.05)
-        print(f"[ok] warm; transmitting {args.frames} frames", flush=True)
+            if modem.start_error:
+                eprint(f"FAIL: could not open the radio: {modem.start_error}")
+                return 2
+            eprint("[ok] radio open; carrier up (idle fill)")
 
-        for index in range(args.frames):
-            payload = payload_for(index, args.payload)
-            sent[payload] = index
-            flags = modem.send(framer.frame(payload))
-            if flags:
-                eprint(f"WARN: send flagged 0x{flags:x} on frame {index}")
-            time.sleep(args.gap)
-            recovered.extend(_drain(modem, framer))
+            # Let the idle carrier run before the first frame: the
+            # demodulator's clock recovery locks on 0x55's transitions, and
+            # a frame sent into an unlocked receiver is simply wasted.
+            deadline = time.monotonic() + args.warmup
+            while time.monotonic() < deadline:
+                modem.receive()
+                time.sleep(0.05)
+            eprint(f"[ok] warm; transmitting {args.frames} frames")
 
-        print(f"[ok] transmit complete; draining for {args.settle:g} s", flush=True)
-        deadline = time.monotonic() + args.settle
-        while time.monotonic() < deadline:
-            recovered.extend(_drain(modem, framer))
-            time.sleep(0.1)
-    finally:
-        modem.close()  # silences TX on every path, including exceptions
-        print("[ok] transmitter silenced, radio released", flush=True)
+            for index in range(args.frames):
+                payload = payload_for(index, args.payload)
+                sent[payload] = index
+                flags = modem.send(framer.frame(payload))
+                if flags:
+                    eprint(f"WARN: send flagged 0x{flags:x} on frame {index}")
+                time.sleep(args.gap)
+                recovered.extend(_drain(modem, framer))
+
+            eprint(f"[ok] transmit complete; draining for {args.settle:g} s")
+            deadline = time.monotonic() + args.settle
+            while time.monotonic() < deadline:
+                recovered.extend(_drain(modem, framer))
+                time.sleep(0.1)
+        finally:
+            modem.close()  # silences TX on every path, including exceptions
+            eprint("[ok] transmitter silenced, radio released")
 
     print("-" * 72)
     print(f"  bits demodulated : {modem.rx_bits_demodulated}")
     print(f"  sync detections  : {modem.sync_detections}")
+    print(f"  resyncs          : {modem.resyncs} (demodulator phase slips)")
     print(f"  sends dropped    : {modem.dropped_sends} (transmit queue full)")
+    # The decisive numbers for burst loss: a frame either arrives clean or
+    # does not arrive, and these say which side dropped it.
+    print(f"  TX underruns (U) : {dma.underruns}")
+    print(f"  RX overflows (O) : {dma.overflows}")
 
     if not recovered:
         # Say which failure this is. The three have different fixes and
