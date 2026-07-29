@@ -170,7 +170,13 @@ def main() -> int:
         default=1.0,
         help="seconds of idle carrier before the first frame, to let clock recovery lock",
     )
-    parser.add_argument("--settle", type=float, default=2.0, help="seconds to drain at the end")
+    # The transmit pipeline holds ~1.5 s of audio-rate buffering, so a
+    # short drain reports frames as lost that were merely still in
+    # flight. A 2 s default made three consecutive runs look like 65%
+    # frame loss when nothing was being lost at all.
+    parser.add_argument(
+        "--settle", type=float, default=6.0, help="seconds to drain at the end (>= pipeline depth)"
+    )
     args = parser.parse_args()
 
     if not args.transmit:
@@ -240,7 +246,6 @@ def main() -> int:
     print("-" * 72)
     print(f"  bits demodulated : {modem.rx_bits_demodulated}")
     print(f"  sync detections  : {modem.sync_detections}")
-    print(f"  resyncs          : {modem.resyncs} (demodulator phase slips)")
     print(f"  sends dropped    : {modem.dropped_sends} (transmit queue full)")
     # The decisive numbers for burst loss: a frame either arrives clean or
     # does not arrive, and these say which side dropped it.

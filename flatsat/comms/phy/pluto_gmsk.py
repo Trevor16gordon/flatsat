@@ -25,11 +25,25 @@ Three design points, each learned the hard way:
     rate, so the feeder is paced by the radio rather than by a clock.
     Consequently an *open* transmit chain radiates continuously —
     going quiet is ``silence_tx()``/``close()``, not idleness.
-  * **Frame synchronization is a PHY function.** GMSK demodulation
-    yields a bit stream with arbitrary phase, so this driver hunts the
-    attached sync marker at BIT level and emits BYTE-ALIGNED blocks from
-    that offset. The framer above then does length and CRC as usual —
-    identical framing over any PHY, which is the point of the layering.
+  * **Frame synchronization is a PHY function, and it is PER FRAME.**
+    GMSK demodulation yields a bit stream whose byte phase is not fixed
+    and does not stay put: over one 100-frame hardware run, markers
+    landed on all eight residues mod 8. Clock recovery tracks symbols,
+    not bytes, so the phase walks. This driver therefore correlates the
+    attached sync marker at BIT level and starts a new BYTE-ALIGNED
+    block at EVERY marker — the standard packet-radio arrangement. An
+    earlier design acquired alignment once and tracked it, which is
+    correct only if the phase holds; it did not, and that cost 3-10% of
+    frames per run. The framer above then does length and CRC as usual.
+  * **Buffering is latency, and latency looks exactly like loss.** GNU
+    Radio sizes inter-block buffers in ITEMS, and the item entering the
+    modulator is a PACKED byte worth 8 symbols, so a stock ~32 KiB
+    buffer is a full SECOND of air. Measured end to end, send() to
+    demodulator, this pipeline ran 3.5 s deep — and a bench script that
+    drained for 2 s duly reported that two thirds of its frames had been
+    lost, when every one of them was still in flight. The transmit
+    blocks are capped with set_max_output_buffer to bound this; anything
+    measuring this link must drain for longer than the pipeline is deep.
 
 RF SAFETY, structurally enforced:
   * ``send()`` refuses and returns a COMM flag unless the configuration
@@ -101,6 +115,21 @@ _IDLE_CHUNK_BYTES = 256
 # floor) and ~130 ms of air at 250 kbit/s.
 _TX_PIPE_BYTES = 4096
 _TX_QUEUE_LIMIT = 64  # frames awaiting the modulator before send() pushes back
+# Largest frame this PHY will wait for before deciding a block is whole
+# — an MTU, the same parameter every real PHY carries. It must not be
+# smaller than the framer's largest frame above (payload + 10 bytes of
+# sync, length and CRC), or a big frame is released truncated and lost.
+DEFAULT_MAX_FRAME_BYTES = 4096 + 16
+# Packed bytes GNU Radio may hold between the pipe and the modulator.
+# One byte is 8 symbols, so this is ~31 ms of air at 250 kbit/s; the
+# stock buffer is ~32 KiB, which is a full second.
+_TX_MAX_BYTES_IN_FLIGHT = 1024
+_TX_MAX_SAMPLES_IN_FLIGHT = 1 << 16  # complex samples, ~31 ms at 2.084 MSa/s
+# libiio transmit buffer. Shrinking this to 1<<14 bought only 0.1 s of
+# the 1.5 s pipeline and cost 3 underruns in a 9 s run — the DMA is the
+# one buffer that genuinely needs slack, because nothing downstream of
+# it can wait. Latency is bought upstream instead, where it is free.
+_TX_DMA_SAMPLES = 1 << 16
 _GMSK_BT = 0.35  # Gaussian bandwidth-time product; the bench's measured value
 # LINK BUDGET — these two are MEASURED, not chosen. Together with 30 dB of
 # cabled pads they are the 2026-07-23 operating point that produced BER 0.00:
@@ -146,6 +175,7 @@ class PlutoGmskModem(Modem):
         amplitude: float = _TX_BACKOFF,
         sync_hex: str = DEFAULT_SYNC_HEX,
         transmit_ack: bool = False,
+        max_frame_bytes: int = DEFAULT_MAX_FRAME_BYTES,
     ) -> None:
         """Configure the radio without opening it.
 
@@ -163,6 +193,8 @@ class PlutoGmskModem(Modem):
                 match the framer's marker above.
             transmit_ack: Explicit permission to radiate. False means
                 receive-only: the TX chain is never even built.
+            max_frame_bytes: Largest frame to wait for before releasing a
+                block; must be at least the framer's maximum frame.
         """
         self._name = name
         self._uri = uri
@@ -176,6 +208,7 @@ class PlutoGmskModem(Modem):
         self._sync_bits = _sync_bits(sync_hex)
         self._sync_hex = sync_hex
         self._transmit_ack = transmit_ack
+        self._max_frame_bits = max_frame_bytes * 8
 
         self._tx_lock = threading.Lock()
         self._tx_queue: deque[bytes] = deque()
@@ -194,8 +227,7 @@ class PlutoGmskModem(Modem):
         self._dropped_sends = 0
         self._rx_bits_seen = 0
         self._sync_detections = 0
-        self._locked = False  # byte alignment acquired; see _recover_blocks
-        self._resyncs = 0
+        self._frames_fed = 0  # frames actually handed to the modulator
 
     @classmethod
     def from_config(
@@ -277,9 +309,14 @@ class PlutoGmskModem(Modem):
         return self._sync_detections
 
     @property
-    def resyncs(self) -> int:
-        """Times byte alignment was re-acquired after a demodulator slip."""
-        return self._resyncs
+    def frames_transmitted(self) -> int:
+        """Frames the feeder actually wrote toward the modulator.
+
+        Counted at the last point before the samples leave Python, so a
+        gap between this and the frames offered to send() localises loss
+        to the queue rather than to the air.
+        """
+        return self._frames_fed
 
     def _build(self) -> Any:  # noqa: ANN401 — an opaque GNU Radio top_block
         """Construct the flowgraph: RX always, TX only when acknowledged.
@@ -341,15 +378,32 @@ class PlutoGmskModem(Modem):
             # an empty pipe rather than idling, which is exactly why the
             # feeder thread below must never let the pipe run dry.
             byte_source = blocks.file_descriptor_source(gr.sizeof_char, tx_read)
+            # Latency, not throughput, is what needs bounding here.
+            # GNU Radio sizes inter-block buffers in ITEMS, and the item
+            # at this point is a PACKED byte worth 8 symbols — so the
+            # stock ~32 KiB buffer is a full SECOND of air time. Measured
+            # end to end before this cap: 3.5 s from send() to the
+            # demodulator, which made the bench look like it was losing
+            # every frame sent in the last 3.5 s of a run.
+            #
+            # set_max_output_buffer is the standard mechanism and must be
+            # called before the flowgraph starts.
+            byte_source.set_max_output_buffer(_TX_MAX_BYTES_IN_FLIGHT)
             modulator = digital.gmsk_mod(samples_per_symbol=self._sps, bt=_GMSK_BT)
             scale = blocks.multiply_const_cc(self._amplitude)
             rotate = blocks.rotator_cc(2.0 * math.pi * self._offset_hz / self._sample_rate_hz)
+            # Same reasoning downstream, in complex samples this time:
+            # 65536 samples is ~31 ms, matching the byte stage above so
+            # neither end dominates.
+            for block in (scale, rotate):
+                block.set_max_output_buffer(_TX_MAX_SAMPLES_IN_FLIGHT)
             # 64 Ki-sample DMA buffer, twice the receive side's: the
             # transmitter has no way to ask for more time, so depth here
             # is the only cushion against a late feeder. The trailing
             # False is cyclic mode — which must stay off, since cyclic
             # would replay the last buffer forever after we stop.
-            sink = iio.fmcomms2_sink_fc32(self._uri, [True, True], 0x10000, False)
+            modulator.set_max_output_buffer(_TX_MAX_SAMPLES_IN_FLIGHT)
+            sink = iio.fmcomms2_sink_fc32(self._uri, [True, True], _TX_DMA_SAMPLES, False)
             sink.set_len_tag_key("")
             sink.set_frequency(int(self._center_freq_hz))
             sink.set_samplerate(int(self._sample_rate_hz))
@@ -439,7 +493,10 @@ class PlutoGmskModem(Modem):
         idle = bytes([IDLE_BYTE]) * _IDLE_CHUNK_BYTES
         while self._tx_running:
             with self._tx_lock:
-                chunk = self._tx_queue.popleft() if self._tx_queue else idle
+                queued = bool(self._tx_queue)
+                chunk = self._tx_queue.popleft() if queued else idle
+                if queued:
+                    self._frames_fed += 1
             # The write is OUTSIDE the lock, and must stay there: it
             # blocks until the modulator makes room, so holding the lock
             # across it would stall every send() for a pipe depth. The
@@ -467,34 +524,35 @@ class PlutoGmskModem(Modem):
             return []
 
     def _recover_blocks(self) -> list[bytes]:
-        """Hunt the sync marker at bit level and pack byte-aligned blocks.
+        """Extract one byte-aligned block per sync marker found.
 
-        GMSK demodulation gives a bit stream of arbitrary phase, so byte
-        alignment must be re-established from the marker before the
-        framer (which works in bytes) can see anything.
+        GMSK demodulation gives a bit stream whose byte phase is not
+        fixed: measured over a 100-frame run, markers landed on all
+        eight residues mod 8 (18/5/6/19/0/8/31/11). Clock recovery has
+        no notion of byte framing, so the phase walks. Establishing
+        alignment once and tracking it therefore cannot work here, and
+        the attempt cost 3-10% of frames per run.
 
-        Despite the list return type this yields AT MOST ONE block, and
-        that block runs from the first marker to the end of the buffer —
-        so several frames commonly ride inside it. That is intentional:
-        once byte alignment is established every following frame shares
-        it, and the framer above already scans for markers and resyncs.
-        Splitting frames here would duplicate the framer badly, and would
-        make this PHY assume a framing it is not supposed to know. The
-        list stays because the interface must also serve PHYs that
-        genuinely recover discrete bursts.
+        So each marker is treated on its own terms — the standard packet
+        radio arrangement, where the access code is correlated per
+        packet. Every hit begins a block, and a block ends where the
+        next one begins, so no bits are handed to the framer twice.
+
+        The final hit in a window is held back rather than emitted: its
+        frame may still be arriving, and a truncated block would make
+        the framer discard a frame that was merely incomplete. It is
+        released once a full ``max_frame_bytes`` of following data
+        exists, which bounds the wait without the PHY having to parse a
+        length field it should not know about.
 
         Returns:
-            A single byte block starting at a recovered sync marker, or
-            an empty list if nothing locked.
+            One block per complete marker found, in wire order.
         """
         import numpy as np
 
         with self._rx_lock:
             if len(self._rx_bits) < len(self._sync_bits) + 8:
                 return []
-            # Take the buffer and release the lock: the collector thread
-            # keeps appending while we correlate, and whatever we could
-            # not consume is prepended back at the end.
             keep = np.frombuffer(bytes(self._rx_bits), dtype=np.uint8)
             self._rx_bits = bytearray()
 
@@ -510,72 +568,44 @@ class PlutoGmskModem(Modem):
         # budget — the usual off-by-a-factor-of-two trap in this idiom.
         threshold = len(self._sync_bits) - 2 * _MAX_SYNC_BIT_ERRORS
         hits = np.flatnonzero(correlation >= threshold)
-        self._sync_detections += int(hits.size)
-
-        # ACQUIRE once, then TRACK. The retained partial byte below keeps
-        # this call in phase with the last, so once alignment is known it
-        # stays known and every subsequent call simply packs and emits.
-        #
-        # Re-hunting the marker on every call instead is what cost 32% of
-        # frames on 2026-07-29: a frame whose marker landed near the end
-        # of one call's buffer was emitted as a few bytes, and the
-        # CONTINUATION arriving next call contained no marker of its own,
-        # so it was discarded — the framer's partial frame could never
-        # complete. Byte alignment is a property of the stream, not of
-        # whatever slice of it one call happened to see.
-        realigned = False
-        if self._locked:
-            start = 0
-            # While locked, markers must land on byte boundaries. If some
-            # correlated and NONE are aligned, the demodulator slipped:
-            # re-acquire on the new phase rather than emit garbage.
-            if hits.size and not bool(np.any(hits % 8 == 0)):
-                start = int(hits[0])
-                realigned = True
-                self._resyncs += 1
-        elif hits.size == 0:
-            # Never locked and nothing found: keep a marker-length tail so
-            # an ASM straddling this read is still findable, drop the rest.
+        if hits.size == 0:
+            # Nothing here. Retain a marker-length tail so an ASM
+            # straddling this read is still findable, and drop the rest:
+            # unsynchronised bits are idle fill, not data.
             with self._rx_lock:
                 tail = keep[-(len(self._sync_bits) - 1) :] if keep.size else keep
                 self._rx_bits = bytearray(tail.tobytes()) + self._rx_bits
             return []
-        else:
-            start = int(hits[0])
-            realigned = True
-            self._locked = True
+        self._sync_detections += int(hits.size)
 
-        usable = keep[start:]
-        whole_bytes = (usable.size // 8) * 8
-        if whole_bytes == 0:
-            with self._rx_lock:
-                self._rx_bits = bytearray(usable.tobytes()) + self._rx_bits
-            return []
-        packed = np.packbits(usable[:whole_bytes])
-        # Correlation has DECIDED this is the marker, so hand the framer
-        # a nominal one: a bit error inside the ASM is a synchronization
-        # detail, not payload. The CRC below still judges the frame, so a
-        # noise pattern that merely correlated is rejected there.
-        #
-        # Only the FIRST marker is repaired, since only the first was
-        # correlated. Later frames inside this block need intact markers
-        # of their own for the framer to find them — an acceptable
-        # asymmetry, because a channel corrupting markers that often is
-        # failing the CRC anyway.
-        #
-        # Gated on `realigned`: only a block that BEGINS at a correlation
-        # hit begins with a marker. While tracking, the block starts
-        # wherever the stream happens to be, and stamping a marker over
-        # its first four bytes would corrupt payload.
         marker = np.frombuffer(bytes.fromhex(self._sync_hex), dtype=np.uint8)
-        if realigned and packed.size >= marker.size:
-            packed = packed.copy()
-            packed[: marker.size] = marker
+        recovered: list[bytes] = []
+        held = keep.size  # where the retained tail begins
+        for position, hit in enumerate(hits):
+            start = int(hit)
+            following = int(hits[position + 1]) if position + 1 < hits.size else keep.size
+            if position + 1 == hits.size and keep.size - start < self._max_frame_bits:
+                held = start  # frame may still be arriving; wait for it
+                break
+            segment = keep[start:following]
+            whole_bytes = (segment.size // 8) * 8
+            if whole_bytes == 0:
+                held = start
+                break
+            packed = np.packbits(segment[:whole_bytes])
+            # Correlation has DECIDED this is the marker, so hand the
+            # framer a nominal one: a bit error inside the ASM is a
+            # synchronization detail, not payload. The CRC still judges
+            # the frame, so a noise pattern that merely correlated is
+            # rejected there.
+            if packed.size >= marker.size:
+                packed[: marker.size] = marker
+            recovered.append(packed.tobytes())
+            held = following
+
         with self._rx_lock:
-            # Retain the trailing partial byte so the next call continues
-            # in phase with this burst.
-            self._rx_bits = bytearray(usable[whole_bytes:].tobytes()) + self._rx_bits
-        return [packed.tobytes()]
+            self._rx_bits = bytearray(keep[held:].tobytes()) + self._rx_bits
+        return recovered
 
     def _make_pipe(self, size_bytes: int = 1 << 20) -> tuple[int, int]:
         """Create a pipe for the sample path and remember both ends.
@@ -701,9 +731,6 @@ class PlutoGmskModem(Modem):
         self._rx_read_fd = None
         self._flowgraph = None
         self._tx_sink = None
-        # A future flowgraph starts at an unrelated bit phase, so the
-        # alignment learned by this one does not survive the radio.
-        self._locked = False
 
     def _close_tx_read(self) -> None:
         """Close the transmit pipe's read end, if it is still open."""

@@ -30,7 +30,15 @@ def _options(transmit_ack: bool = False) -> comms_config_pb2.PlutoGmskModemOptio
 
 
 def _modem(transmit_ack: bool = False) -> PlutoGmskModem:
-    return PlutoGmskModem.from_config("radio0", _options(transmit_ack))
+    modem = PlutoGmskModem.from_config("radio0", _options(transmit_ack))
+    # The real link runs a continuous carrier, so a frame is always
+    # followed by more data. Tests feed finite buffers, so shrink the
+    # MTU the PHY waits for and let TRAILING_IDLE stand in for the rest.
+    modem._max_frame_bits = 64 * 8  # noqa: SLF001
+    return modem
+
+
+TRAILING_IDLE = bytes([IDLE_BYTE]) * 80  # what the carrier sends between frames
 
 
 def _feed_bits(modem: PlutoGmskModem, data: bytes, phase: int) -> None:
@@ -199,7 +207,7 @@ def test_byte_alignment_is_recovered_at_any_bit_phase(phase: int) -> None:
     modem = _modem()
     framer = CcsdsFramer()
     frame = framer.frame(b"telemetry payload")
-    _feed_bits(modem, PREAMBLE + frame + bytes(4), phase)
+    _feed_bits(modem, PREAMBLE + frame + TRAILING_IDLE, phase)
 
     blocks = modem._recover_blocks()  # noqa: SLF001
     assert blocks, f"no lock at bit phase {phase}"
@@ -211,7 +219,7 @@ def test_sync_tolerates_a_bit_error_in_the_marker() -> None:
     """A channel that flips a marker bit must not cost the whole frame."""
     modem = _modem()
     framer = CcsdsFramer()
-    frame = bytearray(framer.frame(b"payload through noise"))
+    frame = bytearray(framer.frame(b"payload through noise") + TRAILING_IDLE)
     bits = np.unpackbits(np.frombuffer(bytes(frame), dtype=np.uint8))
     bits[2] ^= 1  # one bit error inside the sync marker itself
     modem._rx_bits.extend(np.concatenate([np.zeros(5, np.uint8), bits]).tobytes())  # noqa: SLF001
@@ -233,7 +241,7 @@ def test_frame_straddling_two_reads_is_not_lost() -> None:
     modem = _modem()
     framer = CcsdsFramer()
     first = framer.frame(b"first payload")
-    stream = PREAMBLE + first + framer.frame(b"second payload")
+    stream = PREAMBLE + first + framer.frame(b"second payload") + TRAILING_IDLE
     bits = np.unpackbits(np.frombuffer(stream, dtype=np.uint8))
     # Cut 60 bits into the second frame: past its marker, mid-payload, so
     # the second chunk contains no marker of its own at all.
@@ -248,22 +256,51 @@ def test_frame_straddling_two_reads_is_not_lost() -> None:
 
 
 @pytest.mark.verifies("FSW-LINK-008")
-def test_tracking_does_not_stamp_a_marker_over_payload() -> None:
-    """Marker repair applies to an acquired block only, never mid-stream.
+def test_each_frame_is_delivered_exactly_once() -> None:
+    """Per-marker extraction must not hand the framer the same bits twice.
 
-    A tracking block starts wherever the stream happens to be. Stamping
-    the nominal ASM over its first four bytes — correct when the block
-    begins at a correlation hit — would silently corrupt payload.
+    Every block begins at a marker and ends where the next begins. If
+    blocks overlapped instead, a frame inside two of them would be
+    deframed twice and the link above would see a phantom duplicate.
     """
     modem = _modem()
     framer = CcsdsFramer()
-    bits = np.unpackbits(np.frombuffer(PREAMBLE + framer.frame(b"x" * 40), dtype=np.uint8))
-    modem._rx_bits.extend(bits[:200].tobytes())  # noqa: SLF001
-    assert modem._recover_blocks(), "expected to acquire on the marker"  # noqa: SLF001
+    stream = PREAMBLE
+    for n in range(4):
+        stream += framer.frame(f"payload {n}".encode()) + bytes([IDLE_BYTE]) * 8
+    _feed_bits(modem, stream + TRAILING_IDLE, phase=3)
 
-    modem._rx_bits.extend(bits[200:].tobytes())  # noqa: SLF001
-    blocks = modem._recover_blocks()  # noqa: SLF001
-    assert blocks and not blocks[0].startswith(bytes.fromhex("1acffc1d"))
+    payloads: list[bytes] = []
+    for block in modem._recover_blocks():  # noqa: SLF001
+        payloads.extend(framer.feed(block))
+    assert payloads == [f"payload {n}".encode() for n in range(4)]
+
+
+@pytest.mark.verifies("FSW-LINK-008")
+def test_each_marker_starts_its_own_block_at_its_own_phase() -> None:
+    """Frames arriving at DIFFERENT byte phases must both be recovered.
+
+    Measured on hardware, the demodulator's byte phase walks across all
+    eight residues within a single run, so consecutive frames genuinely
+    do not share an alignment. A receiver that establishes alignment
+    once and tracks it loses every frame that arrives at a new phase.
+    """
+    modem = _modem()
+    framer = CcsdsFramer()
+    first = np.unpackbits(np.frombuffer(PREAMBLE + framer.frame(b"phase A"), dtype=np.uint8))
+    second = np.unpackbits(
+        np.frombuffer(PREAMBLE + framer.frame(b"phase B") + TRAILING_IDLE, dtype=np.uint8)
+    )
+    # Three stray bits between them shift the second frame off the byte
+    # grid the first established — exactly what a symbol slip does.
+    modem._rx_bits.extend(  # noqa: SLF001
+        np.concatenate([first, np.zeros(3, np.uint8), second]).tobytes()
+    )
+
+    payloads: list[bytes] = []
+    for block in modem._recover_blocks():  # noqa: SLF001
+        payloads.extend(framer.feed(block))
+    assert payloads == [b"phase A", b"phase B"]
 
 
 def test_noise_without_a_marker_yields_nothing() -> None:
