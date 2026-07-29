@@ -221,6 +221,51 @@ def test_sync_tolerates_a_bit_error_in_the_marker() -> None:
     assert framer.feed(blocks[0]) == [b"payload through noise"]
 
 
+@pytest.mark.verifies("FSW-LINK-008")
+def test_frame_straddling_two_reads_is_not_lost() -> None:
+    """Byte alignment must survive a read boundary.
+
+    Frames do not arrive aligned to receive() calls, so a frame whose
+    marker lands in one read and whose payload finishes in the next must
+    still be recovered. Re-hunting the marker per call instead discards
+    the continuation and cost 32% of frames on hardware (2026-07-29).
+    """
+    modem = _modem()
+    framer = CcsdsFramer()
+    first = framer.frame(b"first payload")
+    stream = PREAMBLE + first + framer.frame(b"second payload")
+    bits = np.unpackbits(np.frombuffer(stream, dtype=np.uint8))
+    # Cut 60 bits into the second frame: past its marker, mid-payload, so
+    # the second chunk contains no marker of its own at all.
+    split = (len(PREAMBLE) + len(first)) * 8 + 60
+
+    payloads: list[bytes] = []
+    for chunk in (bits[:split], bits[split:]):
+        modem._rx_bits.extend(chunk.tobytes())  # noqa: SLF001
+        for block in modem._recover_blocks():  # noqa: SLF001
+            payloads.extend(framer.feed(block))
+    assert payloads == [b"first payload", b"second payload"]
+
+
+@pytest.mark.verifies("FSW-LINK-008")
+def test_tracking_does_not_stamp_a_marker_over_payload() -> None:
+    """Marker repair applies to an acquired block only, never mid-stream.
+
+    A tracking block starts wherever the stream happens to be. Stamping
+    the nominal ASM over its first four bytes — correct when the block
+    begins at a correlation hit — would silently corrupt payload.
+    """
+    modem = _modem()
+    framer = CcsdsFramer()
+    bits = np.unpackbits(np.frombuffer(PREAMBLE + framer.frame(b"x" * 40), dtype=np.uint8))
+    modem._rx_bits.extend(bits[:200].tobytes())  # noqa: SLF001
+    assert modem._recover_blocks(), "expected to acquire on the marker"  # noqa: SLF001
+
+    modem._rx_bits.extend(bits[200:].tobytes())  # noqa: SLF001
+    blocks = modem._recover_blocks()  # noqa: SLF001
+    assert blocks and not blocks[0].startswith(bytes.fromhex("1acffc1d"))
+
+
 def test_noise_without_a_marker_yields_nothing() -> None:
     """Pure noise must not fabricate a frame."""
     modem = _modem()

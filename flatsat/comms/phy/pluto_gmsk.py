@@ -194,6 +194,8 @@ class PlutoGmskModem(Modem):
         self._dropped_sends = 0
         self._rx_bits_seen = 0
         self._sync_detections = 0
+        self._locked = False  # byte alignment acquired; see _recover_blocks
+        self._resyncs = 0
 
     @classmethod
     def from_config(
@@ -273,6 +275,11 @@ class PlutoGmskModem(Modem):
     def sync_detections(self) -> int:
         """Sync-marker correlations found in the demodulated bit stream."""
         return self._sync_detections
+
+    @property
+    def resyncs(self) -> int:
+        """Times byte alignment was re-acquired after a demodulator slip."""
+        return self._resyncs
 
     def _build(self) -> Any:  # noqa: ANN401 — an opaque GNU Radio top_block
         """Construct the flowgraph: RX always, TX only when acknowledged.
@@ -503,16 +510,41 @@ class PlutoGmskModem(Modem):
         # budget — the usual off-by-a-factor-of-two trap in this idiom.
         threshold = len(self._sync_bits) - 2 * _MAX_SYNC_BIT_ERRORS
         hits = np.flatnonzero(correlation >= threshold)
-        if hits.size == 0:
-            # No lock: retain a marker-length tail so a straddling ASM is
-            # still findable next time, and drop the rest.
+        self._sync_detections += int(hits.size)
+
+        # ACQUIRE once, then TRACK. The retained partial byte below keeps
+        # this call in phase with the last, so once alignment is known it
+        # stays known and every subsequent call simply packs and emits.
+        #
+        # Re-hunting the marker on every call instead is what cost 32% of
+        # frames on 2026-07-29: a frame whose marker landed near the end
+        # of one call's buffer was emitted as a few bytes, and the
+        # CONTINUATION arriving next call contained no marker of its own,
+        # so it was discarded — the framer's partial frame could never
+        # complete. Byte alignment is a property of the stream, not of
+        # whatever slice of it one call happened to see.
+        realigned = False
+        if self._locked:
+            start = 0
+            # While locked, markers must land on byte boundaries. If some
+            # correlated and NONE are aligned, the demodulator slipped:
+            # re-acquire on the new phase rather than emit garbage.
+            if hits.size and not bool(np.any(hits % 8 == 0)):
+                start = int(hits[0])
+                realigned = True
+                self._resyncs += 1
+        elif hits.size == 0:
+            # Never locked and nothing found: keep a marker-length tail so
+            # an ASM straddling this read is still findable, drop the rest.
             with self._rx_lock:
                 tail = keep[-(len(self._sync_bits) - 1) :] if keep.size else keep
                 self._rx_bits = bytearray(tail.tobytes()) + self._rx_bits
             return []
+        else:
+            start = int(hits[0])
+            realigned = True
+            self._locked = True
 
-        self._sync_detections += int(hits.size)
-        start = int(hits[0])
         usable = keep[start:]
         whole_bytes = (usable.size // 8) * 8
         if whole_bytes == 0:
@@ -530,8 +562,13 @@ class PlutoGmskModem(Modem):
         # of their own for the framer to find them — an acceptable
         # asymmetry, because a channel corrupting markers that often is
         # failing the CRC anyway.
+        #
+        # Gated on `realigned`: only a block that BEGINS at a correlation
+        # hit begins with a marker. While tracking, the block starts
+        # wherever the stream happens to be, and stamping a marker over
+        # its first four bytes would corrupt payload.
         marker = np.frombuffer(bytes.fromhex(self._sync_hex), dtype=np.uint8)
-        if packed.size >= marker.size:
+        if realigned and packed.size >= marker.size:
             packed = packed.copy()
             packed[: marker.size] = marker
         with self._rx_lock:
@@ -664,6 +701,9 @@ class PlutoGmskModem(Modem):
         self._rx_read_fd = None
         self._flowgraph = None
         self._tx_sink = None
+        # A future flowgraph starts at an unrelated bit phase, so the
+        # alignment learned by this one does not survive the radio.
+        self._locked = False
 
     def _close_tx_read(self) -> None:
         """Close the transmit pipe's read end, if it is still open."""
