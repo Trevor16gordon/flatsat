@@ -8,7 +8,7 @@ through 30 dB of cabled attenuation (2026-07-23), graduated from
     receive() fmcomms2 source -> freq-xlating LPF -> GMSK demod -> bits
               -> ASM bit-sync -> byte-aligned blocks
 
-Two design points carried over from the bench, both hard-won:
+Three design points, each learned the hard way:
 
   * **Keep signal energy off DC.** Zero-IF LO leakage and the AD936x
     DC-correction loops sit at baseband centre; a signal placed there
@@ -40,6 +40,16 @@ RF SAFETY, structurally enforced:
     and on every exit path (FSW-RADIO-002): the Pluto's DMA can replay a
     stale buffer after a flowgraph stops, so leaving must leave it quiet.
   * Receiving is always permitted; listening radiates nothing.
+
+**The two pipes carry different things, and it is not a bug.** GNU
+Radio's GMSK blocks are asymmetric: ``gmsk_mod`` consumes PACKED bytes
+(8 symbols per byte, unpacking internally), while ``gmsk_demod`` emits
+UNPACKED bits — one bit per byte, valued 0 or 1. So at 250 kbit/s the
+transmit pipe carries ~31 kB/s and the receive pipe ~250 kB/s of the
+same information, the receive buffer is sized eight times larger for
+it, and ``len(block)`` on the receive side counts BITS despite being a
+byte count. Every apparent factor-of-eight discrepancy below traces
+back to this one asymmetry.
 
 No Python-defined GNU Radio blocks appear here, deliberately: on this
 JetPack build of GNU Radio 3.10.1.1, a *minimal* ``gr.sync_block``
@@ -77,9 +87,17 @@ PREAMBLE = (
 IDLE_BYTE = 0x55  # keeps the modulator running between frames
 _MAX_SYNC_BIT_ERRORS = 2
 _RX_BIT_BUFFER_LIMIT = 1 << 22  # ~4 Mbit: bound memory if nothing ever syncs
-_IDLE_CHUNK_BYTES = 256  # idle written per feeder pass; also the queue latency grain
-_TX_PIPE_BYTES = 4096  # SMALL on purpose: pipe depth is transmit latency
+# Idle written per feeder pass. This is the latency grain: a frame queued
+# just after a pass waits for this much idle to drain first — 256 packed
+# bytes is ~8 ms at 250 kbit/s. Smaller means more syscalls for no gain.
+_IDLE_CHUNK_BYTES = 256
+# SMALL on purpose: pipe depth IS transmit latency, since the feeder
+# fills whatever space exists with idle. 4 KiB is one page (the F_SETPIPE_SZ
+# floor) and ~130 ms of air at 250 kbit/s.
+_TX_PIPE_BYTES = 4096
 _TX_QUEUE_LIMIT = 64  # frames awaiting the modulator before send() pushes back
+_GMSK_BT = 0.35  # Gaussian bandwidth-time product; the bench's measured value
+_TX_BACKOFF = 0.3  # modulator output scaling: headroom against DAC clipping
 
 
 def _sync_bits(sync_hex: str) -> list[int]:
@@ -108,7 +126,7 @@ class PlutoGmskModem(Modem):
         samples_per_symbol: int = DEFAULT_SPS,
         tx_attenuation_db: float = 60.0,
         rx_gain_db: float = 40.0,
-        amplitude: float = 0.3,
+        amplitude: float = _TX_BACKOFF,
         sync_hex: str = DEFAULT_SYNC_HEX,
         transmit_ack: bool = False,
     ) -> None:
@@ -259,6 +277,9 @@ class PlutoGmskModem(Modem):
         from gnuradio import iio
 
         source = iio.fmcomms2_source_fc32(self._uri, [True, True], 0x8000)
+        # An empty length-tag key selects gr-iio's STREAMING mode. With a
+        # key set, the block expects tagged bursts and will stall waiting
+        # for packet boundaries this driver never produces.
         source.set_len_tag_key("")
         source.set_frequency(int(self._center_freq_hz))
         source.set_samplerate(int(self._sample_rate_hz))
@@ -269,7 +290,13 @@ class PlutoGmskModem(Modem):
         source.set_bbdc(True)
         source.set_filter_params("Auto", "", 0.0, 0.0)
 
+        # Cutoff at 0.75x baud passes the GMSK main lobe (which for
+        # BT=0.35 is appreciably narrower than the baud rate) while the
+        # 0.25x-baud transition width keeps the tap count modest — this
+        # filter runs at the full sample rate on a Jetson core.
         taps = firdes.low_pass(1.0, self._sample_rate_hz, 0.75 * baud, 0.25 * baud)
+        # Decimation stays 1: gmsk_demod needs its full samples_per_symbol,
+        # so there is nothing here to throw away.
         translate = gr_filter.freq_xlating_fir_filter_ccf(
             1, taps, self._offset_hz, self._sample_rate_hz
         )
@@ -284,10 +311,18 @@ class PlutoGmskModem(Modem):
             tx_read, tx_write = self._make_pipe(_TX_PIPE_BYTES)
             self._tx_write_fd = tx_write
             self._tx_read_fd = tx_read
+            # Reads PACKED bytes (see the module docstring). It blocks on
+            # an empty pipe rather than idling, which is exactly why the
+            # feeder thread below must never let the pipe run dry.
             byte_source = blocks.file_descriptor_source(gr.sizeof_char, tx_read)
-            modulator = digital.gmsk_mod(samples_per_symbol=self._sps, bt=0.35)
+            modulator = digital.gmsk_mod(samples_per_symbol=self._sps, bt=_GMSK_BT)
             scale = blocks.multiply_const_cc(self._amplitude)
             rotate = blocks.rotator_cc(2.0 * math.pi * self._offset_hz / self._sample_rate_hz)
+            # 64 Ki-sample DMA buffer, twice the receive side's: the
+            # transmitter has no way to ask for more time, so depth here
+            # is the only cushion against a late feeder. The trailing
+            # False is cyclic mode — which must stay off, since cyclic
+            # would replay the last buffer forever after we stop.
             sink = iio.fmcomms2_sink_fc32(self._uri, [True, True], 0x10000, False)
             sink.set_len_tag_key("")
             sink.set_frequency(int(self._center_freq_hz))
@@ -352,6 +387,8 @@ class PlutoGmskModem(Modem):
             return int(hal_pb2.VALIDITY_FLAG_COMM)
         with self._tx_lock:
             if not self._tx_running:
+                # Radio open but the feeder is gone (shutdown, or a wedged
+                # write). Queueing here would be a silent black hole.
                 return int(hal_pb2.VALIDITY_FLAG_COMM)
             if len(self._tx_queue) >= _TX_QUEUE_LIMIT:
                 # The air is slower than the caller. Dropping here and
@@ -377,10 +414,16 @@ class PlutoGmskModem(Modem):
         while self._tx_running:
             with self._tx_lock:
                 chunk = self._tx_queue.popleft() if self._tx_queue else idle
+            # The write is OUTSIDE the lock, and must stay there: it
+            # blocks until the modulator makes room, so holding the lock
+            # across it would stall every send() for a pipe depth. The
+            # lock protects the queue, never the I/O.
             try:
                 os.write(write_fd, chunk)
             except OSError:
-                return  # pipe closed under us during shutdown
+                # BrokenPipeError when close() drops the read end while
+                # we are blocked here — the intended way out, not a fault.
+                return
 
     def receive(self) -> list[bytes]:
         """Collect byte-aligned blocks recovered since the last call.
@@ -404,8 +447,19 @@ class PlutoGmskModem(Modem):
         alignment must be re-established from the marker before the
         framer (which works in bytes) can see anything.
 
+        Despite the list return type this yields AT MOST ONE block, and
+        that block runs from the first marker to the end of the buffer —
+        so several frames commonly ride inside it. That is intentional:
+        once byte alignment is established every following frame shares
+        it, and the framer above already scans for markers and resyncs.
+        Splitting frames here would duplicate the framer badly, and would
+        make this PHY assume a framing it is not supposed to know. The
+        list stays because the interface must also serve PHYs that
+        genuinely recover discrete bursts.
+
         Returns:
-            Recovered byte blocks.
+            A single byte block starting at a recovered sync marker, or
+            an empty list if nothing locked.
         """
         import numpy as np
 
@@ -418,8 +472,16 @@ class PlutoGmskModem(Modem):
             keep = np.frombuffer(bytes(self._rx_bits), dtype=np.uint8)
             self._rx_bits = bytearray()
 
+        # Correlate in +/-1 space rather than 0/1: matching bits then
+        # contribute +1 and mismatching bits -1, so a perfect match scores
+        # exactly the marker length and disagreement actually subtracts.
+        # (In 0/1 space a stream of all-zeros would score the same as a
+        # marker whose one-bits happened to line up.)
         pattern = np.asarray(self._sync_bits, dtype=np.int8) * 2 - 1
         correlation = np.correlate((keep.astype(np.int8) * 2 - 1), pattern, mode="valid")
+        # Each wrong bit costs TWO: it forfeits the +1 it would have
+        # scored and contributes -1 instead. Hence 2x, not 1x, the error
+        # budget — the usual off-by-a-factor-of-two trap in this idiom.
         threshold = len(self._sync_bits) - 2 * _MAX_SYNC_BIT_ERRORS
         hits = np.flatnonzero(correlation >= threshold)
         if hits.size == 0:
@@ -443,6 +505,12 @@ class PlutoGmskModem(Modem):
         # a nominal one: a bit error inside the ASM is a synchronization
         # detail, not payload. The CRC below still judges the frame, so a
         # noise pattern that merely correlated is rejected there.
+        #
+        # Only the FIRST marker is repaired, since only the first was
+        # correlated. Later frames inside this block need intact markers
+        # of their own for the framer to find them — an acceptable
+        # asymmetry, because a channel corrupting markers that often is
+        # failing the CRC anyway.
         marker = np.frombuffer(bytes.fromhex(self._sync_hex), dtype=np.uint8)
         if packed.size >= marker.size:
             packed = packed.copy()
@@ -466,27 +534,44 @@ class PlutoGmskModem(Modem):
         """
         read_fd, write_fd = os.pipe()
         try:
-            fcntl.fcntl(read_fd, 1031, size_bytes)  # F_SETPIPE_SZ
+            # 1031 is F_SETPIPE_SZ, spelled numerically because Python's
+            # fcntl module does not export it on this platform. Capacity
+            # belongs to the pipe, not to an end, so either fd will do.
+            #
+            # Failure is deliberately ignored: growing a pipe beyond
+            # /proc/sys/fs/pipe-max-size needs CAP_SYS_RESOURCE, and the
+            # kernel silently clamps rather than erroring in most cases.
+            # This is a buffering hint — the default 64 KiB still works,
+            # just with more round trips.
+            fcntl.fcntl(read_fd, 1031, size_bytes)
         except OSError:
             pass
         self._pipe_fds.extend([read_fd, write_fd])
         return read_fd, write_fd
 
     def _drain_rx_pipe(self) -> None:
-        """Move demodulated bits from the pipe into the bit buffer."""
+        """Move demodulated bits from the pipe into the bit buffer.
+
+        One pipe byte is one demodulated BIT here (module docstring), so
+        the byte counts in this method are bit counts — no factor of
+        eight is missing.
+        """
         if self._rx_read_fd is None:
             return
         while True:
             try:
                 block = os.read(self._rx_read_fd, 1 << 16)
             except BlockingIOError:
-                return
+                return  # non-blocking fd, nothing left: the normal exit
             except OSError:
                 return
             if not block:
                 return
             self._rx_bits_seen += len(block)
             with self._rx_lock:
+                # The binary slicer already emits 0x00/0x01; masking to
+                # the low bit costs nothing and keeps the correlator's
+                # +/-1 mapping correct if a block ever emits 0xFF.
                 self._rx_bits.extend(bytes(byte & 1 for byte in block))
                 if len(self._rx_bits) > _RX_BIT_BUFFER_LIMIT:
                     del self._rx_bits[: len(self._rx_bits) - _RX_BIT_BUFFER_LIMIT]

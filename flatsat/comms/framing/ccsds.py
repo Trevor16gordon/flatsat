@@ -130,7 +130,6 @@ class CcsdsFramer(Framer):
                 # A corrupted length cannot say where the next frame is:
                 # advance one marker only and rescan.
                 del self._buffer[: len(SYNC)]
-        return payloads
 
     def describe(self) -> list[str]:
         """Describe the framing in force.

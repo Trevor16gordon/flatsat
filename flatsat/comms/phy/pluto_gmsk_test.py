@@ -120,20 +120,24 @@ def _feed_once(modem: PlutoGmskModem, read_size: int) -> bytes:
     Returns:
         The bytes the feeder placed on the wire.
     """
+    # A plain pipe stands in for the flowgraph: reading from it is what
+    # the modulator would do, so the feeder is paced by this test exactly
+    # as it would be by the radio. No GNU Radio, no hardware.
     read_fd, write_fd = os.pipe()
     try:
         modem._tx_running = True  # noqa: SLF001
         thread = threading.Thread(target=modem._feed_tx, args=(write_fd,), daemon=True)  # noqa: SLF001
         thread.start()
         written = os.read(read_fd, read_size)
+        # Clearing the flag is not enough to stop a feeder already blocked
+        # in write(); closing the read end is what frees it, via EPIPE.
         modem._tx_running = False  # noqa: SLF001
         os.close(read_fd)
         thread.join(timeout=2.0)
         return written
     finally:
-        for fd in (write_fd,):
-            with contextlib.suppress(OSError):
-                os.close(fd)
+        with contextlib.suppress(OSError):
+            os.close(write_fd)
 
 
 @pytest.mark.verifies("FSW-LINK-008")
@@ -160,8 +164,11 @@ def test_queued_frames_take_precedence_over_idle() -> None:
 def test_send_pushes_back_instead_of_queueing_without_limit() -> None:
     """When the air is slower than the caller, say so rather than lag."""
     modem = _modem(transmit_ack=True)
-    modem._flowgraph = object()  # pretend the radio is open  # noqa: SLF001
-    modem._tx_running = True  # noqa: SLF001
+    # A non-None flowgraph is all _ensure_started() checks, so any object
+    # convinces send() the radio is open. The queue logic under test is
+    # pure bookkeeping — it never touches the flowgraph it is handed.
+    modem._flowgraph = object()  # noqa: SLF001
+    modem._tx_running = True  # the feeder would normally set this  # noqa: SLF001
     accepted = sum(1 for _ in range(200) if modem.send(b"frame") == 0)
     assert accepted == 64, "the queue must be bounded"
     assert modem.dropped_sends == 136

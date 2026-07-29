@@ -152,13 +152,20 @@ class Link:
     def enqueue(self, topic: str, payload: bytes) -> None:
         """Store one message for the next contact.
 
+        A full queue drops the OLDEST message, not this one — the deque's
+        maxlen does it implicitly, so the only work here is counting it.
+        That direction is deliberate: when a pass is missed, stale
+        telemetry is the least valuable thing on board, and refusing new
+        data to preserve old would hand the ground a picture that is
+        already wrong.
+
         Args:
             topic: Destination bus key on the far side.
             payload: Serialized bus message.
         """
         with self._lock:
             if len(self._queue) == self._queue.maxlen:
-                self.messages_dropped_queue += 1  # oldest falls off the deque
+                self.messages_dropped_queue += 1
             self._queue.append((topic, payload))
 
     @property
