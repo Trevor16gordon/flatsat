@@ -112,18 +112,31 @@ class DmaWatch:
         return self.raw.count("O")
 
 
-def payload_for(index: int, size: int) -> bytes:
+def payload_for(index: int, size: int, pattern: str = "varied") -> bytes:
     """Build one deterministic, self-identifying test payload.
+
+    The pattern matters more than it looks. GMSK recovers its clock from
+    transitions, so a low-entropy payload starves the timing loop: before
+    the frame was randomized, a zero-filled payload recovered 3 of 40
+    frames where a varied one recovered 40 of 40. Measuring only with
+    varied bytes measures the link on its best behaviour.
 
     Args:
         index: Frame number.
         size: Payload length in bytes.
+        pattern: ``varied`` (high entropy), ``zeros`` or ``ones`` (the
+            pathological cases real protobuf traffic produces).
 
     Returns:
         The payload, recognizable on arrival even if frames are lost.
     """
     head = f"FLATSAT-DRIVER-BER frame={index:04d} ".encode()
-    return (head + bytes(range(256)) * 4)[:size]
+    filler = {
+        "varied": bytes(range(256)) * 4,
+        "zeros": bytes(1024),
+        "ones": b"\xff" * 1024,
+    }[pattern]
+    return (head + filler)[:size]
 
 
 def bit_errors(sent: bytes, received: bytes) -> int:
@@ -163,6 +176,12 @@ def main() -> int:
     parser.add_argument("--rx-gain", type=float, default=30.0, help="RX manual gain [dB]")
     parser.add_argument("--frames", type=int, default=100, help="frames to transmit")
     parser.add_argument("--payload", type=int, default=64, help="payload bytes per frame")
+    parser.add_argument(
+        "--pattern",
+        choices=("varied", "zeros", "ones"),
+        default="varied",
+        help="payload content; 'zeros' is the low-entropy case the randomizer exists for",
+    )
     parser.add_argument("--gap", type=float, default=0.02, help="seconds between frames")
     parser.add_argument(
         "--warmup",
@@ -226,7 +245,7 @@ def main() -> int:
             eprint(f"[ok] warm; transmitting {args.frames} frames")
 
             for index in range(args.frames):
-                payload = payload_for(index, args.payload)
+                payload = payload_for(index, args.payload, args.pattern)
                 sent[payload] = index
                 flags = modem.send(framer.frame(payload))
                 if flags:

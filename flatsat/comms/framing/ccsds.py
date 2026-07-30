@@ -2,7 +2,21 @@
 
 Wire layout, big-endian:
 
-    | 0x1ACFFC1D | length (u16) | payload | CRC-32 (u32) |
+    | 0x1ACFFC1D |<------ randomized (CCSDS 131.0-B) ------>|
+    |    ASM     | length (u16) | payload | CRC-32 (u32)    |
+
+Everything after the marker is XORed with a pseudo-random sequence so
+the PHY sees high-entropy bits whatever the payload contained. This is
+not cosmetic: a low-transition payload starves the demodulator's timing
+loop, and measured on hardware a zero-filled payload recovered 3 of 40
+frames where a varied one recovered 40 of 40. See ``randomizer.py`` for
+the reasoning and the standard's rationale. Randomization is
+unconditional, because two ends that disagree about it cannot talk and a
+configuration knob would only create that possibility.
+
+If bounded run length is ever needed rather than merely probable, the
+upgrade is a line code (8b/10b, 64b/66b) applied here in place of the
+randomizer, at a bandwidth cost.
 
 The sync marker is the real CCSDS attached sync marker, which is what
 lets the deframer find frame boundaries in a stream that starts
@@ -22,6 +36,7 @@ import struct
 import zlib
 
 from flatsat.comms import comms_config_pb2
+from flatsat.comms.framing import randomizer
 from flatsat.comms.framing.framer import Framer
 
 SYNC = b"\x1a\xcf\xfc\x1d"
@@ -85,7 +100,12 @@ class CcsdsFramer(Framer):
         if len(payload) > self._max_payload:
             raise ValueError(f"payload {len(payload)} B exceeds max {self._max_payload} B")
         body = _HEADER.pack(len(payload)) + payload
-        return SYNC + body + _CRC.pack(zlib.crc32(body) & 0xFFFFFFFF)
+        tail = body + _CRC.pack(zlib.crc32(body) & 0xFFFFFFFF)
+        # Randomize everything after the marker, CRC included: the
+        # receiver derandomizes first, so the CRC still judges the
+        # payload as sent. The marker stays in the clear because frame
+        # detection has to happen before derandomization can start.
+        return SYNC + randomizer.apply(tail)
 
     def feed(self, data: bytes) -> list[bytes]:
         """Absorb bytes and recover every complete, valid frame.
@@ -111,7 +131,14 @@ class CcsdsFramer(Framer):
                 return payloads  # header not here yet
 
             offset = len(SYNC)
-            (length,) = _HEADER.unpack_from(self._buffer, offset)
+            # The length field is randomized like everything else, so it
+            # must be recovered before it can be trusted. The sequence is
+            # positional from the first byte after the marker, so the
+            # header can be derandomized on its own to learn how much
+            # more of the frame to expect.
+            (length,) = _HEADER.unpack(
+                randomizer.apply(bytes(self._buffer[offset : offset + _HEADER.size]))
+            )
             if length > self._max_payload:
                 self._dropped += 1
                 del self._buffer[: len(SYNC)]  # bogus length: resync past this marker
@@ -120,8 +147,9 @@ class CcsdsFramer(Framer):
             if len(self._buffer) < end:
                 return payloads  # frame still arriving
 
-            body = bytes(self._buffer[offset : offset + _HEADER.size + length])
-            (claimed,) = _CRC.unpack_from(self._buffer, offset + _HEADER.size + length)
+            clear = randomizer.apply(bytes(self._buffer[offset:end]))
+            body = clear[: _HEADER.size + length]
+            (claimed,) = _CRC.unpack_from(clear, _HEADER.size + length)
             if claimed == (zlib.crc32(body) & 0xFFFFFFFF):
                 payloads.append(body[_HEADER.size :])
                 del self._buffer[:end]
