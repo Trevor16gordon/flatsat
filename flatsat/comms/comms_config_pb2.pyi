@@ -77,6 +77,46 @@ class LoopbackModemOptions(_message.Message):
 Global___LoopbackModemOptions: _TypeAlias = LoopbackModemOptions  # noqa: Y015
 
 @_typing.final
+class KissModemOptions(_message.Message):
+    """KISS over TCP: no DSP here at all. An external process owns the radio
+    — a gr-satellites flowgraph, a GNU Radio design, Direwolf, a hardware
+    TNC — and this carries frames to and from it over the framing that
+    amateur and cubesat ground software has spoken for decades. Pair it
+    with the ccsds framer to tunnel our own frames over any TNC, or with
+    a pass-through framer to let the far side do the deframing with
+    somebody else's standard implementation.
+
+    This modem cannot radiate by itself, so the transmit gate lives in
+    the process at the far end of the socket, not here.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HOST_FIELD_NUMBER: _builtins.int
+    PORT_FIELD_NUMBER: _builtins.int
+    KISS_PORT_FIELD_NUMBER: _builtins.int
+    host: _builtins.str
+    """where the radio process listens; empty = 127.0.0.1"""
+    port: _builtins.int
+    """TCP port; 0 = 8001, the conventional KISS port"""
+    kiss_port: _builtins.int
+    """KISS port number inside the protocol, not TCP"""
+    def __init__(
+        self,
+        *,
+        host: _builtins.str = ...,
+        port: _builtins.int = ...,
+        kiss_port: _builtins.int = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["host", b"host", "kiss_port", b"kiss_port", "port", b"port"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___KissModemOptions: _TypeAlias = KissModemOptions  # noqa: Y015
+
+@_typing.final
 class PlutoGmskModemOptions(_message.Message):
     """ADALM-Pluto over GNU Radio, GMSK — the proven baseline PHY (BER 0.00
     framed loopback, 2026-07-23). RF SAFETY: transmit is refused unless
@@ -205,6 +245,7 @@ class CommsConfig(_message.Message):
     CONTACT_FIELD_NUMBER: _builtins.int
     LOOPBACK_FIELD_NUMBER: _builtins.int
     PLUTO_GMSK_FIELD_NUMBER: _builtins.int
+    KISS_FIELD_NUMBER: _builtins.int
     CCSDS_FIELD_NUMBER: _builtins.int
     segment_bytes: _builtins.int
     """payload bytes per segment; absent = 512"""
@@ -225,6 +266,8 @@ class CommsConfig(_message.Message):
     @_builtins.property
     def pluto_gmsk(self) -> Global___PlutoGmskModemOptions: ...
     @_builtins.property
+    def kiss(self) -> Global___KissModemOptions: ...
+    @_builtins.property
     def ccsds(self) -> Global___CcsdsFramerOptions: ...
     def __init__(
         self,
@@ -235,11 +278,12 @@ class CommsConfig(_message.Message):
         contact: Global___ContactScheduleConfig | None = ...,
         loopback: Global___LoopbackModemOptions | None = ...,
         pluto_gmsk: Global___PlutoGmskModemOptions | None = ...,
+        kiss: Global___KissModemOptions | None = ...,
         ccsds: Global___CcsdsFramerOptions | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "framer", b"framer", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType__queue_limit: _TypeAlias = _typing.Literal["queue_limit"]  # noqa: Y015
     _WhichOneofArgType__queue_limit: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit"]  # noqa: Y015
@@ -247,7 +291,7 @@ class CommsConfig(_message.Message):
     _WhichOneofArgType__segment_bytes: _TypeAlias = _typing.Literal["_segment_bytes", b"_segment_bytes"]  # noqa: Y015
     _WhichOneofReturnType_framer: _TypeAlias = _typing.Literal["ccsds"]  # noqa: Y015
     _WhichOneofArgType_framer: _TypeAlias = _typing.Literal["framer", b"framer"]  # noqa: Y015
-    _WhichOneofReturnType_modem: _TypeAlias = _typing.Literal["loopback", "pluto_gmsk"]  # noqa: Y015
+    _WhichOneofReturnType_modem: _TypeAlias = _typing.Literal["loopback", "pluto_gmsk", "kiss"]  # noqa: Y015
     _WhichOneofArgType_modem: _TypeAlias = _typing.Literal["modem", b"modem"]  # noqa: Y015
     @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType__queue_limit) -> _WhichOneofReturnType__queue_limit | None: ...

@@ -63,6 +63,10 @@ ESTIMATORS: dict[str, str] = {
 MODEMS: dict[str, str] = {
     "loopback": "flatsat.comms.phy.loopback:LoopbackModem",
     "pluto_gmsk": "flatsat.comms.phy.pluto_gmsk:PlutoGmskModem",
+    # No DSP of its own: the seam where an external radio process —
+    # gr-satellites, a GNU Radio design, a hardware TNC — drives this
+    # link over KISS.
+    "kiss": "flatsat.comms.phy.kiss:KissModem",
 }
 
 FRAMERS: dict[str, str] = {

@@ -198,10 +198,19 @@ def main() -> int:
         # transfer and discard every chunk collected so far.
         link.enqueue(MANIFEST_TOPIC, manifest.SerializeToString())
         pump(1.0)
+        print(
+            f"  manifest: sent {link.frames_sent} frame(s), "
+            f"receiver tracking {receiver.receiving} transfer(s), "
+            f"already staged: {receiver.staged_path(name, args.version) is not None}",
+            flush=True,
+        )
 
         for round_index in range(args.rounds):
             outstanding = missing_chunks(receiver, name, args.version, len(chunks))
             if not outstanding:
+                # Say so. Breaking silently here is how a run that never
+                # sent a chunk looked identical to one that succeeded.
+                print(f"  round {round_index + 1:2d}: nothing outstanding", flush=True)
                 break
             for index in outstanding:
                 link.enqueue(CHUNK_TOPIC, chunks[index].SerializeToString())
