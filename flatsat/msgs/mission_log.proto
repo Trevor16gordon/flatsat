@@ -1,0 +1,97 @@
+// Mission-level structure for the telemetry archive.
+//
+// The recorder below this captures a flat, verbatim stream of bus
+// messages — excellent evidence, but it cannot answer "what was the
+// spacecraft DOING at 14:32". These messages add that structure without
+// changing the archive format: they are ordinary bus messages, so they
+// land in the same stream as everything else and the recording becomes
+// SELF-DESCRIBING. No sidecar file to lose, no index to rebuild, and
+// slicing a run by sub-mission works from the archive alone.
+//
+// Two shapes, and the distinction is deliberate:
+//
+//   * A Span is an INTERVAL — it has a start and an end, and it nests.
+//     "Nominal pointing" contains "ml inference"; an outer keep-alive
+//     span contains everything. Concurrent activities are simply
+//     overlapping spans, which is what makes a swimlane view possible.
+//   * An Annotation is a POINT event — a mode change, an FDIR trip, a
+//     command, a judgment.
+//
+// The reason commands are annotations rather than span boundaries: a
+// span is defined by the STATE it represents, not by activity within
+// it. If every command started a new span you would get thousands of
+// one-second fragments and lose the thing worth looking at. A command
+// that changes mode does end a span — but because it changed the state,
+// not because it was a command.
+
+syntax = "proto3";
+
+package flatsat.v1;
+
+import "flatsat/msgs/hal.proto";
+
+// How the data in a session was produced. This is the single most
+// valuable field in the archive: sim, hardware-in-the-loop and flight
+// runs publish IDENTICAL topics by design, which is what lets the same
+// software fly all three — and is exactly why a recording must say
+// which one it was. Without it, two runs are indistinguishable.
+enum SourceKind {
+  SOURCE_KIND_UNSPECIFIED = 0;
+  SOURCE_KIND_SIM = 1;     // synthetic plant, no hardware in the loop
+  SOURCE_KIND_HIL = 2;     // real flight software against a simulated universe
+  SOURCE_KIND_FLIGHT = 3;  // real vehicle, real devices
+  SOURCE_KIND_REPLAY = 4;  // re-derived from an earlier archive
+}
+
+// Written as the FIRST record of every archive file, so a file is
+// interpretable on its own. Files rotate and the oldest are pruned, so
+// metadata held only at the start of a run would be the first thing
+// lost.
+message SessionHeader {
+  Header header = 1;         // keeps "every payload starts with a Header" true
+  string run_id = 2;         // one execution; the join key across files
+  SourceKind source_kind = 3;
+  string mission_name = 4;   // empty when the run is not a mission
+  string vehicle_path = 5;
+  string vehicle_sha256 = 6; // the composition as flown, not as it reads today
+  string git_sha = 7;
+  bool git_dirty = 8;        // uncommitted changes: the run is not reproducible
+  string plant = 9;          // rigid, basilisk, none
+  string host = 10;
+  fixed64 started_wall_ns = 11;  // wall clock, for correlating with the world
+  fixed64 started_mono_ns = 12;  // monotonic, for correlating within the run
+}
+
+enum SpanKind {
+  SPAN_KIND_UNSPECIFIED = 0;
+  SPAN_KIND_MISSION = 1;   // the whole run
+  SPAN_KIND_PHASE = 2;     // a sub-mission
+  SPAN_KIND_ACTIVITY = 3;  // anything finer: an app, a pass, an inference batch
+}
+
+// One edge of an interval. Start and end are separate messages rather
+// than one message with a duration, because a run that dies mid-phase
+// must still leave evidence of what it was doing — an unclosed span is
+// itself the finding.
+message Span {
+  Header header = 1;
+  string span_id = 2;
+  string parent_span_id = 3;  // empty = root; nesting is what makes the tree
+  SpanKind kind = 4;
+  string name = 5;
+  bool open = 6;              // true = this edge opens the span, false = closes
+  fixed64 time_ns = 7;
+  string outcome = 8;         // on close: pass, fail, aborted; empty otherwise
+  string detail = 9;          // why, in one line
+  map<string, string> attributes = 10;
+}
+
+// A point event on the timeline.
+message Annotation {
+  Header header = 1;
+  fixed64 time_ns = 2;
+  string span_id = 3;  // which span it happened inside; empty = unattributed
+  string level = 4;    // info, warn, error
+  string source = 5;   // which organ said it: mode, fdir, ground, runner
+  string message = 6;
+}

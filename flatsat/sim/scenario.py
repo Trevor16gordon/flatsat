@@ -47,10 +47,11 @@ from flatsat.core.registry import (
 from flatsat.mode import mode_config_pb2
 from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager
-from flatsat.msgs import mode_pb2
+from flatsat.msgs import mission_log_pb2, mode_pb2
 from flatsat.sim import mission_pb2
 from flatsat.sim.basilisk_hil import BasiliskPlant
 from flatsat.sim.plant import LocalPlant, Plant
+from flatsat.telemetry import mission_log
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_MODE_BASE = "test/scn/sys/mode"
@@ -266,6 +267,7 @@ class ScenarioRunner:
         plant_kind: str = "local",
         viz_live: bool = False,
         viz_save: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         """Bind a mission to a scratch directory and a universe-fake.
 
@@ -279,6 +281,8 @@ class ScenarioRunner:
             viz_live: Basilisk only — live Vizard 3D view (start Vizard
                 first in Direct Communication mode).
             viz_save: Basilisk only — record a Vizard playback ``.bin``.
+            run_id: Identity for this execution, carried on every span so
+                the archive can be sliced by run. None generates one.
 
         Raises:
             ValueError: On an unknown plant kind.
@@ -290,6 +294,7 @@ class ScenarioRunner:
         self._plant_kind = plant_kind
         self._viz_live = viz_live
         self._viz_save = viz_save
+        self.run_id = run_id or mission_log.default_run_id(mission.name or "mission")
 
     def _build_plant(self, vehicle: VehicleSpec, session: zenoh.Session) -> Plant:
         """Stand up the chosen universe-fake behind the sim topics.
@@ -410,8 +415,28 @@ class ScenarioRunner:
             loop_thread.start()
             threads.append(loop_thread)
 
-            phases = tuple(self._run_phase(phase, manager, plant) for phase in self.mission.phases)
-            return ScenarioResult(mission=self.mission.name, phases=phases)
+            # Mission structure goes onto the BUS, so the recorder
+            # captures it alongside the telemetry and the archive can be
+            # sliced by sub-mission without a sidecar.
+            logger = mission_log.MissionLogger(session, self.run_id)
+            results: list[PhaseResult] = []
+            with logger.span(
+                self.mission.name,
+                mission_log_pb2.SPAN_KIND_MISSION,
+                {"vehicle": self.mission.vehicle_path, "plant": self._plant_kind},
+            ):
+                for phase in self.mission.phases:
+                    span_id = logger.start(phase.name, mission_log_pb2.SPAN_KIND_PHASE)
+                    result = self._run_phase(phase, manager, plant)
+                    for detail in result.details:
+                        logger.annotate(detail, "info" if result.passed else "error", "runner")
+                    logger.end(
+                        span_id,
+                        outcome="pass" if result.passed else "fail",
+                        detail="; ".join(result.details),
+                    )
+                    results.append(result)
+            return ScenarioResult(mission=self.mission.name, phases=tuple(results))
         finally:
             if fdir is not None:
                 fdir.stop()

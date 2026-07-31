@@ -28,8 +28,8 @@ from typing import BinaryIO
 
 import zenoh
 
-from flatsat.msgs import telemetry_pb2
-from flatsat.telemetry import telemetry_config_pb2
+from flatsat.msgs import mission_log_pb2, telemetry_pb2
+from flatsat.telemetry import mission_log, telemetry_config_pb2
 
 _LEN = struct.Struct("<I")
 FILE_SUFFIX = ".rec"
@@ -61,14 +61,25 @@ def read_records(path: Path | str) -> Iterator[telemetry_pb2.RecordedSample]:
 class Recorder:
     """Archives configured bus topics to rotating, size-capped files."""
 
-    def __init__(self, entry: telemetry_config_pb2.TelemetryConfig, session: zenoh.Session) -> None:
+    def __init__(
+        self,
+        entry: telemetry_config_pb2.TelemetryConfig,
+        session: zenoh.Session,
+        session_header: mission_log_pb2.SessionHeader | None = None,
+    ) -> None:
         """Open the archive and subscribe to every configured topic.
 
         Args:
             entry: Recorder composition (topics, directory, bounds).
             session: Open zenoh session; not owned — caller closes it.
+            session_header: Run identity written as the first record of
+                EVERY file. Files rotate and the oldest are pruned, so
+                metadata kept only at the start of a run is the first
+                thing lost; repeating it per file costs a few hundred
+                bytes and makes each file interpretable alone.
         """
         self.entry = entry
+        self._session_header = session_header
         self._dir = Path(entry.output_dir).expanduser()
         self._dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -92,7 +103,33 @@ class Recorder:
         self._seq += 1
         stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         self._path = self._dir / f"telemetry-{stamp}-{self._seq:04d}{FILE_SUFFIX}"
-        return self._path.open("ab")
+        handle = self._path.open("ab")
+        if self._session_header is not None:
+            self._write_frame(
+                handle,
+                telemetry_pb2.RecordedSample(
+                    topic=mission_log.SESSION_TOPIC,
+                    recv_time_ns=time.time_ns(),
+                    payload=self._session_header.SerializeToString(),
+                ),
+            )
+        return handle
+
+    @staticmethod
+    def _write_frame(handle: BinaryIO, sample: telemetry_pb2.RecordedSample) -> int:
+        """Append one length-prefixed record.
+
+        Args:
+            handle: Open archive file.
+            sample: The record to append.
+
+        Returns:
+            Bytes written.
+        """
+        blob = sample.SerializeToString()
+        handle.write(_LEN.pack(len(blob)))
+        handle.write(blob)
+        return _LEN.size + len(blob)
 
     def current_file(self) -> str:
         """Basename of the file currently being written.
@@ -144,13 +181,11 @@ class Recorder:
         record.topic = str(sample.key_expr)
         record.recv_time_ns = time.time_ns()
         record.payload = bytes(sample.payload.to_bytes())
-        frame = record.SerializeToString()
         with self._lock:
-            self._file.write(_LEN.pack(len(frame)))
-            self._file.write(frame)
-            self._file_bytes += _LEN.size + len(frame)
+            written = self._write_frame(self._file, record)
+            self._file_bytes += written
             self.window_records += 1
-            self.window_bytes += _LEN.size + len(frame)
+            self.window_bytes += written
             file_age_s = time.monotonic() - self._file_opened_monotonic
             if self._file_bytes >= self.entry.max_file_bytes or (
                 file_age_s >= self.entry.rotate_every_s
