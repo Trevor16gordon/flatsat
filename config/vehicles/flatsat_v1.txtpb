@@ -112,7 +112,7 @@ fdir {
 }
 
 telemetry {  # the recorder: what gets archived, and where
-  topics: ["hal/**", "adcs/**", "health/**", "sys/**"]
+  topics: ["hal/**", "adcs/**", "health/**", "sys/**", "mission/**"]
   output_dir: "~/flatsat-telemetry"
   max_file_bytes: 67108864             # 64 MiB per file
   rotate_every_s: 900                  # or every 15 min, whichever first

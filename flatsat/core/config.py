@@ -278,7 +278,7 @@ def _fill_defaults(cfg: vehicle_pb2.VehicleConfig) -> None:
 
     telemetry = cfg.telemetry
     if not telemetry.topics:
-        telemetry.topics.extend(["hal/**", "adcs/**", "health/**", "sys/**"])
+        telemetry.topics.extend(["hal/**", "adcs/**", "health/**", "sys/**", "mission/**"])
     if not telemetry.output_dir:
         telemetry.output_dir = "~/flatsat-telemetry"
     if not telemetry.HasField("max_file_bytes"):

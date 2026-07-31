@@ -26,7 +26,8 @@ from flatsat.core.bus import SamplePublisher
 from flatsat.core.config import load_vehicle
 from flatsat.core.health import health_topic
 from flatsat.mode.client import ModeClient
-from flatsat.msgs import health_pb2
+from flatsat.msgs import health_pb2, mission_log_pb2
+from flatsat.telemetry import mission_log
 from flatsat.telemetry.recorder import Recorder
 
 
@@ -91,11 +92,26 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="Telemetry recorder.")
     parser.add_argument("--vehicle", type=Path, default=None, help="vehicle composition file")
+    # Defaults to FLIGHT because this app runs as a service on the flight
+    # computer; a bench or sim run must say so, or its recording is
+    # indistinguishable from a real one later.
+    parser.add_argument(
+        "--source-kind",
+        choices=("flight", "hil", "sim", "replay"),
+        default="flight",
+        help="what produced this data; recorded in every archive file",
+    )
+    parser.add_argument("--run-id", default=None, help="run identity; default is generated")
     args = parser.parse_args()
 
     vehicle = load_vehicle(args.vehicle)
     session = zenoh.open(zenoh.Config())
-    recorder = Recorder(vehicle.telemetry, session)
+    header = mission_log.build_session_header(
+        run_id=args.run_id or mission_log.default_run_id("rec"),
+        source_kind=mission_log_pb2.SourceKind.Value(f"SOURCE_KIND_{args.source_kind.upper()}"),
+        vehicle_path=str(args.vehicle) if args.vehicle else "",
+    )
+    recorder = Recorder(vehicle.telemetry, session, session_header=header)
     for line in (*vehicle.describe(), *recorder.describe()):
         print(f"[recorder] {line}", flush=True)
 
