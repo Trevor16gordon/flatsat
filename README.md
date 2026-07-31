@@ -62,6 +62,54 @@ lateness percentiles as telemetry, BER waterfalls, and a requirements system
 where every claim carries its verification method and is traced to tests in
 CI.
 
+## Prior art, and where this could go
+
+**Two open-source ground systems already solve much of the operations
+problem**: [Yamcs](https://yamcs.org) and [OpenC3 COSMOS](https://openc3.com)
+— telemetry archives, out-of-limit monitoring, command history, web UIs,
+live and replay. Both are mature, both have flown, and neither should be
+reinvented casually. What they would give this project today is the tedious
+part rather than the novel part: fast range queries over a time-series
+archive, limit monitoring with a UI, command verification stages, and years
+of accumulated operational edge cases — clock correlation across domains,
+out-of-order and duplicate packets, contact handover, partial frames.
+Writing that code is cheap now; knowing *which cases exist* is not. Their
+most valuable export here is a specification of the problem.
+
+**What they assume is becoming untrue.** Both encode a mission-ops model in
+which there is one spacecraft, the ground decides, telemetry flows down a
+star topology, the parameter namespace is fixed before flight, and the
+archive on the ground is eventually complete. Every one of those is under
+pressure:
+
+- **Constellations and inter-satellite links** make provenance a path rather
+  than a link, and make cross-node time sync first-class.
+- **Decisions taken on board** invert the model: the interesting record stops
+  being a telemetry value and becomes *why* — model version, inputs,
+  confidence, what was rejected.
+- **ML in flight** means rollback happens in space with no ground in the
+  loop. This repo's A/B slots already permit rollback without ground
+  authority, for exactly that reason.
+- **Agentic operations** — agents reading telemetry and commanding assets —
+  need capability-scoped, auditable authority rather than human role
+  accounts, and machine-readable semantics. Protobuf descriptors serve an
+  agent far better than XTCE XML does.
+- **Data centres in space** break "the ground eventually gets everything",
+  requiring onboard triage and request-on-demand.
+- **DTN / Bundle Protocol** is store-and-forward networking, not TM/TC.
+
+**The ambition, stated plainly.** This is not a ground system and does not
+pretend to be one — it has no heritage, no flown missions, and none of the
+trust those buy. But its schemas are protobuf, its composition is
+config-driven, sim / HIL / flight are peer implementations behind one
+contract, and model artifacts are already versioned, uplinked, activated and
+rolled back. Those are the pieces a successor would need. If this data model
+grows run provenance, span-structured mission logs, decision records, and a
+capability-scoped authority model, it becomes a plausible foundation for one
+— built for constellations, onboard autonomy and agentic operation rather
+than retrofitted to them. Until then, treat any existing ground tool as a
+consumer of this format, never as its owner.
+
 ## Where things are
 
 | Path | What |
