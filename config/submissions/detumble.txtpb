@@ -1,0 +1,12 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.PhaseConfig
+#
+# DETUMBLE — bleed off body rates until the vehicle is slow enough to
+# point. The rate bound is the success criterion, so a mission reusing
+# this inherits "what detumbled means" rather than restating it.
+
+name: "detumble"
+duration_s: 30.0
+success {
+  max_omega_mag_rad_s: 0.02
+}

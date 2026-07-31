@@ -60,7 +60,14 @@ Global___SuccessCriteriaConfig: _TypeAlias = SuccessCriteriaConfig  # noqa: Y015
 
 @_typing.final
 class PhaseConfig(_message.Message):
-    """One phase of the timeline."""
+    """One phase of the timeline.
+    A phase is also a SUB-MISSION: the same message serves inline in a
+    mission and standing alone in config/submissions/*.txtpb, so a
+    reusable building block needs no second schema. A phase that sets
+    `use` loads that file as its base and overrides whatever it also
+    sets, which is plain proto3 merge semantics — an unset scalar leaves
+    the base's value alone.
+    """
 
     DESCRIPTOR: _descriptor.Descriptor
 
@@ -71,6 +78,7 @@ class PhaseConfig(_message.Message):
     EXPECT_REQUEST_REFUSED_FIELD_NUMBER: _builtins.int
     SUCCESS_FIELD_NUMBER: _builtins.int
     INJECT_TRUTH_BLACKOUT_FIELD_NUMBER: _builtins.int
+    USE_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     duration_s: _builtins.float
     """how long the phase runs before judgment"""
@@ -85,6 +93,10 @@ class PhaseConfig(_message.Message):
     stops publishing — the bench-without-bridge signature). Downstream
     must degrade honestly: STALE flags, wheel zeroing, FDIR safing.
     """
+    use: _builtins.str
+    """Path to a saved sub-mission to use as this phase's base, relative
+    to the repository root. Empty = the phase is defined entirely here.
+    """
     @_builtins.property
     def success(self) -> Global___SuccessCriteriaConfig: ...
     def __init__(
@@ -97,10 +109,11 @@ class PhaseConfig(_message.Message):
         expect_request_refused: _builtins.bool = ...,
         success: Global___SuccessCriteriaConfig | None = ...,
         inject_truth_blackout: _builtins.bool = ...,
+        use: _builtins.str = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["success", b"success"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["duration_s", b"duration_s", "expect_request_refused", b"expect_request_refused", "inject_truth_blackout", b"inject_truth_blackout", "name", b"name", "request_ground_authority", b"request_ground_authority", "request_mode", b"request_mode", "success", b"success"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["duration_s", b"duration_s", "expect_request_refused", b"expect_request_refused", "inject_truth_blackout", b"inject_truth_blackout", "name", b"name", "request_ground_authority", b"request_ground_authority", "request_mode", b"request_mode", "success", b"success", "use", b"use"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

@@ -19,6 +19,12 @@ message SuccessCriteriaConfig {
 }
 
 // One phase of the timeline.
+// A phase is also a SUB-MISSION: the same message serves inline in a
+// mission and standing alone in config/submissions/*.txtpb, so a
+// reusable building block needs no second schema. A phase that sets
+// `use` loads that file as its base and overrides whatever it also
+// sets, which is plain proto3 merge semantics — an unset scalar leaves
+// the base's value alone.
 message PhaseConfig {
   string name = 1;
   double duration_s = 2;                // how long the phase runs before judgment
@@ -30,6 +36,9 @@ message PhaseConfig {
   // stops publishing — the bench-without-bridge signature). Downstream
   // must degrade honestly: STALE flags, wheel zeroing, FDIR safing.
   bool inject_truth_blackout = 7;
+  // Path to a saved sub-mission to use as this phase's base, relative
+  // to the repository root. Empty = the phase is defined entirely here.
+  string use = 8;
 }
 
 // The whole mission.

@@ -1,0 +1,22 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# COMPOSED DEMO — a mission assembled from the saved sub-mission library
+# rather than restated inline. Each phase names a building block and
+# overrides only what differs here, so a change to what "detumble means"
+# reaches every mission that uses it.
+
+name: "composed-demo"
+description: "Detumble then hold nominal, both reused from config/submissions"
+vehicle: "config/vehicles/test_scenario.txtpb"
+omega0_rad_s: [0.25, -0.18, 0.12]
+plant_rate_hz: 100.0
+
+phases {
+  use: "config/submissions/detumble.txtpb"
+  duration_s: 12.0     # shorter than the library default, same criteria
+}
+phases {
+  use: "config/submissions/keep_nominal.txtpb"
+  duration_s: 8.0
+}

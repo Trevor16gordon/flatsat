@@ -206,3 +206,50 @@ contract, so a C++ control loop is just another executable publishing the
 same messages, selected by deployment, invisible to the rest of the system.
 F´ (the C&DH spine, M2) lives in `cdh/` with its own build system, bridged
 to the bus by a single component.
+
+## Mission logging: spans, provenance, and the blob
+
+A recording answers two questions the flat telemetry stream could not:
+**what was the spacecraft doing**, and **what produced this data**.
+
+**Structure rides the bus.** `flatsat/telemetry/mission_log.py` publishes
+`Span` and `Annotation` messages on `mission/**`. The recorder captures them
+like any other traffic, so the archive is self-describing — no sidecar, no
+index, and slicing a run by sub-mission works from the files alone. A span
+is an *interval* and nests; an annotation is a *point event*. Commands are
+annotations rather than span boundaries, because a span is defined by the
+state it represents: a command that changes mode closes a span, but because
+it changed the state, not because it was a command.
+
+Span start and end are separate records rather than one carrying a duration.
+A run that dies mid-phase leaves an unclosed span, and that is the finding.
+
+**Provenance is per file, not per run.** `SessionHeader` is written as the
+first record of *every* archive file, because files rotate and the oldest
+are pruned — metadata held once at the start is the first thing lost. It
+carries the run id, source kind, vehicle path and digest *as flown*, git sha
+and dirtiness, plant, host, and both clocks. SIM, HIL and FLIGHT publish
+identical topics by design; that is exactly why a recording must record
+which one it was.
+
+**Sub-missions are reusable.** A `PhaseConfig` standing alone in
+`config/submissions/*.txtpb` is a saved building block. A mission phase
+naming `use:` takes it as a base and overrides only what differs — plain
+proto3 merge, so an unset scalar leaves the base alone. One definition of
+"what detumble means" reaches every mission that uses it.
+
+**The blob.** `python -m flatsat.telemetry.export <run-dir>` turns an
+archive into one JSON document: run identity, span tree, annotations,
+per-topic statistics, and decimated series. Decoding needs a topic-to-type
+map (`TOPIC_TYPES`) because protobuf is not self-describing on the wire —
+that map is the thing a ground system would call a mission database, and
+generating it from the `.proto` descriptors is the obvious next step.
+Unmapped topics still parse as `HeaderEnvelope` and contribute timing and
+validity, so nothing vanishes silently.
+
+Record a run and export it:
+
+```bash
+python -m flatsat.sim.run_mission config/missions/composed_demo.txtpb --record
+python -m flatsat.telemetry.export ~/flatsat-missions/<run-id> -o blob.json
+```

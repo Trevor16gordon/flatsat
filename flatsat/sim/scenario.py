@@ -25,6 +25,7 @@ in seconds.
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from dataclasses import dataclass, field
@@ -51,7 +52,8 @@ from flatsat.msgs import mission_log_pb2, mode_pb2
 from flatsat.sim import mission_pb2
 from flatsat.sim.basilisk_hil import BasiliskPlant
 from flatsat.sim.plant import LocalPlant, Plant
-from flatsat.telemetry import mission_log
+from flatsat.telemetry import mission_log, telemetry_config_pb2
+from flatsat.telemetry.recorder import Recorder
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_MODE_BASE = "test/scn/sys/mode"
@@ -184,6 +186,54 @@ def _mode_value(name: str) -> mode_pb2.SystemMode.ValueType:
     return value
 
 
+def _file_digest(path: Path) -> str:
+    """Hash a config file as flown.
+
+    Args:
+        path: File to digest.
+
+    Returns:
+        Hex sha256, or empty when the file is unreadable.
+    """
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def _resolve_phase(declared: mission_pb2.PhaseConfig) -> mission_pb2.PhaseConfig:
+    """Expand a phase that reuses a saved sub-mission.
+
+    A phase naming ``use`` takes that file as its base and overrides
+    whatever it sets itself. The override is proto3 MergeFrom, so an
+    unset scalar leaves the base alone and a set one wins — which is
+    what lets a mission reuse "keep nominal" but shorten it.
+
+    Args:
+        declared: The phase as written in the mission file.
+
+    Returns:
+        The phase with its base merged in; the same message when it
+        names no base.
+
+    Raises:
+        FileNotFoundError: If the referenced sub-mission does not exist.
+    """
+    if not declared.use:
+        return declared
+    base_path = REPO_ROOT / declared.use
+    if not base_path.is_file():
+        raise FileNotFoundError(f"sub-mission {declared.use!r} not found at {base_path}")
+    resolved = mission_pb2.PhaseConfig()
+    load_textproto(base_path, resolved)
+    overrides = mission_pb2.PhaseConfig()
+    overrides.CopyFrom(declared)
+    overrides.ClearField("use")
+    resolved.MergeFrom(overrides)
+    resolved.ClearField("use")
+    return resolved
+
+
 def load_mission(path: Path | str) -> MissionSpec:
     """Load and validate a mission profile.
 
@@ -200,7 +250,8 @@ def load_mission(path: Path | str) -> MissionSpec:
     cfg = mission_pb2.MissionConfig()
     load_textproto(path, cfg)
     phases: list[PhaseSpec] = []
-    for row in cfg.phases:
+    for declared in cfg.phases:
+        row = _resolve_phase(declared)
         if row.request_mode:
             _mode_value(row.request_mode)  # validate at load time
         criteria = SuccessCriteria(
@@ -268,6 +319,8 @@ class ScenarioRunner:
         viz_live: bool = False,
         viz_save: str | None = None,
         run_id: str | None = None,
+        record_dir: Path | None = None,
+        source_kind: mission_log_pb2.SourceKind.ValueType | None = None,
     ) -> None:
         """Bind a mission to a scratch directory and a universe-fake.
 
@@ -283,6 +336,12 @@ class ScenarioRunner:
             viz_save: Basilisk only — record a Vizard playback ``.bin``.
             run_id: Identity for this execution, carried on every span so
                 the archive can be sliced by run. None generates one.
+            record_dir: Archive the run beneath this directory, one
+                subdirectory per run. None records nothing.
+            source_kind: What produced the data. None infers it from the
+                plant, which is a guess the caller can override — the
+                plant alone cannot tell a synthetic device from a real
+                one behind the same driver contract.
 
         Raises:
             ValueError: On an unknown plant kind.
@@ -295,6 +354,51 @@ class ScenarioRunner:
         self._viz_live = viz_live
         self._viz_save = viz_save
         self.run_id = run_id or mission_log.default_run_id(mission.name or "mission")
+        self._record_dir = record_dir
+        self._source_kind = source_kind or (
+            mission_log_pb2.SOURCE_KIND_HIL
+            if plant_kind == "basilisk"
+            else mission_log_pb2.SOURCE_KIND_SIM
+        )
+        self.archive_dir: Path | None = None
+
+    def _start_recorder(self, session: zenoh.Session, vehicle: VehicleSpec) -> Recorder | None:
+        """Archive this run, if the caller asked for it.
+
+        The recorder subscribes to the same bus the mission runs on, so
+        it captures the mission's spans alongside its telemetry and the
+        archive needs no separate assembly step.
+
+        Args:
+            session: The mission's open bus session.
+            vehicle: Loaded vehicle, for its topic list and bounds.
+
+        Returns:
+            The running recorder, or None when not recording.
+        """
+        if self._record_dir is None:
+            return None
+        self.archive_dir = self._record_dir / self.run_id
+        self.archive_dir.mkdir(parents=True, exist_ok=True)
+        entry = telemetry_config_pb2.TelemetryConfig()
+        entry.CopyFrom(vehicle.telemetry)
+        entry.output_dir = str(self.archive_dir)
+        # Capture EVERYTHING for a scenario run. The flight recorder's
+        # allowlist is deliberately narrow because it runs forever on a
+        # bounded disk; a mission run is bounded by definition, and a
+        # blob that silently omitted whatever the vehicle happened to
+        # publish under a scenario prefix would be worse than large.
+        del entry.topics[:]
+        entry.topics.append("**")
+        header = mission_log.build_session_header(
+            run_id=self.run_id,
+            source_kind=self._source_kind,
+            mission_name=self.mission.name,
+            vehicle_path=self.mission.vehicle_path,
+            vehicle_sha256=_file_digest(REPO_ROOT / self.mission.vehicle_path),
+            plant=self._plant_kind,
+        )
+        return Recorder(entry, session, session_header=header)
 
     def _build_plant(self, vehicle: VehicleSpec, session: zenoh.Session) -> Plant:
         """Stand up the chosen universe-fake behind the sim topics.
@@ -338,6 +442,7 @@ class ScenarioRunner:
         mode_entry.clean_shutdown_marker = str(marker)
 
         session = zenoh.open(zenoh.Config())
+        recorder = self._start_recorder(session, vehicle)
         threads: list[threading.Thread] = []
         sensor_daemons: list[SensorDaemon] = []
         actuator_daemons: list[ActuatorDaemon] = []
@@ -438,6 +543,8 @@ class ScenarioRunner:
                     results.append(result)
             return ScenarioResult(mission=self.mission.name, phases=tuple(results))
         finally:
+            if recorder is not None:
+                recorder.close()
             if fdir is not None:
                 fdir.stop()
             if plant is not None:

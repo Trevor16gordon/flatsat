@@ -1,0 +1,20 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.PhaseConfig
+#
+# KEEP NOMINAL — the ordinary case, saved once and reused.
+#
+# A sub-mission is a PhaseConfig standing alone. A mission references it
+# with `use:` and overrides whatever it needs, so "hold nominal for 20 s"
+# and "hold nominal for 5 s" are the same building block with a
+# different duration rather than two copies that drift apart.
+#
+# It requests NOTHING. Holding a state is not commanding it, and a
+# request to enter the mode you are already in is correctly refused as a
+# no-op — asking anyway would make this phase fail on a healthy system.
+
+name: "keep nominal"
+duration_s: 20.0
+success {
+  require_mode: "NOMINAL"
+  require_all_acks: true
+}

@@ -1,0 +1,14 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.PhaseConfig
+#
+# SAFE HOLD — sit in SAFE and confirm every app acknowledged the
+# transition. Toward-safety is automatic and needs no ground authority,
+# which is why this requests SAFE without it.
+
+name: "safe hold"
+duration_s: 10.0
+request_mode: "SAFE"
+success {
+  require_mode: "SAFE"
+  require_all_acks: true
+}

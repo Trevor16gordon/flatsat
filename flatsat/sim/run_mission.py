@@ -25,6 +25,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from flatsat.msgs import mission_log_pb2
 from flatsat.sim.scenario import ScenarioRunner, load_mission
 
 
@@ -36,6 +37,20 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser(description="Run a mission profile.")
     parser.add_argument("mission", type=Path, help="mission file, e.g. config/missions/x.txtpb")
+    parser.add_argument(
+        "--record",
+        type=Path,
+        nargs="?",
+        const=Path.home() / "flatsat-missions",
+        default=None,
+        help="archive the run beneath this directory (default ~/flatsat-missions)",
+    )
+    parser.add_argument(
+        "--source-kind",
+        choices=("sim", "hil", "flight", "replay"),
+        default=None,
+        help="what produced the data; default infers from --plant",
+    )
     parser.add_argument(
         "--plant",
         choices=("local", "basilisk"),
@@ -60,9 +75,22 @@ def main() -> int:
             plant_kind=args.plant,
             viz_live=args.viz,
             viz_save=args.viz_save,
+            record_dir=args.record,
+            source_kind=(
+                mission_log_pb2.SourceKind.Value(f"SOURCE_KIND_{args.source_kind.upper()}")
+                if args.source_kind
+                else None
+            ),
         )
         result = runner.run()
     print(result.describe(), flush=True)
+    if runner.archive_dir is not None:
+        print(f"archive {runner.archive_dir}", flush=True)
+        print(
+            "export it:  python -m flatsat.telemetry.export "
+            f"{runner.archive_dir} -o {runner.archive_dir}/mission.json",
+            flush=True,
+        )
     return 0 if result.passed else 1
 
 
