@@ -127,3 +127,37 @@ class WheelAxisTorque(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___WheelAxisTorque: _TypeAlias = WheelAxisTorque  # noqa: Y015
+
+@_typing.final
+class MagnetorquerDipole(_message.Message):
+    """Dipole one magnetorquer rod is actually driving along its own axis,
+    published by the basilisk_magnetorquer driver AFTER its device
+    envelope. The plant maps it into the body frame through the vehicle
+    file's mounting and computes torque m x B from ITS OWN local field —
+    a rod never tells the universe how much torque it produced.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    ROD_FIELD_NUMBER: _builtins.int
+    DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    rod: _builtins.str
+    """actuator instance name, sanity check vs topic"""
+    dipole_a_m2: _builtins.float
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        rod: _builtins.str = ...,
+        dipole_a_m2: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["dipole_a_m2", b"dipole_a_m2", "header", b"header", "rod", b"rod"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___MagnetorquerDipole: _TypeAlias = MagnetorquerDipole  # noqa: Y015

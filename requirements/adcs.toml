@@ -138,3 +138,21 @@ produced it.
 verification = "test"
 evidence = "control_loop_test.py::test_loop_health_carries_provenance_and_counters"
 status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-011"
+statement = """
+The B-dot law shall command dipole opposing the measured field derivative,
+shall go quiet (zero dipole, no phantom derivative) when the field
+measurement is stale or absent, and shall be judged against the along-B
+rate floor magnetic control cannot remove in a short phase.
+"""
+rationale = """
+B-dot's authority comes entirely from the field's rotation in the body
+frame; there is never torque about the field line. A stale field
+differentiated into dB/dt is invented angular rate, and a success bound
+below the along-B floor is a tuned lie about magnetics.
+"""
+verification = "test"
+evidence = "bdot_test.py::test_dipole_opposes_the_field_derivative, ::test_commanded_torque_damps_the_spin, ::test_stale_field_goes_quiet_not_spiky; scenario_test.py::test_bdot_detumble_mission_succeeds (whole chain, bound above the measured 0.033 rad/s floor)"
+status = "verified"

@@ -475,6 +475,10 @@ class ScenarioRunner:
                 truth_topic=_truth_topic(vehicle),
                 omega0=self.mission.omega0_rad_s,
                 rate_hz=self.mission.plant_rate_hz,
+                sigma0=self.mission.sigma0,
+                orbit_elements=self.mission.orbit_elements,
+                epoch_gmst_rad=self.mission.epoch_gmst_rad,
+                epoch_solar_angle_rad=self.mission.epoch_solar_angle_rad,
                 viz_live=self._viz_live,
                 viz_save=self._viz_save,
             )

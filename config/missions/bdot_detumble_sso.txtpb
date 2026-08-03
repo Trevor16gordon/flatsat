@@ -1,0 +1,34 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# MAGNETIC DETUMBLE — the same post-deployment tumble as
+# deploy_detumble_sso.txtpb, removed with magnetorquers alone: no wheels,
+# no gyro in the loop, just m = -k·dB/dt against the rotating field.
+#
+# The success bound is DELIBERATELY looser than the wheel mission's.
+# B-dot produces no torque about the field line, so the rate component
+# along B survives a short phase and decays only as the orbit rotates
+# the field. For THIS release geometry (omega0 in the body sigma0 leaves
+# it in), omega·B_hat at deployment is 0.033 rad/s — measured from the
+# recorded run, conserved by m x B to within the orbital field rotation.
+# Bounding at 0.04 asserts the perpendicular component died (0.120 ->
+# ~0.003) without pretending magnetics can do what physics says it
+# cannot. Tightening this bound below ~0.033 is tuning a lie.
+
+name: "bdot-detumble-sso"
+description: "6U tumble removed by 3-rod B-dot in a rideshare SSO"
+vehicle: "config/vehicles/test_scenario_bdot.txtpb"
+orbit: "config/orbits/spacex_rideshare_sso.txtpb"
+
+# The same dispenser tumble the wheel mission flies.
+omega0_rad_s: [0.09, -0.07, 0.05]
+sigma0: [0.2, -0.1, 0.35]
+plant_rate_hz: 100.0
+
+phases {
+  name: "bdot-detumble"
+  duration_s: 35.0
+  success {
+    max_omega_mag_rad_s: 0.04
+  }
+}

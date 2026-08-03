@@ -110,3 +110,77 @@ class WheelDevice(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___WheelDevice: _TypeAlias = WheelDevice  # noqa: Y015
+
+@_typing.final
+class MagnetorquerDevice(_message.Message):
+    """Magnetorquer rod: specified by DIPOLE MOMENT, deliberately NOT torque.
+    Torque is m x B, computed by the plant from the local field, so the
+    available torque varies continuously around the orbit and is always
+    zero about the field line. A max_torque field here would grant
+    authority the device does not have and make magnetic detumble look
+    better than reality (docs/ARCHITECTURE.md, "A magnetorquer has no
+    maximum torque").
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NAME_FIELD_NUMBER: _builtins.int
+    MAX_DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    name: _builtins.str
+    """instance name (becomes the message source)"""
+    max_dipole_a_m2: _builtins.float
+    """dipole envelope; commands clip (and flag) beyond"""
+    def __init__(
+        self,
+        *,
+        name: _builtins.str = ...,
+        max_dipole_a_m2: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["max_dipole_a_m2", b"max_dipole_a_m2", "name", b"name"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___MagnetorquerDevice: _TypeAlias = MagnetorquerDevice  # noqa: Y015
+
+@_typing.final
+class MagnetometerDevice(_message.Message):
+    """Magnetometer: noise and range character. Read by BOTH the flight-side
+    driver (to know the device) and the simulation's sensor model (to
+    corrupt the truth field the way the device would).
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NAME_FIELD_NUMBER: _builtins.int
+    RATE_HZ_FIELD_NUMBER: _builtins.int
+    NOISE_T_FIELD_NUMBER: _builtins.int
+    FULL_SCALE_T_FIELD_NUMBER: _builtins.int
+    LSB_T_FIELD_NUMBER: _builtins.int
+    name: _builtins.str
+    """instance name (becomes the message source)"""
+    rate_hz: _builtins.float
+    """native output data rate"""
+    noise_t: _builtins.float
+    """white-noise sigma per axis, tesla"""
+    full_scale_t: _builtins.float
+    """measurement limit; beyond it the device rails"""
+    lsb_t: _builtins.float
+    """quantization step of the output"""
+    def __init__(
+        self,
+        *,
+        name: _builtins.str = ...,
+        rate_hz: _builtins.float = ...,
+        noise_t: _builtins.float = ...,
+        full_scale_t: _builtins.float = ...,
+        lsb_t: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["full_scale_t", b"full_scale_t", "lsb_t", b"lsb_t", "name", b"name", "noise_t", b"noise_t", "rate_hz", b"rate_hz"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___MagnetometerDevice: _TypeAlias = MagnetometerDevice  # noqa: Y015

@@ -1,0 +1,17 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.MagnetometerDevice
+#
+# Magnetometer device specification — DEVICE-INTRINSIC truth: noise and
+# range character the flight-side driver enforces and the simulation's
+# sensor model corrupts truth with. Values are placeholder (an RM3100-class
+# magneto-inductive part) until a physical magnetometer is on the bench.
+#
+# Deliberately absent until characterization: bias, scale factor,
+# hard/soft-iron distortion — invented distortion is fiction a B-dot gain
+# would then be tuned against.
+
+name: "mag0"
+rate_hz: 50.0
+noise_t: 1.5e-8       # ~15 nT white-noise sigma per axis
+full_scale_t: 8.0e-4  # ±800 uT; Earth's surface field is under 70 uT
+lsb_t: 1.3e-8         # ~13 nT quantization

@@ -29,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -161,6 +161,16 @@ class ControlLoop:
         self._sub = session.declare_subscriber(entry.input_topic, self._on_sample)
         self._latest: hal_pb2.ImuSample | None = None
         self._latest_recv_ns = 0
+        # Optional magnetometer side input: the loop still paces on the
+        # main input; the field rides along on the state it hands the
+        # strategy (magnetic laws need B, others never see it).
+        self._mag_sub = (
+            session.declare_subscriber(entry.mag_input_topic, self._on_mag)
+            if entry.mag_input_topic
+            else None
+        )
+        self._latest_mag: hal_pb2.MagnetometerSample | None = None
+        self._latest_mag_recv_ns = 0
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._last_torque = (0.0, 0.0, 0.0)
@@ -179,6 +189,17 @@ class ControlLoop:
             self._latest = msg
             self._latest_recv_ns = time.monotonic_ns()
             self.samples_received += 1
+
+    def _on_mag(self, sample: zenoh.Sample) -> None:
+        """Store the latest magnetometer sample (subscriber thread).
+
+        Args:
+            sample: Incoming MagnetometerSample.
+        """
+        msg = hal_pb2.MagnetometerSample.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self._latest_mag = msg
+            self._latest_mag_recv_ns = time.monotonic_ns()
 
     def wait_for_first_sample(self, timeout_s: float = 5.0) -> bool:
         """Block until the first state input arrives.
@@ -210,21 +231,47 @@ class ControlLoop:
         with self._lock:
             imu = self._latest
             age_ns = time.monotonic_ns() - self._latest_recv_ns
+            mag = self._latest_mag
+            mag_age_ns = time.monotonic_ns() - self._latest_mag_recv_ns
         assert imu is not None  # guaranteed by wait_for_first_sample
         stale = age_ns > self._stale_after_ns
 
         dt_s = 1.0 / self.entry.rate_hz
         state = self._estimator.update(imu, age_ns / 1e9, not stale, dt_s)
+        if self._mag_sub is not None and mag is not None:
+            state = replace(
+                state,
+                mag_field_t=(mag.mag_x_t, mag.mag_y_t, mag.mag_z_t),
+                mag_fresh=(
+                    mag_age_ns <= self._stale_after_ns
+                    and mag.header.validity == hal_pb2.VALIDITY_FLAG_VALID
+                ),
+            )
         output = self._controller.update(state, self._guidance.reference_at(t_s), dt_s)
-        self._last_torque = output.torque_n_m
 
+        header_validity = int(hal_pb2.VALIDITY_FLAG_STALE) if stale else 0
+        if type(self._controller).output_kind == "dipole":
+            self._last_torque = output.dipole_a_m2
+            dipole_cmd = adcs_pb2.DipoleCommand()
+            dipole_cmd.dipole_x_a_m2, dipole_cmd.dipole_y_a_m2, dipole_cmd.dipole_z_a_m2 = (
+                output.dipole_a_m2
+            )
+            dipole_cmd.header.source = "adcs_loop"
+            dipole_cmd.header.seq = seq
+            dipole_cmd.header.sample_time_ns = time.time_ns()
+            dipole_cmd.header.publish_time_ns = time.time_ns()
+            dipole_cmd.header.validity = header_validity
+            self._pub.put(dipole_cmd.SerializeToString())
+            return stale, output.saturated
+
+        self._last_torque = output.torque_n_m
         cmd = adcs_pb2.WheelTorqueCommand()
         cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m = output.torque_n_m
         cmd.header.source = "adcs_loop"
         cmd.header.seq = seq
         cmd.header.sample_time_ns = time.time_ns()
         cmd.header.publish_time_ns = time.time_ns()
-        cmd.header.validity = int(hal_pb2.VALIDITY_FLAG_STALE) if stale else 0
+        cmd.header.validity = header_validity
         self._pub.put(cmd.SerializeToString())
         return stale, output.saturated
 
@@ -317,6 +364,8 @@ class ControlLoop:
     def close(self) -> None:
         """Undeclare bus resources."""
         self._sub.undeclare()
+        if self._mag_sub is not None:
+            self._mag_sub.undeclare()
 
 
 def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:

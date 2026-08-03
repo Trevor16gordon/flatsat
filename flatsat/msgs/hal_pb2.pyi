@@ -254,3 +254,64 @@ class WheelState(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___WheelState: _TypeAlias = WheelState  # noqa: Y015
+
+@_typing.final
+class MagnetometerSample(_message.Message):
+    """Magnetometer sample. Body frame, tesla — measured where m x B is
+    evaluated, which is why the truth field is published body-frame too.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    MAG_X_T_FIELD_NUMBER: _builtins.int
+    MAG_Y_T_FIELD_NUMBER: _builtins.int
+    MAG_Z_T_FIELD_NUMBER: _builtins.int
+    mag_x_t: _builtins.float
+    mag_y_t: _builtins.float
+    mag_z_t: _builtins.float
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        mag_x_t: _builtins.float = ...,
+        mag_y_t: _builtins.float = ...,
+        mag_z_t: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "mag_x_t", b"mag_x_t", "mag_y_t", b"mag_y_t", "mag_z_t", b"mag_z_t"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___MagnetometerSample: _TypeAlias = MagnetometerSample  # noqa: Y015
+
+@_typing.final
+class MagnetorquerState(_message.Message):
+    """Magnetorquer rod state: the dipole actually being driven along the
+    rod's own axis (post-envelope). No speed, no momentum — a rod stores
+    nothing; its authority lives entirely in the local field.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    dipole_a_m2: _builtins.float
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        dipole_a_m2: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["dipole_a_m2", b"dipole_a_m2", "header", b"header"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___MagnetorquerState: _TypeAlias = MagnetorquerState  # noqa: Y015

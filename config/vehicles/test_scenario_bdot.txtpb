@@ -1,0 +1,112 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# B-DOT SCENARIO VEHICLE — magnetic detumble only: three orthogonal
+# magnetorquer rods, a magnetometer, and NO reaction wheels. The control
+# law never sees the gyro; the IMU is aboard because the loop paces on it
+# and the mission judge reads plant |omega| — exactly the situation after
+# deployment, when B-dot is the only law that needs nothing initialized.
+#
+# Same scenario-scale tuning philosophy as test_scenario.txtpb: small
+# inertia and an exaggerated rod (mtq_scenario.txtpb) so the perpendicular
+# rate component decays in tens of seconds at wall clock. What is NOT
+# exaggerated: the field itself, and the along-B component's refusal to
+# decay quickly — a bound tighter than that floor would be tuning a lie.
+
+name: "test-scenario-bdot"
+description: "Scenario vehicle: 3-rod B-dot magnetic detumble, test-only topics"
+
+body {
+  mass_kg: 2.0
+  inertia_kg_m2: [0.05, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.05]
+}
+
+sensors {
+  name: "bdt_imu0"
+  topic: "test/bdt/hal/imu/sample"
+  rate_hz: 50
+  basilisk_imu {
+    spec: "config/devices/imu0.txtpb"
+    truth_topic: "test/bdt/sim/truth"
+    stale_after_s: 0.5
+    seed: 7
+  }
+}
+
+sensors {
+  name: "bdt_mag0"
+  topic: "test/bdt/hal/mag/sample"
+  rate_hz: 50
+  basilisk_magnetometer {
+    spec: "config/devices/mag0.txtpb"
+    truth_topic: "test/bdt/sim/truth"
+    stale_after_s: 0.5
+    seed: 11
+  }
+}
+
+actuators {
+  name: "bdt_mtq_x"
+  command_topic: "test/bdt/adcs/dipole"
+  state_topic: "test/bdt/hal/mtq_x/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+actuators {
+  name: "bdt_mtq_y"
+  command_topic: "test/bdt/adcs/dipole"
+  state_topic: "test/bdt/hal/mtq_y/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+actuators {
+  name: "bdt_mtq_z"
+  command_topic: "test/bdt/adcs/dipole"
+  state_topic: "test/bdt/hal/mtq_z/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+control {
+  rate_hz: 50
+  input_topic: "test/bdt/hal/imu/sample"
+  mag_input_topic: "test/bdt/hal/mag/sample"
+  output_topic: "test/bdt/adcs/dipole"
+  stale_after_s: 0.1
+  bdot {
+    gain: 1.0e7             # saturates the rods while |dB/dt| > 2.5 uT/s;
+                            # higher gain trades noise-driven dipole chatter
+                            # for nothing once the rods already saturate
+    max_dipole_a_m2: 25.0   # matches the mtq_scenario device envelope
+    filter_tau_s: 0.3       # dB/dt noise vs phase lag on the tumble signal
+  }
+  constant_rate { target_rates_rad_s: [0.0, 0.0, 0.0] }
+  passthrough {}
+}
+
+mode {
+  apps: ["bdt_imu0", "bdt_mag0", "bdt_mtq_x", "bdt_mtq_y", "bdt_mtq_z", "adcs", "fdir"]
+  ack_timeout_s: 1.0
+  min_dwell_s: 0.2
+}
+
+fdir {  # thresholds scaled to this vehicle's test tempo
+  rules {
+    name: "imu_stale"
+    min_trip_s: 0.5
+    flag_ratio {
+      topic: "test/bdt/hal/imu/sample"
+      flag_mask: 8         # VALIDITY_FLAG_STALE
+      window_s: 2.0
+      max_ratio: 0.5
+    }
+  }
+}

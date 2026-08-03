@@ -181,6 +181,54 @@ def test_daemon_projects_through_mounting(sessions: tuple[zenoh.Session, zenoh.S
     assert all(t == pytest.approx(0.03) for t in applied)
 
 
+@pytest.mark.verifies("FSW-ACT-002", "FSW-ACT-007")
+def test_daemon_dispatches_dipole_commands_to_a_magnetorquer(
+    sessions: tuple[zenoh.Session, zenoh.Session],
+) -> None:
+    """A rod's daemon parses DipoleCommand and projects it like any command.
+
+    The driver declares its command kind; the daemon must feed a z-axis
+    rod the z component of the body dipole, through the same mounting
+    projection wheels get.
+    """
+    pub_session, daemon_session = sessions
+    entry = vehicle_pb2.ActuatorConfig(
+        name="mtq_daemon_test",
+        command_topic="test/act/mtq_daemon_test/cmd",
+        state_topic="test/act/mtq_daemon_test/state",
+        rate_hz=50.0,
+        stale_zero_s=0.15,
+        mounting=vehicle_pb2.MountingConfig(position_m=[0.0, 0.0, 0.0], axis=[0.0, 0.0, 1.0]),
+        basilisk_magnetorquer=driver_options_pb2.BasiliskMagnetorquerOptions(
+            device="config/devices/mtq0.txtpb"
+        ),
+    )
+    states: list[hal_pb2.MagnetorquerState] = []
+    sub = pub_session.declare_subscriber(
+        entry.state_topic,
+        lambda s: states.append(hal_pb2.MagnetorquerState.FromString(bytes(s.payload.to_bytes()))),
+    )
+    cmd_pub = pub_session.declare_publisher(entry.command_topic)
+    time.sleep(0.5)
+
+    daemon, thread = _run_daemon(entry, daemon_session)
+    cmd = adcs_pb2.DipoleCommand()
+    cmd.dipole_x_a_m2, cmd.dipole_y_a_m2, cmd.dipole_z_a_m2 = (0.9, 0.0, 0.4)
+    end = time.monotonic() + 0.6
+    while time.monotonic() < end:
+        cmd_pub.put(cmd.SerializeToString())
+        time.sleep(0.03)
+    applied = [s.dipole_a_m2 for s in states if s.dipole_a_m2 != 0.0]
+    daemon.stop()
+    thread.join(timeout=2.0)
+    daemon.close()
+    sub.undeclare()
+
+    assert applied, "dipole command never reached the rod"
+    # z-axis rod gets the z component only; x rides on other rods.
+    assert all(d == pytest.approx(0.4) for d in applied)
+
+
 @pytest.mark.verifies("FSW-ACT-006")
 def test_actuator_daemon_publishes_health(sessions: tuple[zenoh.Session, zenoh.Session]) -> None:
     pub_session, daemon_session = sessions

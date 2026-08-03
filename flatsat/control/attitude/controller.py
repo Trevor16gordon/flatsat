@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 Vec3 = tuple[float, float, float]
 
@@ -43,11 +43,19 @@ class AttitudeState:
         age_s: Age of the underlying measurement when the step ran.
         valid: False when the estimate is not trustworthy (stale input,
             flagged sensor); strategies decide how to degrade.
+        mag_field_t: Body-frame magnetic field measurement, tesla; None
+            when the vehicle carries no magnetometer (the loop attaches
+            it when a mag input topic is configured).
+        mag_fresh: False when the field measurement is stale or flagged;
+            magnetic strategies must go quiet rather than differentiate
+            a frozen value into a phantom dB/dt.
     """
 
     body_rates_rad_s: Vec3 = (0.0, 0.0, 0.0)
     age_s: float = 0.0
     valid: bool = True
+    mag_field_t: Vec3 | None = None
+    mag_fresh: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,11 +88,15 @@ class ControlOutput:
     """What a control step produced.
 
     Attributes:
-        torque_n_m: Commanded body torque (x, y, z).
+        torque_n_m: Commanded body torque (x, y, z); zeros for a dipole
+            strategy — a magnetorquer law never speaks torque.
+        dipole_a_m2: Commanded body dipole (x, y, z); meaningful only
+            when the strategy declares ``output_kind == "dipole"``.
         saturated: True when a limit clipped the command.
     """
 
     torque_n_m: Vec3 = (0.0, 0.0, 0.0)
+    dipole_a_m2: Vec3 = (0.0, 0.0, 0.0)
     saturated: bool = False
 
 
@@ -92,6 +104,12 @@ class AttitudeController(ABC):
     """Base class for attitude control strategies."""
 
     limits: ControlLimits = field(default=ControlLimits())
+
+    # Which body-frame command this strategy emits: "torque"
+    # (WheelTorqueCommand, the default) or "dipole" (DipoleCommand). The
+    # loop builds the matching message; the vehicle file routes it to
+    # actuators whose drivers consume that kind.
+    output_kind: ClassVar[str] = "torque"
 
     @classmethod
     @abstractmethod

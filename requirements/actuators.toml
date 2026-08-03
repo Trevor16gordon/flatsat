@@ -93,3 +93,21 @@ stale-zeroed cycles — the protection engaging is itself telemetry.
 verification = "test"
 evidence = "actuator_daemon_test.py::test_actuator_daemon_publishes_health"
 status = "verified"
+
+[[requirement]]
+id = "FSW-ACT-007"
+statement = """
+A magnetorquer shall be specified by its magnetic dipole moment, never by
+a torque; commanded dipole beyond the device envelope shall clip and
+flag, and the torque shall be computed by the plant as m x B from the
+local field.
+"""
+rationale = """
+A magnetorquer has no maximum torque (docs/ARCHITECTURE.md): torque is
+m x B, varies continuously around the orbit, and is always zero about the
+field line. A max_torque device parameter would grant authority that does
+not exist and make magnetic detumble look better than reality.
+"""
+verification = "test"
+evidence = "magnetorquer_test.py::test_dipole_clips_and_flags_range and ::test_spec_carries_no_torque_field; basilisk_hil_test.py::test_magnetorquer_torque_is_m_cross_b; basilisk_magnetorquer_test.py::test_feedback_carries_post_envelope_dipole; actuator_daemon_test.py::test_daemon_dispatches_dipole_commands_to_a_magnetorquer"
+status = "verified"

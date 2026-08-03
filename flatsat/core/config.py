@@ -385,3 +385,72 @@ def describe_wheel_spec(spec: devices_pb2.WheelDevice, prov: Provenance) -> list
         f"max momentum {spec.max_momentum_n_m_s:g} N·m·s, "
         f"rotor inertia {spec.rotor_inertia_kg_m2:g} kg·m²",
     ]
+
+
+def load_magnetorquer_spec(
+    path: Path | str,
+) -> tuple[devices_pb2.MagnetorquerDevice, Provenance]:
+    """Load a magnetorquer device specification.
+
+    Args:
+        path: Device file, e.g. ``config/devices/mtq0.txtpb``.
+
+    Returns:
+        Tuple of (device spec, provenance).
+    """
+    spec = devices_pb2.MagnetorquerDevice()
+    prov = load_textproto(Path(path), spec)
+    return spec, prov
+
+
+def describe_magnetorquer_spec(spec: devices_pb2.MagnetorquerDevice, prov: Provenance) -> list[str]:
+    """Render a magnetorquer spec for logs/telemetry echo.
+
+    The one envelope is the dipole moment — deliberately no torque figure,
+    because a magnetorquer has none (torque is m x B at wherever the
+    vehicle happens to be).
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device envelope in effect.
+    """
+    return [
+        f"magnetorquer spec: {prov.describe()} ({spec.name})",
+        f"magnetorquer spec: max dipole {spec.max_dipole_a_m2:g} A·m²",
+    ]
+
+
+def load_magnetometer_spec(
+    path: Path | str | None = None,
+) -> tuple[devices_pb2.MagnetometerDevice, Provenance]:
+    """Load a magnetometer device specification.
+
+    Args:
+        path: Override file; defaults to ``config/devices/mag0.txtpb``.
+
+    Returns:
+        Tuple of (device spec, provenance).
+    """
+    spec = devices_pb2.MagnetometerDevice()
+    prov = load_textproto(Path(path) if path else CONFIG_ROOT / "devices" / "mag0.txtpb", spec)
+    return spec, prov
+
+
+def describe_magnetometer_spec(spec: devices_pb2.MagnetometerDevice, prov: Provenance) -> list[str]:
+    """Render a magnetometer spec for logs/telemetry echo.
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device characteristics in effect.
+    """
+    return [
+        f"magnetometer spec: {prov.describe()} ({spec.name})",
+        f"magnetometer spec: noise {spec.noise_t:g} T, "
+        f"full scale ±{spec.full_scale_t:g} T, lsb {spec.lsb_t:g} T",
+    ]

@@ -32,3 +32,26 @@ message WheelDevice {
   double max_momentum_n_m_s = 3;      // momentum storage; SATURATED at the rail
   double rotor_inertia_kg_m2 = 4;     // speed = momentum / inertia
 }
+
+// Magnetorquer rod: specified by DIPOLE MOMENT, deliberately NOT torque.
+// Torque is m x B, computed by the plant from the local field, so the
+// available torque varies continuously around the orbit and is always
+// zero about the field line. A max_torque field here would grant
+// authority the device does not have and make magnetic detumble look
+// better than reality (docs/ARCHITECTURE.md, "A magnetorquer has no
+// maximum torque").
+message MagnetorquerDevice {
+  string name = 1;                    // instance name (becomes the message source)
+  double max_dipole_a_m2 = 2;         // dipole envelope; commands clip (and flag) beyond
+}
+
+// Magnetometer: noise and range character. Read by BOTH the flight-side
+// driver (to know the device) and the simulation's sensor model (to
+// corrupt the truth field the way the device would).
+message MagnetometerDevice {
+  string name = 1;                    // instance name (becomes the message source)
+  double rate_hz = 2;                 // native output data rate
+  double noise_t = 3;                 // white-noise sigma per axis, tesla
+  double full_scale_t = 4;            // measurement limit; beyond it the device rails
+  double lsb_t = 5;                   // quantization step of the output
+}

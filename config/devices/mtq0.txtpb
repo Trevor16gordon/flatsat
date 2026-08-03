@@ -1,0 +1,12 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.MagnetorquerDevice
+#
+# Magnetorquer device specification — the ONE envelope a rod has is its
+# dipole moment. There is deliberately NO max torque field: torque is
+# m x B, decided by the field where the vehicle is, so writing a torque
+# here would grant authority that does not exist and flatter detumble
+# (docs/ARCHITECTURE.md, "A magnetorquer has no maximum torque").
+# Value is placeholder (a 6U-class rod) until a physical part exists.
+
+name: "mtq0"
+max_dipole_a_m2: 1.2

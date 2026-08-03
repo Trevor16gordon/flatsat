@@ -38,6 +38,9 @@ if TYPE_CHECKING:  # contract types for signatures only — never imported at ru
 DRIVERS: dict[str, str] = {
     "jetson_thermal": "flatsat.hardware.drivers.jetson_thermal:JetsonThermalDriver",
     "basilisk_imu": "flatsat.hardware.drivers.basilisk_imu:BasiliskImuDriver",
+    "basilisk_magnetometer": (
+        "flatsat.hardware.drivers.basilisk_magnetometer:BasiliskMagnetometerDriver"
+    ),
 }
 
 ACTUATORS: dict[str, str] = {
@@ -45,11 +48,15 @@ ACTUATORS: dict[str, str] = {
     "basilisk_reaction_wheel": (
         "flatsat.hardware.drivers.basilisk_reaction_wheel:BasiliskReactionWheelDriver"
     ),
+    "basilisk_magnetorquer": (
+        "flatsat.hardware.drivers.basilisk_magnetorquer:BasiliskMagnetorquerDriver"
+    ),
 }
 
 CONTROLLERS: dict[str, str] = {
     "rate_damping": "flatsat.control.attitude.controllers.rate_damping:RateDampingController",
     "pid": "flatsat.control.attitude.controllers.pid:PidRateController",
+    "bdot": "flatsat.control.attitude.controllers.bdot:BdotController",
 }
 
 GUIDANCE: dict[str, str] = {

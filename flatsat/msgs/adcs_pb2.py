@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from flatsat.msgs import hal_pb2 as flatsat_dot_msgs_dot_hal__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x66latsat/msgs/adcs.proto\x12\nflatsat.v1\x1a\x16\x66latsat/msgs/hal.proto\"z\n\x12WheelTorqueCommand\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0ctorque_x_n_m\x18\x02 \x01(\x01\x12\x14\n\x0ctorque_y_n_m\x18\x03 \x01(\x01\x12\x14\n\x0ctorque_z_n_m\x18\x04 \x01(\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x66latsat/msgs/adcs.proto\x12\nflatsat.v1\x1a\x16\x66latsat/msgs/hal.proto\"z\n\x12WheelTorqueCommand\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x14\n\x0ctorque_x_n_m\x18\x02 \x01(\x01\x12\x14\n\x0ctorque_y_n_m\x18\x03 \x01(\x01\x12\x14\n\x0ctorque_z_n_m\x18\x04 \x01(\x01\"x\n\rDipoleCommand\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\rdipole_x_a_m2\x18\x02 \x01(\x01\x12\x15\n\rdipole_y_a_m2\x18\x03 \x01(\x01\x12\x15\n\rdipole_z_a_m2\x18\x04 \x01(\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,4 +34,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_WHEELTORQUECOMMAND']._serialized_start=63
   _globals['_WHEELTORQUECOMMAND']._serialized_end=185
+  _globals['_DIPOLECOMMAND']._serialized_start=187
+  _globals['_DIPOLECOMMAND']._serialized_end=307
 # @@protoc_insertion_point(module_scope)

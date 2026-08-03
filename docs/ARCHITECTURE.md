@@ -271,17 +271,22 @@ mission that silently loses its orbit when you ask for the higher-fidelity
 plant is worse than one that never had an orbit, because the sim now
 disagrees with itself and the disagreement is invisible.
 
-> **KNOWN GAP (2026-08-03).** `BasiliskPlant` does not implement the orbit.
-> `ScenarioRunner._build_plant` passes `sigma0`, `orbit_elements` and the
-> epoch to `LocalPlant` only, so `--plant basilisk` runs attitude-only in an
-> empty universe: no gravity body, no orbital position, no magnetic field,
-> and the initial attitude discarded. Vizard therefore shows a vehicle
-> tumbling in the void rather than orbiting. Closing it means giving
-> Basilisk a `gravBodyFactory` Earth, setting the hub's initial position and
-> velocity from the same `OrbitalElements`, threading `sigma0` through, and
-> filling the same `TruthState` environment fields. Until then, treat
-> `--plant local` as the *more* complete model, which is the opposite of
-> what the names suggest.
+> **GAP CLOSED (2026-08-03).** `BasiliskPlant` now flies the same universe.
+> It takes the same `sigma0`, `orbit_elements` and epoch as `LocalPlant`; a
+> `gravBodyFactory` Earth carries `orbit.py`'s mu, radius and J2 (fed in as
+> the normalized C20 coefficient, built in Python — the pip wheel ships no
+> gravity data files); the hub's initial position and velocity come from
+> `propagate_eci(elements, 0.0)`, so both plants start from the identical
+> state. The `TruthState` environment fields go through one shared
+> `fill_environment` helper: position is each plant's OWN integrated state,
+> but the field, sun and eclipse evaluated there are always `orbit.py`'s
+> models. The remaining plant difference is therefore integration fidelity,
+> as required — Basilisk carries J2's short-period oscillations (roughly
+> ±5 km at 525 km) that the analytic propagator deliberately averages out,
+> so positions agree to ~0.3% over an orbit, exactly rather than
+> approximately at epoch. Swapping the dipole for Basilisk's own magnetic
+> models would be a deliberate future fidelity upgrade, taken only with a
+> parity check in hand.
 
 ### What `orbit.py` models
 
@@ -328,10 +333,26 @@ authority that does not exist and make detumble look better than reality.
 The device parameter is `max_dipole_a_m2`; the plant computes the torque
 from the local field.
 
+**Built (2026-08-03).** `MagnetorquerDevice` carries `max_dipole_a_m2` and
+nothing else (a test pins the field list so a torque figure cannot arrive
+quietly). The chain: `basilisk_magnetometer` corrupts the truth field
+through `config/devices/mag0.txtpb`; the `bdot` strategy computes
+`m = -k·dB/dt` from a low-passed finite difference and publishes a
+`DipoleCommand` (A·m², never N·m); the ordinary actuator daemon projects
+it through each rod's mounting (drivers declare their command kind); the
+`basilisk_magnetorquer` driver clips to the device envelope and feeds the
+applied dipole to whichever plant is running, which computes `m x B` from
+ITS OWN local field via one shared function. Measured, not assumed: for
+the rideshare deployment tumble, B-dot removes the perpendicular rate
+component (0.120 → 0.003 rad/s in ~35 s with the scenario-scale rod)
+while the along-B component — 0.033 rad/s for that release attitude —
+survives, exactly as `m x B` demands. The mission bound sits above that
+floor on purpose.
+
 ### Staged build-out
 
-1. Orbit, epoch, geomagnetic field — **done** for `LocalPlant`, open for Basilisk (see gap above).
-2. Magnetorquer device, driver, B-dot controller.
+1. Orbit, epoch, geomagnetic field — **done** for both plants (see the closed gap above).
+2. Magnetorquer device, driver, B-dot controller — **done** (see above).
 3. Star tracker device and driver, with sun and Earth exclusion angles.
 4. Module layer: `config/modules/*.txtpb` as procurement truth, body mass and inertia **derived** by parallel axis theorem rather than hand-typed, with an optional measured override that warns on disagreement.
 5. Power draw per device, summed into a per-mode budget.

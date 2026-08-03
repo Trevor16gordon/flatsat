@@ -27,6 +27,17 @@ message PidOptions {
   optional double max_torque_n_m = 5;  // actuator envelope; absent = 1.0
 }
 
+// bdot: magnetic detumble — dipole m = -k·dB/dt from the magnetometer
+// alone; no rate gyro, no attitude knowledge. Underactuated by physics:
+// there is never torque about the field line, and convergence relies on
+// the field ROTATING along the orbit, so the along-B rate component
+// decays only at orbital tempo.
+message BdotOptions {
+  optional double gain = 1;             // required; A·m² per (T/s)
+  optional double max_dipole_a_m2 = 2;  // command envelope; absent = 1.0
+  optional double filter_tau_s = 3;     // dB/dt low-pass time constant; absent = 0.5
+}
+
 // constant_rate: fixed body-rate target; all zeros (or empty) = detumble.
 message ConstantRateOptions {
   repeated double target_rates_rad_s = 1;  // 3 values, or empty for detumble

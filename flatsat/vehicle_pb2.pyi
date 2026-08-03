@@ -108,6 +108,7 @@ class SensorConfig(_message.Message):
     RATE_HZ_FIELD_NUMBER: _builtins.int
     JETSON_THERMAL_FIELD_NUMBER: _builtins.int
     BASILISK_IMU_FIELD_NUMBER: _builtins.int
+    BASILISK_MAGNETOMETER_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     """instance name; becomes the message source and unit name"""
     topic: _builtins.str
@@ -118,6 +119,8 @@ class SensorConfig(_message.Message):
     def jetson_thermal(self) -> _driver_options_pb2.JetsonThermalOptions: ...
     @_builtins.property
     def basilisk_imu(self) -> _driver_options_pb2.BasiliskImuOptions: ...
+    @_builtins.property
+    def basilisk_magnetometer(self) -> _driver_options_pb2.BasiliskMagnetometerOptions: ...
     def __init__(
         self,
         *,
@@ -126,12 +129,13 @@ class SensorConfig(_message.Message):
         rate_hz: _builtins.float = ...,
         jetson_thermal: _driver_options_pb2.JetsonThermalOptions | None = ...,
         basilisk_imu: _driver_options_pb2.BasiliskImuOptions | None = ...,
+        basilisk_magnetometer: _driver_options_pb2.BasiliskMagnetometerOptions | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["basilisk_imu", b"basilisk_imu", "jetson_thermal", b"jetson_thermal", "options", b"options"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["basilisk_imu", b"basilisk_imu", "basilisk_magnetometer", b"basilisk_magnetometer", "jetson_thermal", b"jetson_thermal", "options", b"options"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["basilisk_imu", b"basilisk_imu", "jetson_thermal", b"jetson_thermal", "name", b"name", "options", b"options", "rate_hz", b"rate_hz", "topic", b"topic"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["basilisk_imu", b"basilisk_imu", "basilisk_magnetometer", b"basilisk_magnetometer", "jetson_thermal", b"jetson_thermal", "name", b"name", "options", b"options", "rate_hz", b"rate_hz", "topic", b"topic"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_options: _TypeAlias = _typing.Literal["jetson_thermal", "basilisk_imu"]  # noqa: Y015
+    _WhichOneofReturnType_options: _TypeAlias = _typing.Literal["jetson_thermal", "basilisk_imu", "basilisk_magnetometer"]  # noqa: Y015
     _WhichOneofArgType_options: _TypeAlias = _typing.Literal["options", b"options"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_options) -> _WhichOneofReturnType_options | None: ...
 
@@ -151,6 +155,7 @@ class ActuatorConfig(_message.Message):
     MOUNTING_FIELD_NUMBER: _builtins.int
     SIM_REACTION_WHEEL_FIELD_NUMBER: _builtins.int
     BASILISK_REACTION_WHEEL_FIELD_NUMBER: _builtins.int
+    BASILISK_MAGNETORQUER_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     command_topic: _builtins.str
     """body-frame commands consumed from here"""
@@ -168,6 +173,8 @@ class ActuatorConfig(_message.Message):
     def sim_reaction_wheel(self) -> _driver_options_pb2.SimReactionWheelOptions: ...
     @_builtins.property
     def basilisk_reaction_wheel(self) -> _driver_options_pb2.BasiliskReactionWheelOptions: ...
+    @_builtins.property
+    def basilisk_magnetorquer(self) -> _driver_options_pb2.BasiliskMagnetorquerOptions: ...
     def __init__(
         self,
         *,
@@ -179,12 +186,13 @@ class ActuatorConfig(_message.Message):
         mounting: Global___MountingConfig | None = ...,
         sim_reaction_wheel: _driver_options_pb2.SimReactionWheelOptions | None = ...,
         basilisk_reaction_wheel: _driver_options_pb2.BasiliskReactionWheelOptions | None = ...,
+        basilisk_magnetorquer: _driver_options_pb2.BasiliskMagnetorquerOptions | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["basilisk_reaction_wheel", b"basilisk_reaction_wheel", "mounting", b"mounting", "options", b"options", "sim_reaction_wheel", b"sim_reaction_wheel"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["basilisk_magnetorquer", b"basilisk_magnetorquer", "basilisk_reaction_wheel", b"basilisk_reaction_wheel", "mounting", b"mounting", "options", b"options", "sim_reaction_wheel", b"sim_reaction_wheel"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["basilisk_reaction_wheel", b"basilisk_reaction_wheel", "command_topic", b"command_topic", "mounting", b"mounting", "name", b"name", "options", b"options", "rate_hz", b"rate_hz", "sim_reaction_wheel", b"sim_reaction_wheel", "stale_zero_s", b"stale_zero_s", "state_topic", b"state_topic"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["basilisk_magnetorquer", b"basilisk_magnetorquer", "basilisk_reaction_wheel", b"basilisk_reaction_wheel", "command_topic", b"command_topic", "mounting", b"mounting", "name", b"name", "options", b"options", "rate_hz", b"rate_hz", "sim_reaction_wheel", b"sim_reaction_wheel", "stale_zero_s", b"stale_zero_s", "state_topic", b"state_topic"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_options: _TypeAlias = _typing.Literal["sim_reaction_wheel", "basilisk_reaction_wheel"]  # noqa: Y015
+    _WhichOneofReturnType_options: _TypeAlias = _typing.Literal["sim_reaction_wheel", "basilisk_reaction_wheel", "basilisk_magnetorquer"]  # noqa: Y015
     _WhichOneofArgType_options: _TypeAlias = _typing.Literal["options", b"options"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_options) -> _WhichOneofReturnType_options | None: ...
 
@@ -200,8 +208,10 @@ class ControlConfig(_message.Message):
     INPUT_TOPIC_FIELD_NUMBER: _builtins.int
     OUTPUT_TOPIC_FIELD_NUMBER: _builtins.int
     STALE_AFTER_S_FIELD_NUMBER: _builtins.int
+    MAG_INPUT_TOPIC_FIELD_NUMBER: _builtins.int
     RATE_DAMPING_FIELD_NUMBER: _builtins.int
     PID_FIELD_NUMBER: _builtins.int
+    BDOT_FIELD_NUMBER: _builtins.int
     CONSTANT_RATE_FIELD_NUMBER: _builtins.int
     PASSTHROUGH_FIELD_NUMBER: _builtins.int
     rate_hz: _builtins.float
@@ -211,10 +221,16 @@ class ControlConfig(_message.Message):
     """actuator commands"""
     stale_after_s: _builtins.float
     """input age beyond which the measurement is not fresh"""
+    mag_input_topic: _builtins.str
+    """Magnetometer input for magnetic strategies; empty = none. The loop
+    still paces on input_topic — the field rides along on the state.
+    """
     @_builtins.property
     def rate_damping(self) -> _control_options_pb2.RateDampingOptions: ...
     @_builtins.property
     def pid(self) -> _control_options_pb2.PidOptions: ...
+    @_builtins.property
+    def bdot(self) -> _control_options_pb2.BdotOptions: ...
     @_builtins.property
     def constant_rate(self) -> _control_options_pb2.ConstantRateOptions: ...
     @_builtins.property
@@ -226,20 +242,22 @@ class ControlConfig(_message.Message):
         input_topic: _builtins.str = ...,
         output_topic: _builtins.str = ...,
         stale_after_s: _builtins.float = ...,
+        mag_input_topic: _builtins.str = ...,
         rate_damping: _control_options_pb2.RateDampingOptions | None = ...,
         pid: _control_options_pb2.PidOptions | None = ...,
+        bdot: _control_options_pb2.BdotOptions | None = ...,
         constant_rate: _control_options_pb2.ConstantRateOptions | None = ...,
         passthrough: _control_options_pb2.PassthroughOptions | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["constant_rate", b"constant_rate", "estimator", b"estimator", "objective", b"objective", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "strategy", b"strategy"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "estimator", b"estimator", "objective", b"objective", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "strategy", b"strategy"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["constant_rate", b"constant_rate", "estimator", b"estimator", "input_topic", b"input_topic", "objective", b"objective", "output_topic", b"output_topic", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "rate_hz", b"rate_hz", "stale_after_s", b"stale_after_s", "strategy", b"strategy"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "estimator", b"estimator", "input_topic", b"input_topic", "mag_input_topic", b"mag_input_topic", "objective", b"objective", "output_topic", b"output_topic", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "rate_hz", b"rate_hz", "stale_after_s", b"stale_after_s", "strategy", b"strategy"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType_estimator: _TypeAlias = _typing.Literal["passthrough"]  # noqa: Y015
     _WhichOneofArgType_estimator: _TypeAlias = _typing.Literal["estimator", b"estimator"]  # noqa: Y015
     _WhichOneofReturnType_objective: _TypeAlias = _typing.Literal["constant_rate"]  # noqa: Y015
     _WhichOneofArgType_objective: _TypeAlias = _typing.Literal["objective", b"objective"]  # noqa: Y015
-    _WhichOneofReturnType_strategy: _TypeAlias = _typing.Literal["rate_damping", "pid"]  # noqa: Y015
+    _WhichOneofReturnType_strategy: _TypeAlias = _typing.Literal["rate_damping", "pid", "bdot"]  # noqa: Y015
     _WhichOneofArgType_strategy: _TypeAlias = _typing.Literal["strategy", b"strategy"]  # noqa: Y015
     @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType_estimator) -> _WhichOneofReturnType_estimator | None: ...

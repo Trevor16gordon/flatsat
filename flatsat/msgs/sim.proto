@@ -46,3 +46,14 @@ message WheelAxisTorque {
   string wheel = 2;          // actuator instance name, sanity check vs topic
   double torque_n_m = 3;
 }
+
+// Dipole one magnetorquer rod is actually driving along its own axis,
+// published by the basilisk_magnetorquer driver AFTER its device
+// envelope. The plant maps it into the body frame through the vehicle
+// file's mounting and computes torque m x B from ITS OWN local field —
+// a rod never tells the universe how much torque it produced.
+message MagnetorquerDipole {
+  Header header = 1;
+  string rod = 2;            // actuator instance name, sanity check vs topic
+  double dipole_a_m2 = 3;
+}

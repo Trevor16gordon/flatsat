@@ -79,14 +79,25 @@ class ActuatorDaemon:
         self._sub = session.declare_subscriber(entry.command_topic, self._on_command)
 
     def _on_command(self, sample: zenoh.Sample) -> None:
-        """Store the newest body-frame torque command (subscriber thread).
+        """Store the newest body-frame command (subscriber thread).
+
+        The message type follows the driver's ``command_kind``: a wheel
+        consumes WheelTorqueCommand (N·m), a magnetorquer DipoleCommand
+        (A·m²). Either way it is a body-frame vector the daemon projects
+        through this device's mounting.
 
         Args:
-            sample: Incoming WheelTorqueCommand.
+            sample: Incoming command message.
         """
-        cmd = adcs_pb2.WheelTorqueCommand.FromString(bytes(sample.payload.to_bytes()))
+        payload = bytes(sample.payload.to_bytes())
+        if self._driver.command_kind == "dipole":
+            dipole = adcs_pb2.DipoleCommand.FromString(payload)
+            command = (dipole.dipole_x_a_m2, dipole.dipole_y_a_m2, dipole.dipole_z_a_m2)
+        else:
+            torque = adcs_pb2.WheelTorqueCommand.FromString(payload)
+            command = (torque.torque_x_n_m, torque.torque_y_n_m, torque.torque_z_n_m)
         with self._lock:
-            self._torque_body = (cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m)
+            self._torque_body = command
             self._recv_ns = time.monotonic_ns()
             self.commands_received += 1
 
@@ -94,9 +105,10 @@ class ActuatorDaemon:
         """Resolve what the device should do RIGHT NOW.
 
         Returns:
-            Tuple of (torque about the device axis, command was stale).
-            The stale case is always (0.0, True): an actuator must never
-            keep flying a dead controller's last order.
+            Tuple of (effort about the device axis, in the driver's own
+            command units, and whether the command was stale). The stale
+            case is always (0.0, True): an actuator must never keep
+            flying a dead controller's last order.
         """
         with self._lock:
             torque_body = self._torque_body

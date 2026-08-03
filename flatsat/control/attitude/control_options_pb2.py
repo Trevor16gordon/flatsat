@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n.flatsat/control/attitude/control_options.proto\x12\nflatsat.v1\"t\n\x12RateDampingOptions\x12\x0f\n\x02kp\x18\x01 \x01(\x01H\x00\x88\x01\x01\x12\x0f\n\x02kd\x18\x02 \x01(\x01H\x01\x88\x01\x01\x12\x1b\n\x0emax_torque_n_m\x18\x03 \x01(\x01H\x02\x88\x01\x01\x42\x05\n\x03_kpB\x05\n\x03_kdB\x11\n\x0f_max_torque_n_m\"\xb4\x01\n\nPidOptions\x12\x0f\n\x02kp\x18\x01 \x01(\x01H\x00\x88\x01\x01\x12\x0f\n\x02ki\x18\x02 \x01(\x01H\x01\x88\x01\x01\x12\x0f\n\x02kd\x18\x03 \x01(\x01H\x02\x88\x01\x01\x12\x1b\n\x0eintegral_limit\x18\x04 \x01(\x01H\x03\x88\x01\x01\x12\x1b\n\x0emax_torque_n_m\x18\x05 \x01(\x01H\x04\x88\x01\x01\x42\x05\n\x03_kpB\x05\n\x03_kiB\x05\n\x03_kdB\x11\n\x0f_integral_limitB\x11\n\x0f_max_torque_n_m\"1\n\x13\x43onstantRateOptions\x12\x1a\n\x12target_rates_rad_s\x18\x01 \x03(\x01\"\x14\n\x12PassthroughOptionsb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n.flatsat/control/attitude/control_options.proto\x12\nflatsat.v1\"t\n\x12RateDampingOptions\x12\x0f\n\x02kp\x18\x01 \x01(\x01H\x00\x88\x01\x01\x12\x0f\n\x02kd\x18\x02 \x01(\x01H\x01\x88\x01\x01\x12\x1b\n\x0emax_torque_n_m\x18\x03 \x01(\x01H\x02\x88\x01\x01\x42\x05\n\x03_kpB\x05\n\x03_kdB\x11\n\x0f_max_torque_n_m\"\xb4\x01\n\nPidOptions\x12\x0f\n\x02kp\x18\x01 \x01(\x01H\x00\x88\x01\x01\x12\x0f\n\x02ki\x18\x02 \x01(\x01H\x01\x88\x01\x01\x12\x0f\n\x02kd\x18\x03 \x01(\x01H\x02\x88\x01\x01\x12\x1b\n\x0eintegral_limit\x18\x04 \x01(\x01H\x03\x88\x01\x01\x12\x1b\n\x0emax_torque_n_m\x18\x05 \x01(\x01H\x04\x88\x01\x01\x42\x05\n\x03_kpB\x05\n\x03_kiB\x05\n\x03_kdB\x11\n\x0f_integral_limitB\x11\n\x0f_max_torque_n_m\"\x87\x01\n\x0b\x42\x64otOptions\x12\x11\n\x04gain\x18\x01 \x01(\x01H\x00\x88\x01\x01\x12\x1c\n\x0fmax_dipole_a_m2\x18\x02 \x01(\x01H\x01\x88\x01\x01\x12\x19\n\x0c\x66ilter_tau_s\x18\x03 \x01(\x01H\x02\x88\x01\x01\x42\x07\n\x05_gainB\x12\n\x10_max_dipole_a_m2B\x0f\n\r_filter_tau_s\"1\n\x13\x43onstantRateOptions\x12\x1a\n\x12target_rates_rad_s\x18\x01 \x03(\x01\"\x14\n\x12PassthroughOptionsb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,8 +35,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RATEDAMPINGOPTIONS']._serialized_end=178
   _globals['_PIDOPTIONS']._serialized_start=181
   _globals['_PIDOPTIONS']._serialized_end=361
-  _globals['_CONSTANTRATEOPTIONS']._serialized_start=363
-  _globals['_CONSTANTRATEOPTIONS']._serialized_end=412
-  _globals['_PASSTHROUGHOPTIONS']._serialized_start=414
-  _globals['_PASSTHROUGHOPTIONS']._serialized_end=434
+  _globals['_BDOTOPTIONS']._serialized_start=364
+  _globals['_BDOTOPTIONS']._serialized_end=499
+  _globals['_CONSTANTRATEOPTIONS']._serialized_start=501
+  _globals['_CONSTANTRATEOPTIONS']._serialized_end=550
+  _globals['_PASSTHROUGHOPTIONS']._serialized_start=552
+  _globals['_PASSTHROUGHOPTIONS']._serialized_end=572
 # @@protoc_insertion_point(module_scope)

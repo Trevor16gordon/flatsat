@@ -28,7 +28,7 @@ plus one file here — never a change to the daemon or to any consumer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from flatsat import vehicle_pb2
 from flatsat.core.bus import HalMessage
@@ -60,6 +60,13 @@ def project_body_torque(mounting: vehicle_pb2.MountingConfig, torque_body_n_m: V
 
 class ActuatorDriver(ABC):
     """Owns driver-level access to one actuator device."""
+
+    # Which body-frame command message this device consumes: "torque"
+    # (WheelTorqueCommand, the default) or "dipole" (DipoleCommand — a
+    # magnetorquer is commanded in A·m², never N·m). The daemon selects
+    # its parser from this; the projection math is the same dot product
+    # either way.
+    command_kind: ClassVar[str] = "torque"
 
     @classmethod
     @abstractmethod

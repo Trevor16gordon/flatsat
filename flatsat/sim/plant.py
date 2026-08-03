@@ -24,7 +24,15 @@ from flatsat.core.bus import SamplePublisher
 from flatsat.core.config import VehicleSpec
 from flatsat.msgs import sim_pb2
 from flatsat.sim import orbit
-from flatsat.sim.basilisk_hil import WheelTorqueSink, plant_from_vehicle
+from flatsat.sim.basilisk_hil import (
+    DipoleSink,
+    WheelTorqueSink,
+    fill_environment,
+    magnetorquer_torque,
+    mrp_to_dcm,
+    plant_from_vehicle,
+    rods_from_vehicle,
+)
 
 Vec3 = tuple[float, float, float]
 
@@ -152,23 +160,11 @@ class RigidBody:
         """Rotation carrying an inertial vector into the body frame.
 
         Returns:
-            A 3x3 direction cosine matrix built from the current MRP.
+            A 3x3 direction cosine matrix built from the current MRP,
+            by the SAME :func:`~flatsat.sim.basilisk_hil.mrp_to_dcm`
+            both universe-fakes share.
         """
-        s0, s1, s2 = self.sigma
-        square = s0 * s0 + s1 * s1 + s2 * s2
-        skew = [[0.0, -s2, s1], [s2, 0.0, -s0], [-s1, s0, 0.0]]
-        skew2 = [
-            [sum(skew[i][k] * skew[k][j] for k in range(3)) for j in range(3)] for i in range(3)
-        ]
-        denom = (1.0 + square) ** 2
-        return [
-            [
-                (1.0 if i == j else 0.0)
-                + (8.0 * skew2[i][j] - 4.0 * (1.0 - square) * skew[i][j]) / denom
-                for j in range(3)
-            ]
-            for i in range(3)
-        ]
+        return mrp_to_dcm(self.sigma)
 
     def rate_magnitude(self) -> float:
         """Current |omega|.
@@ -211,13 +207,17 @@ class LocalPlant:
             epoch_solar_angle_rad: Solar longitude at epoch.
         """
         _, inertia, wheels = plant_from_vehicle(vehicle)
+        rods = rods_from_vehicle(vehicle)
         self.body = RigidBody(inertia, omega0, sigma0)
         self._orbit = orbit_elements
         self._epoch_gmst_rad = epoch_gmst_rad
         self._epoch_solar_angle_rad = epoch_solar_angle_rad
         self._sim_time_s = 0.0
         self._axes = dict(wheels)
+        self._rod_axes = dict(rods)
         self._sinks = [WheelTorqueSink(session, name) for name, _ in wheels]
+        self._dipole_sinks = [DipoleSink(session, name) for name, _ in rods]
+        self._field_body: Vec3 | None = None
         self._truth = SamplePublisher(session, truth_topic, "local_plant")
         self._rate_hz = rate_hz
         self._stop = threading.Event()
@@ -235,6 +235,16 @@ class LocalPlant:
                 axis = self._axes[sink.wheel]
                 for index in range(3):
                     torque[index] += axis[index] * applied
+            # Magnetorquers: torque is m x B at the LAST PUBLISHED field —
+            # the same one-step-old field the flight-side magnetometer
+            # saw, shared with the Basilisk plant via magnetorquer_torque.
+            if self._dipole_sinks and self._field_body is not None:
+                mtq = magnetorquer_torque(
+                    [(self._rod_axes[sink.rod], sink.latest()) for sink in self._dipole_sinks],
+                    self._field_body,
+                )
+                for index in range(3):
+                    torque[index] += mtq[index]
             self.body.step((torque[0], torque[1], torque[2]), dt_s)
 
             self._sim_time_s += dt_s
@@ -256,10 +266,11 @@ class LocalPlant:
     def _fill_environment(self, truth: sim_pb2.TruthState) -> None:
         """Add position, body-frame field and eclipse, if there is an orbit.
 
-        The field is rotated into the BODY frame here rather than left
-        inertial, because that is where a magnetometer measures it and
-        where ``m x B`` has to be evaluated. Leaving the rotation to
-        every consumer would mean every consumer needs the attitude.
+        The position comes from the analytic propagator; everything
+        evaluated there goes through the shared
+        :func:`~flatsat.sim.basilisk_hil.fill_environment`, so this
+        plant and the Basilisk one cannot drift apart on what universe
+        they inhabit.
 
         Args:
             truth: The message being filled.
@@ -268,14 +279,15 @@ class LocalPlant:
             return
         t = self._sim_time_s
         position, _ = orbit.propagate_eci(self._orbit, t)
-        field_eci = orbit.magnetic_field_eci(position, t, self._epoch_gmst_rad)
-        dcm = self.body.dcm_body_from_inertial()
-        field_body = [sum(dcm[i][j] * field_eci[j] for j in range(3)) for i in range(3)]
-
-        truth.position_x_m, truth.position_y_m, truth.position_z_m = (float(v) for v in position)
-        truth.mag_field_x_t, truth.mag_field_y_t, truth.mag_field_z_t = field_body
-        sun = orbit.sun_direction_eci(t, self._epoch_solar_angle_rad)
-        truth.in_eclipse = orbit.in_eclipse(position, sun)
+        fill_environment(
+            truth,
+            position,
+            self.body.dcm_body_from_inertial(),
+            t,
+            self._epoch_gmst_rad,
+            self._epoch_solar_angle_rad,
+        )
+        self._field_body = (truth.mag_field_x_t, truth.mag_field_y_t, truth.mag_field_z_t)
 
     def rate_magnitude(self) -> float:
         """Current |omega| of the simulated body.

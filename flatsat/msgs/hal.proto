@@ -80,3 +80,20 @@ message WheelState {
   double torque_n_m = 4;       // torque actually being applied about the spin axis
   bool saturated = 5;          // momentum at the envelope — torque authority degraded
 }
+
+// Magnetometer sample. Body frame, tesla — measured where m x B is
+// evaluated, which is why the truth field is published body-frame too.
+message MagnetometerSample {
+  Header header = 1;
+  double mag_x_t = 2;
+  double mag_y_t = 3;
+  double mag_z_t = 4;
+}
+
+// Magnetorquer rod state: the dipole actually being driven along the
+// rod's own axis (post-envelope). No speed, no momentum — a rod stores
+// nothing; its authority lives entirely in the local field.
+message MagnetorquerState {
+  Header header = 1;
+  double dipole_a_m2 = 2;
+}

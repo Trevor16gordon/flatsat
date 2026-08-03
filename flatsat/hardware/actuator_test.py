@@ -17,6 +17,9 @@ DRIVER_OPTIONS: dict[str, Message] = {
     "basilisk_reaction_wheel": driver_options_pb2.BasiliskReactionWheelOptions(
         device="config/devices/wheel0.txtpb"
     ),
+    "basilisk_magnetorquer": driver_options_pb2.BasiliskMagnetorquerOptions(
+        device="config/devices/mtq0.txtpb"
+    ),
 }
 
 

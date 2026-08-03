@@ -53,3 +53,37 @@ class WheelTorqueCommand(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___WheelTorqueCommand: _TypeAlias = WheelTorqueCommand  # noqa: Y015
+
+@_typing.final
+class DipoleCommand(_message.Message):
+    """Magnetorquer dipole command, body frame, A·m². Deliberately NOT a
+    torque: the achievable torque is m x B and is decided by the plant's
+    local field, never by the control law's request.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    DIPOLE_X_A_M2_FIELD_NUMBER: _builtins.int
+    DIPOLE_Y_A_M2_FIELD_NUMBER: _builtins.int
+    DIPOLE_Z_A_M2_FIELD_NUMBER: _builtins.int
+    dipole_x_a_m2: _builtins.float
+    dipole_y_a_m2: _builtins.float
+    dipole_z_a_m2: _builtins.float
+    @_builtins.property
+    def header(self) -> _hal_pb2.Header: ...
+    def __init__(
+        self,
+        *,
+        header: _hal_pb2.Header | None = ...,
+        dipole_x_a_m2: _builtins.float = ...,
+        dipole_y_a_m2: _builtins.float = ...,
+        dipole_z_a_m2: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["dipole_x_a_m2", b"dipole_x_a_m2", "dipole_y_a_m2", b"dipole_y_a_m2", "dipole_z_a_m2", b"dipole_z_a_m2", "header", b"header"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___DipoleCommand: _TypeAlias = DipoleCommand  # noqa: Y015

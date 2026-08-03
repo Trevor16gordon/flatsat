@@ -1,0 +1,12 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.MagnetorquerDevice
+#
+# SCENARIO-SCALE magnetorquer — deliberately unphysical, the same way the
+# scenario vehicle's inertia is: real rods (~1 A·m², see mtq0.txtpb) need
+# tens of minutes to detumble, and a CI mission runs at wall clock. The
+# exaggeration buys speed WITHOUT changing the physics being exercised:
+# torque is still m x B, still zero about the field line, still honest
+# about the along-B floor.
+
+name: "mtq-scenario"
+max_dipole_a_m2: 25.0

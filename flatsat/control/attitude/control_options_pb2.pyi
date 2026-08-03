@@ -125,6 +125,52 @@ class PidOptions(_message.Message):
 Global___PidOptions: _TypeAlias = PidOptions  # noqa: Y015
 
 @_typing.final
+class BdotOptions(_message.Message):
+    """bdot: magnetic detumble — dipole m = -k·dB/dt from the magnetometer
+    alone; no rate gyro, no attitude knowledge. Underactuated by physics:
+    there is never torque about the field line, and convergence relies on
+    the field ROTATING along the orbit, so the along-B rate component
+    decays only at orbital tempo.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    GAIN_FIELD_NUMBER: _builtins.int
+    MAX_DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    FILTER_TAU_S_FIELD_NUMBER: _builtins.int
+    gain: _builtins.float
+    """required; A·m² per (T/s)"""
+    max_dipole_a_m2: _builtins.float
+    """command envelope; absent = 1.0"""
+    filter_tau_s: _builtins.float
+    """dB/dt low-pass time constant; absent = 0.5"""
+    def __init__(
+        self,
+        *,
+        gain: _builtins.float | None = ...,
+        max_dipole_a_m2: _builtins.float | None = ...,
+        filter_tau_s: _builtins.float | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_filter_tau_s", b"_filter_tau_s", "_gain", b"_gain", "_max_dipole_a_m2", b"_max_dipole_a_m2", "filter_tau_s", b"filter_tau_s", "gain", b"gain", "max_dipole_a_m2", b"max_dipole_a_m2"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_filter_tau_s", b"_filter_tau_s", "_gain", b"_gain", "_max_dipole_a_m2", b"_max_dipole_a_m2", "filter_tau_s", b"filter_tau_s", "gain", b"gain", "max_dipole_a_m2", b"max_dipole_a_m2"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__filter_tau_s: _TypeAlias = _typing.Literal["filter_tau_s"]  # noqa: Y015
+    _WhichOneofArgType__filter_tau_s: _TypeAlias = _typing.Literal["_filter_tau_s", b"_filter_tau_s"]  # noqa: Y015
+    _WhichOneofReturnType__gain: _TypeAlias = _typing.Literal["gain"]  # noqa: Y015
+    _WhichOneofArgType__gain: _TypeAlias = _typing.Literal["_gain", b"_gain"]  # noqa: Y015
+    _WhichOneofReturnType__max_dipole_a_m2: _TypeAlias = _typing.Literal["max_dipole_a_m2"]  # noqa: Y015
+    _WhichOneofArgType__max_dipole_a_m2: _TypeAlias = _typing.Literal["_max_dipole_a_m2", b"_max_dipole_a_m2"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__filter_tau_s) -> _WhichOneofReturnType__filter_tau_s | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__gain) -> _WhichOneofReturnType__gain | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_dipole_a_m2) -> _WhichOneofReturnType__max_dipole_a_m2 | None: ...
+
+Global___BdotOptions: _TypeAlias = BdotOptions  # noqa: Y015
+
+@_typing.final
 class ConstantRateOptions(_message.Message):
     """constant_rate: fixed body-rate target; all zeros (or empty) = detumble."""
 
