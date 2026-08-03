@@ -7,11 +7,15 @@ where opaque payloads become plottable series, a span tree, and a
 timeline of events.
 
 Decoding needs a topic-to-type map, because protobuf is not
-self-describing on the wire. That map (``TOPIC_TYPES``) is small,
-explicit, and in one place. It is the same object a ground system would
-call a mission database, and generating it from the .proto descriptors
-is the obvious next step; hand-maintaining a dozen entries is not yet
-worth the machinery.
+self-describing on the wire. That map (``TOPIC_PATTERNS``) is small,
+explicit, ordered, and in one place. It is the same object a ground
+system would call a mission database, and generating it from the .proto
+descriptors is the obvious next step; hand-maintaining a dozen entries
+is not yet worth the machinery. Patterns exist because a bare last-path
+element stopped being enough the day two message kinds shared a suffix
+AND field numbers (MagnetometerSample vs ImuSample) — a wrong-type
+decode that yields plausible numbers under wrong names is worse than no
+decode at all.
 
 Anything unmapped still yields something useful rather than nothing:
 every bus message embeds ``Header`` as field 1, so an unknown payload
@@ -30,31 +34,52 @@ import json
 import math
 import sys
 from collections import defaultdict
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
 from google.protobuf.message import Message
 
-from flatsat.msgs import adcs_pb2, hal_pb2, mission_log_pb2, mode_pb2
+from flatsat.msgs import adcs_pb2, hal_pb2, mission_log_pb2, mode_pb2, sim_pb2
 from flatsat.telemetry import mission_log
 from flatsat.telemetry.recorder import read_records
 
 DEFAULT_MAX_POINTS = 2000
 
-# Topic suffix -> message type. Matched on the LAST path element so
-# instance names (imu0, imu1) share one entry.
-TOPIC_TYPES: dict[str, type[Message]] = {
-    # Two sensor kinds share the "sample" suffix; ImuSample is the
-    # 100 Hz one that matters for plots, and a TemperatureSample
-    # decoded as an ImuSample yields no numeric leaves rather than
-    # wrong ones, because their field numbers do not overlap.
-    "sample": hal_pb2.ImuSample,
-    "state": hal_pb2.WheelState,
-    "wheel_torque": adcs_pb2.WheelTorqueCommand,
-    "span": mission_log_pb2.Span,
-    "annotation": mission_log_pb2.Annotation,
-    "mode": mode_pb2.ModeState,
-}
+# Ordered (glob pattern, message type): FIRST match wins, so specific
+# patterns sit above the generic suffix they would otherwise fall into.
+# Patterns match the full topic; instance names (imu0, mag1) ride the
+# wildcards.
+TOPIC_PATTERNS: list[tuple[str, type[Message]]] = [
+    # Physics truth — both the bridge's default key and the scenario
+    # vehicles' test-scoped ones. Must precede "*/state" and the truth
+    # suffix must precede nothing: TruthState carries the orbit.
+    ("sim/truth/state", sim_pb2.TruthState),
+    ("*/sim/truth", sim_pb2.TruthState),
+    # Magnetometer before the generic sample rule: MagnetometerSample
+    # REUSES ImuSample's field numbers, so the fallthrough would decode
+    # into convincingly wrong gyro series.
+    ("*/mag*/sample", hal_pb2.MagnetometerSample),
+    # ImuSample is the 100 Hz sample that matters for plots; a
+    # TemperatureSample decoded as one yields no numeric leaves rather
+    # than wrong ones, because their field numbers do not overlap.
+    ("*/sample", hal_pb2.ImuSample),
+    # Magnetorquer rod state before the generic wheel-state rule.
+    ("*/mtq*/state", hal_pb2.MagnetorquerState),
+    ("*/state", hal_pb2.WheelState),
+    # Per-wheel applied torque (bridge feedback) vs the body command.
+    ("sim/wheel/*/torque", sim_pb2.WheelAxisTorque),
+    ("*/sim/wheel/*/torque", sim_pb2.WheelAxisTorque),
+    ("*/torque", adcs_pb2.WheelTorqueCommand),
+    ("*/wheel_torque", adcs_pb2.WheelTorqueCommand),
+    # Per-rod applied dipole (plant feedback) vs the body command.
+    ("sim/mtq/*/dipole", sim_pb2.MagnetorquerDipole),
+    ("*/sim/mtq/*/dipole", sim_pb2.MagnetorquerDipole),
+    ("*/dipole", adcs_pb2.DipoleCommand),
+    ("*/span", mission_log_pb2.Span),
+    ("*/annotation", mission_log_pb2.Annotation),
+    ("*/mode", mode_pb2.ModeState),
+]
 
 
 def _message_for(topic: str) -> type[Message]:
@@ -64,10 +89,13 @@ def _message_for(topic: str) -> type[Message]:
         topic: Concrete bus key the record arrived on.
 
     Returns:
-        The mapped type, or ``HeaderEnvelope`` when unmapped — which
-        still yields the common header of any bus message.
+        The first pattern match, or ``HeaderEnvelope`` when unmapped —
+        which still yields the common header of any bus message.
     """
-    return TOPIC_TYPES.get(topic.rsplit("/", 1)[-1], hal_pb2.HeaderEnvelope)
+    for pattern, message_type in TOPIC_PATTERNS:
+        if fnmatchcase(topic, pattern):
+            return message_type
+    return hal_pb2.HeaderEnvelope
 
 
 def flatten(message: Message, prefix: str = "") -> dict[str, float]:

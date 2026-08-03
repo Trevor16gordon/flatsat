@@ -156,3 +156,24 @@ below the along-B floor is a tuned lie about magnetics.
 verification = "test"
 evidence = "bdot_test.py::test_dipole_opposes_the_field_derivative, ::test_commanded_torque_damps_the_spin, ::test_stale_field_goes_quiet_not_spiky; scenario_test.py::test_bdot_detumble_mission_succeeds (whole chain, bound above the measured 0.033 rad/s floor)"
 status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-012"
+statement = """
+The momentum-dump law shall command magnetorquer dipole m proportional to
+(h x B)/|B|^2 from the wheels' own published momentum, shall leave the
+wheel torque law identical to the wheels-only strategy, and shall command
+zero dipole — never zero torque — when the field measurement or any
+wheel's state is stale or absent.
+"""
+rationale = """
+Wheels absorb a tumble as stored momentum; only an external torque can
+remove it, and m x B is the external torque a rod-equipped vehicle has.
+Attitude control must not degrade because momentum management is blind,
+and a dump driven by a stale field or a partial momentum sum would torque
+in an unknown direction. The along-B momentum component is untouchable by
+physics, so mission bounds sit above that floor.
+"""
+verification = "test"
+evidence = "momentum_dump_test.py (law, quiet rules, torque parity with rate_damping); scenario_test.py::test_momentum_dump_mission_succeeds (whole chain: wheels detumble, rods drain wheel momentum read from the wheels' state topics)"
+status = "verified"

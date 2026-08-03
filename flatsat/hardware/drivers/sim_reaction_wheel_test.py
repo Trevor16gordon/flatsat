@@ -31,8 +31,9 @@ def test_momentum_integrates_torque_against_the_wall_clock() -> None:
     msg, flags = driver.state()
     assert flags == hal_pb2.VALIDITY_FLAG_VALID
     assert isinstance(msg, hal_pb2.WheelState)
-    # ~0.04 N·m for ~50 ms → ~2e-3 N·m·s; generous margin for sleep jitter
-    assert 5e-4 < msg.momentum_n_m_s < 2e-2
+    # ~0.04 N·m to the body for ~50 ms → the rotor stores the REACTION,
+    # ~-2e-3 N·m·s; generous margin for sleep jitter.
+    assert -2e-2 < msg.momentum_n_m_s < -5e-4
     spec, _prov = load_wheel_spec("config/devices/wheel0.txtpb")
     assert msg.speed_rad_s == pytest.approx(msg.momentum_n_m_s / spec.rotor_inertia_kg_m2)
 

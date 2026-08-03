@@ -34,7 +34,8 @@ def test_momentum_rails_and_flags_saturated() -> None:
     flags = model.apply(5.0, dt_s=0.01)
     assert flags & hal_pb2.VALIDITY_FLAG_SATURATED
     assert model.saturated
-    assert model.momentum_n_m_s == pytest.approx(0.01)
+    # +torque to the body stores NEGATIVE rotor momentum (reaction).
+    assert model.momentum_n_m_s == pytest.approx(-0.01)
     assert model.applied_torque_n_m == 0.0, "no torque into the rail"
 
 
@@ -47,11 +48,17 @@ def test_torque_out_of_the_rail_is_allowed() -> None:
     assert model.applied_torque_n_m == pytest.approx(-1.0)
 
 
-def test_momentum_integrates_torque_exactly() -> None:
+def test_momentum_is_the_reaction_to_applied_torque() -> None:
+    """The rotor stores MINUS the integral of body-applied torque.
+
+    Getting this sign wrong once turned the momentum-dump law into
+    positive feedback: the dump consumed this field as stored momentum
+    and the wheels spun up exponentially instead of draining.
+    """
     model = WheelModel(_spec(max_torque=1.0, max_momentum=100.0))
     for _ in range(10):
         model.apply(0.5, dt_s=0.01)
-    assert model.momentum_n_m_s == pytest.approx(0.5 * 0.1)
+    assert model.momentum_n_m_s == pytest.approx(-0.5 * 0.1)
 
 
 def test_state_message_reflects_the_model() -> None:
@@ -59,7 +66,7 @@ def test_state_message_reflects_the_model() -> None:
     model = WheelModel(spec)
     model.apply(0.5, dt_s=0.02)
     msg = model.state_message()
-    assert msg.momentum_n_m_s == pytest.approx(0.01)
-    assert msg.speed_rad_s == pytest.approx(0.01 / spec.rotor_inertia_kg_m2)
+    assert msg.momentum_n_m_s == pytest.approx(-0.01)
+    assert msg.speed_rad_s == pytest.approx(-0.01 / spec.rotor_inertia_kg_m2)
     assert msg.torque_n_m == pytest.approx(0.5)
     assert not msg.saturated

@@ -1,0 +1,44 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# DETUMBLE, THEN GIVE THE MOMENTUM BACK — the combined-system arc.
+#
+# Phase 1: the wheels catch the deployment tumble. The body comes to
+# rest, but the momentum has not gone anywhere — it is stored in the
+# wheels, which is a loan, not a repayment.
+# Phase 2: the magnetorquers pay it down: m = k·(h x B)/|B|² torques the
+# body, the wheels counter, and the stored momentum drains to the field.
+#
+# The momentum bound respects the same physics as the B-dot mission's
+# rate bound: m x B cannot touch the component of h along B, so a short
+# phase converges to that floor (~26% of the initial momentum for this
+# release geometry), not to zero. Bounding at 0.003 N·m·s asserts the
+# perpendicular component drained without pretending magnetics can do
+# what it cannot.
+
+name: "dump-detumble-sso"
+description: "6U tumble caught by wheels, wheel momentum dumped through magnetorquers"
+vehicle: "config/vehicles/test_scenario_dump.txtpb"
+orbit: "config/orbits/spacex_rideshare_sso.txtpb"
+
+# The same dispenser tumble as the sibling missions.
+omega0_rad_s: [0.09, -0.07, 0.05]
+sigma0: [0.2, -0.1, 0.35]
+plant_rate_hz: 100.0
+
+phases {
+  name: "wheel-detumble"
+  duration_s: 20.0
+  success {
+    max_omega_mag_rad_s: 0.02
+  }
+}
+
+phases {
+  name: "momentum-dump"
+  duration_s: 20.0
+  success {
+    max_omega_mag_rad_s: 0.02          # the wheels must HOLD while dumping
+    max_wheel_momentum_n_m_s: 0.003    # perpendicular momentum drained
+  }
+}

@@ -1,0 +1,148 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# COMBINED-SYSTEM SCENARIO VEHICLE — the eventual spacecraft in miniature:
+# three orthogonal wheels fly the attitude, three orthogonal magnetorquer
+# rods bleed the momentum the wheels absorb. One strategy (momentum_dump)
+# emits both commands; the wheels' own state topics feed the dump law, so
+# the controller sees the same device truth FDIR and the recorder see.
+#
+# Scenario-scale like its siblings (small inertia, exaggerated rod) so the
+# whole arc — tumble in, wheels catch it, rods hand the momentum to the
+# field — fits in a CI-sized mission. The along-B momentum component
+# survives a short dump phase for the same reason B-dot leaves the along-B
+# rate: m x B has no authority about the field line.
+
+name: "test-scenario-dump"
+description: "Scenario vehicle: 3 wheels + 3 rods, PD detumble with magnetic momentum dump"
+
+body {
+  mass_kg: 2.0
+  inertia_kg_m2: [0.05, 0.0, 0.0, 0.0, 0.05, 0.0, 0.0, 0.0, 0.05]
+}
+
+sensors {
+  name: "dmp_imu0"
+  topic: "test/dmp/hal/imu/sample"
+  rate_hz: 50
+  basilisk_imu {
+    spec: "config/devices/imu0.txtpb"
+    truth_topic: "test/dmp/sim/truth"
+    stale_after_s: 0.5
+    seed: 7
+  }
+}
+
+sensors {
+  name: "dmp_mag0"
+  topic: "test/dmp/hal/mag/sample"
+  rate_hz: 50
+  basilisk_magnetometer {
+    spec: "config/devices/mag0.txtpb"
+    truth_topic: "test/dmp/sim/truth"
+    stale_after_s: 0.5
+    seed: 11
+  }
+}
+
+actuators {
+  name: "dmp_wheel_x"
+  command_topic: "test/dmp/adcs/torque"
+  state_topic: "test/dmp/hal/wheel_x/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "dmp_wheel_y"
+  command_topic: "test/dmp/adcs/torque"
+  state_topic: "test/dmp/hal/wheel_y/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "dmp_wheel_z"
+  command_topic: "test/dmp/adcs/torque"
+  state_topic: "test/dmp/hal/wheel_z/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "dmp_mtq_x"
+  command_topic: "test/dmp/adcs/dipole"
+  state_topic: "test/dmp/hal/mtq_x/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+actuators {
+  name: "dmp_mtq_y"
+  command_topic: "test/dmp/adcs/dipole"
+  state_topic: "test/dmp/hal/mtq_y/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+actuators {
+  name: "dmp_mtq_z"
+  command_topic: "test/dmp/adcs/dipole"
+  state_topic: "test/dmp/hal/mtq_z/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq_scenario.txtpb" }
+}
+
+control {
+  rate_hz: 50
+  input_topic: "test/dmp/hal/imu/sample"
+  mag_input_topic: "test/dmp/hal/mag/sample"
+  output_topic: "test/dmp/adcs/torque"
+  dipole_output_topic: "test/dmp/adcs/dipole"
+  stale_after_s: 0.1
+  momentum_dump {
+    kp: 0.05                # same detumble tempo as test_scenario
+    kd: 0.005
+    max_torque_n_m: 0.05    # wheel0 device envelope
+    dump_gain: 0.15         # h_perp decays at ~this rate once unclipped
+    max_dipole_a_m2: 25.0   # mtq_scenario device envelope
+  }
+  constant_rate { target_rates_rad_s: [0.0, 0.0, 0.0] }
+  passthrough {}
+}
+
+mode {
+  apps: [
+    "dmp_imu0", "dmp_mag0",
+    "dmp_wheel_x", "dmp_wheel_y", "dmp_wheel_z",
+    "dmp_mtq_x", "dmp_mtq_y", "dmp_mtq_z",
+    "adcs", "fdir"
+  ]
+  ack_timeout_s: 1.0
+  min_dwell_s: 0.2
+}
+
+fdir {
+  rules {
+    name: "imu_stale"
+    min_trip_s: 0.5
+    flag_ratio {
+      topic: "test/dmp/hal/imu/sample"
+      flag_mask: 8         # VALIDITY_FLAG_STALE
+      window_s: 2.0
+      max_ratio: 0.5
+    }
+  }
+}

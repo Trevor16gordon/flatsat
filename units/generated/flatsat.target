@@ -6,7 +6,7 @@
 
 [Unit]
 Description=flatsat onboard segment — flatsat-v1
-Wants=flatsat-imu0.service flatsat-thermal_tj.service flatsat-wheel0.service flatsat-mode.service flatsat-fdir.service flatsat-recorder.service flatsat-adcs.service
+Wants=flatsat-imu0.service flatsat-mag0.service flatsat-thermal_tj.service flatsat-wheel0.service flatsat-wheel1.service flatsat-wheel2.service flatsat-mtq_x.service flatsat-mtq_y.service flatsat-mtq_z.service flatsat-mode.service flatsat-fdir.service flatsat-recorder.service flatsat-adcs.service
 
 [Install]
 WantedBy=multi-user.target

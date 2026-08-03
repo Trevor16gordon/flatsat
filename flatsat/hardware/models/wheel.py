@@ -54,16 +54,21 @@ class WheelModel:
         elif torque < -limit:
             torque, flags = -limit, flags | hal_pb2.VALIDITY_FLAG_RANGE
 
+        # The rotor stores the REACTION to what the wheel applies: +torque
+        # to the body spins the rotor the other way. Getting this sign
+        # wrong turns a momentum-dump law into positive feedback — found
+        # the day the first dump law consumed this field and the wheels
+        # spun UP instead of down.
         envelope = self.spec.max_momentum_n_m_s
-        proposed = self.momentum_n_m_s + torque * dt_s
+        proposed = self.momentum_n_m_s - torque * dt_s
         if proposed >= envelope:
             proposed = envelope
-            if torque > 0.0:  # pushing further INTO the rail applies nothing
+            if torque < 0.0:  # pushing further INTO the rail applies nothing
                 torque = 0.0
                 flags |= hal_pb2.VALIDITY_FLAG_SATURATED
         elif proposed <= -envelope:
             proposed = -envelope
-            if torque < 0.0:
+            if torque > 0.0:
                 torque = 0.0
                 flags |= hal_pb2.VALIDITY_FLAG_SATURATED
         self.momentum_n_m_s = proposed

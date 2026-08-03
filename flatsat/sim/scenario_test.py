@@ -118,6 +118,20 @@ def test_bdot_detumble_mission_succeeds(tmp_path: Path) -> None:
     assert result.passed, result.describe()
 
 
+@pytest.mark.verifies("FSW-ADCS-012", "FSW-SYS-001")
+def test_momentum_dump_mission_succeeds(tmp_path: Path) -> None:
+    """The combined system: wheels catch the tumble, rods drain the wheels.
+
+    Phase 2's wheel-momentum criterion is read from the wheels' own
+    state topics — the same device truth the flight side publishes — so
+    a pass means the dipole chain moved real stored momentum out of the
+    wheels while the body stayed at rest.
+    """
+    mission = load_mission(MISSIONS / "dump_detumble_sso.txtpb")
+    result = ScenarioRunner(mission, tmp_path).run()
+    assert result.passed, result.describe()
+
+
 @pytest.mark.verifies("FSW-FDIR-002", "FSW-SYS-002")
 def test_fault_blackout_mission_succeeds(tmp_path: Path) -> None:
     """Truth dies mid-mission; the STALE cascade must end in an FDIR safing."""

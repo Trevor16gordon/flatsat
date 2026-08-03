@@ -39,6 +39,9 @@ def _options(max_torque_n_m: float = 1e6) -> dict[str, Message]:
         "bdot": control_options_pb2.BdotOptions(
             gain=1.0e7, max_dipole_a_m2=max_torque_n_m, filter_tau_s=0.0
         ),
+        "momentum_dump": control_options_pb2.MomentumDumpOptions(
+            kp=0.02, kd=0.005, max_torque_n_m=max_torque_n_m, dump_gain=0.15, max_dipole_a_m2=1.0
+        ),
     }
 
 

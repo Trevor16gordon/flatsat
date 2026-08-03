@@ -209,9 +209,11 @@ class ControlConfig(_message.Message):
     OUTPUT_TOPIC_FIELD_NUMBER: _builtins.int
     STALE_AFTER_S_FIELD_NUMBER: _builtins.int
     MAG_INPUT_TOPIC_FIELD_NUMBER: _builtins.int
+    DIPOLE_OUTPUT_TOPIC_FIELD_NUMBER: _builtins.int
     RATE_DAMPING_FIELD_NUMBER: _builtins.int
     PID_FIELD_NUMBER: _builtins.int
     BDOT_FIELD_NUMBER: _builtins.int
+    MOMENTUM_DUMP_FIELD_NUMBER: _builtins.int
     CONSTANT_RATE_FIELD_NUMBER: _builtins.int
     PASSTHROUGH_FIELD_NUMBER: _builtins.int
     rate_hz: _builtins.float
@@ -225,12 +227,18 @@ class ControlConfig(_message.Message):
     """Magnetometer input for magnetic strategies; empty = none. The loop
     still paces on input_topic — the field rides along on the state.
     """
+    dipole_output_topic: _builtins.str
+    """Where dipole commands go when the strategy emits them alongside
+    torque (momentum_dump). Empty = the strategy must not emit both.
+    """
     @_builtins.property
     def rate_damping(self) -> _control_options_pb2.RateDampingOptions: ...
     @_builtins.property
     def pid(self) -> _control_options_pb2.PidOptions: ...
     @_builtins.property
     def bdot(self) -> _control_options_pb2.BdotOptions: ...
+    @_builtins.property
+    def momentum_dump(self) -> _control_options_pb2.MomentumDumpOptions: ...
     @_builtins.property
     def constant_rate(self) -> _control_options_pb2.ConstantRateOptions: ...
     @_builtins.property
@@ -243,21 +251,23 @@ class ControlConfig(_message.Message):
         output_topic: _builtins.str = ...,
         stale_after_s: _builtins.float = ...,
         mag_input_topic: _builtins.str = ...,
+        dipole_output_topic: _builtins.str = ...,
         rate_damping: _control_options_pb2.RateDampingOptions | None = ...,
         pid: _control_options_pb2.PidOptions | None = ...,
         bdot: _control_options_pb2.BdotOptions | None = ...,
+        momentum_dump: _control_options_pb2.MomentumDumpOptions | None = ...,
         constant_rate: _control_options_pb2.ConstantRateOptions | None = ...,
         passthrough: _control_options_pb2.PassthroughOptions | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "estimator", b"estimator", "objective", b"objective", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "strategy", b"strategy"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "estimator", b"estimator", "momentum_dump", b"momentum_dump", "objective", b"objective", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "strategy", b"strategy"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "estimator", b"estimator", "input_topic", b"input_topic", "mag_input_topic", b"mag_input_topic", "objective", b"objective", "output_topic", b"output_topic", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "rate_hz", b"rate_hz", "stale_after_s", b"stale_after_s", "strategy", b"strategy"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["bdot", b"bdot", "constant_rate", b"constant_rate", "dipole_output_topic", b"dipole_output_topic", "estimator", b"estimator", "input_topic", b"input_topic", "mag_input_topic", b"mag_input_topic", "momentum_dump", b"momentum_dump", "objective", b"objective", "output_topic", b"output_topic", "passthrough", b"passthrough", "pid", b"pid", "rate_damping", b"rate_damping", "rate_hz", b"rate_hz", "stale_after_s", b"stale_after_s", "strategy", b"strategy"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType_estimator: _TypeAlias = _typing.Literal["passthrough"]  # noqa: Y015
     _WhichOneofArgType_estimator: _TypeAlias = _typing.Literal["estimator", b"estimator"]  # noqa: Y015
     _WhichOneofReturnType_objective: _TypeAlias = _typing.Literal["constant_rate"]  # noqa: Y015
     _WhichOneofArgType_objective: _TypeAlias = _typing.Literal["objective", b"objective"]  # noqa: Y015
-    _WhichOneofReturnType_strategy: _TypeAlias = _typing.Literal["rate_damping", "pid", "bdot"]  # noqa: Y015
+    _WhichOneofReturnType_strategy: _TypeAlias = _typing.Literal["rate_damping", "pid", "bdot", "momentum_dump"]  # noqa: Y015
     _WhichOneofArgType_strategy: _TypeAlias = _typing.Literal["strategy", b"strategy"]  # noqa: Y015
     @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType_estimator) -> _WhichOneofReturnType_estimator | None: ...

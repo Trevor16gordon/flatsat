@@ -179,3 +179,32 @@ def test_empty_archive_fails_loudly(tmp_path: Path) -> None:
 def test_blob_is_json_serializable(archive: Path) -> None:
     """The whole point is handing this to a web app."""
     json.dumps(export.export_run(archive))
+
+
+def test_topic_patterns_resolve_every_kind_distinctly() -> None:
+    """Each recorded topic shape decodes with ITS OWN message type.
+
+    The dangerous pair is magnetometer-vs-imu: MagnetometerSample reuses
+    ImuSample's field numbers, so a fallthrough would produce plausible
+    numbers under wrong names — worse than no decode.
+    """
+    from flatsat.msgs import adcs_pb2, hal_pb2, sim_pb2
+    from flatsat.telemetry.export import _message_for
+
+    cases = {
+        "sim/truth/state": sim_pb2.TruthState,
+        "test/scn/sim/truth": sim_pb2.TruthState,
+        "hal/mag0/sample": hal_pb2.MagnetometerSample,
+        "test/bdt/hal/mag/sample": hal_pb2.MagnetometerSample,
+        "hal/imu0/sample": hal_pb2.ImuSample,
+        "hal/mtq_x/state": hal_pb2.MagnetorquerState,
+        "hal/wheel0/state": hal_pb2.WheelState,
+        "sim/wheel/wheel0/torque": sim_pb2.WheelAxisTorque,
+        "test/scn/adcs/torque": adcs_pb2.WheelTorqueCommand,
+        "adcs/wheel_torque": adcs_pb2.WheelTorqueCommand,
+        "sim/mtq/mtq_x/dipole": sim_pb2.MagnetorquerDipole,
+        "adcs/dipole": adcs_pb2.DipoleCommand,
+        "health/imu0": hal_pb2.HeaderEnvelope,
+    }
+    for topic, expected in cases.items():
+        assert _message_for(topic) is expected, f"{topic} decoded as the wrong type"

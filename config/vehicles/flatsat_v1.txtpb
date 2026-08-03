@@ -15,7 +15,7 @@
 # wheel zeroes.
 
 name: "flatsat-v1"
-description: "Flat-sat: Basilisk-fed IMU + wheel, Jetson housekeeping, PD detumble"
+description: "Flat-sat: 3-wheel + 3-rod ADCS, magnetometer, Jetson housekeeping, PD detumble with magnetic momentum dump"
 
 # Physical model — integration truth, read by flight software AND by the
 # sim bridge to build its plant, so the two cannot disagree by accident.
@@ -31,6 +31,17 @@ sensors {
   basilisk_imu {  # swap the block for a hardware driver's; nothing else changes
     spec: "config/devices/imu0.txtpb"  # device characteristics, shared corruption model
     truth_topic: "sim/truth/state"     # where the bridge publishes physics truth
+    stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "mag0"
+  topic: "hal/mag0/sample"
+  rate_hz: 50
+  basilisk_magnetometer {
+    spec: "config/devices/mag0.txtpb"
+    truth_topic: "sim/truth/state"
     stale_after_s: 0.5
   }
 }
@@ -57,15 +68,73 @@ actuators {
   }
 }
 
+actuators {
+  name: "wheel1"
+  command_topic: "adcs/wheel_torque"
+  state_topic: "hal/wheel1/state"
+  rate_hz: 100
+  stale_zero_s: 0.1
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "wheel2"
+  command_topic: "adcs/wheel_torque"
+  state_topic: "hal/wheel2/state"
+  rate_hz: 100
+  stale_zero_s: 0.1
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+# Magnetorquer rods: momentum management, not primary attitude control.
+# The wheels absorb a tumble; the rods hand that stored momentum to the
+# field (m x B), which is the only way down without thrusters. Real-scale
+# device (mtq0, 1.2 A·m²): a full dump takes tens of minutes, honestly.
+actuators {
+  name: "mtq_x"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_x/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
+actuators {
+  name: "mtq_y"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_y/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
+actuators {
+  name: "mtq_z"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_z/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
 control {
   rate_hz: 100
   input_topic: "hal/imu0/sample"
+  mag_input_topic: "hal/mag0/sample"
   output_topic: "adcs/wheel_torque"
+  dipole_output_topic: "adcs/dipole"
   stale_after_s: 0.05
-  rate_damping {                       # pid is the other strategy today
-    kp: 0.02
+  momentum_dump {                      # wheels fly attitude, rods bleed momentum
+    kp: 0.02                           # same PD tempo the one-wheel vehicle flew
     kd: 0.005
     max_torque_n_m: 0.05               # reaction-wheel envelope; commands clip to it
+    dump_gain: 0.02                    # rods sit at their rail until h_perp < ~2 mN·m·s
+    max_dipole_a_m2: 1.2               # mtq0 device envelope
   }
   constant_rate {                      # zero target = detumble
     target_rates_rad_s: [0.0, 0.0, 0.0]
@@ -74,7 +143,12 @@ control {
 }
 
 mode {  # mission state: who must ack transitions
-  apps: ["imu0", "thermal_tj", "wheel0", "adcs", "recorder", "fdir"]
+  apps: [
+    "imu0", "mag0", "thermal_tj",
+    "wheel0", "wheel1", "wheel2",
+    "mtq_x", "mtq_y", "mtq_z",
+    "adcs", "recorder", "fdir"
+  ]
   ack_timeout_s: 2.0
   min_dwell_s: 1.0                     # anti-flap: away-from-safety only
 }
@@ -100,11 +174,31 @@ fdir {
     silence { topic: "hal/imu0/sample" timeout_s: 2.0 }
   }
   rules {
-    name: "wheel_saturated"
+    name: "wheel0_saturated"
     min_trip_s: 2.0
     flag_ratio {
       topic: "hal/wheel0/state"
       flag_mask: 16        # VALIDITY_FLAG_SATURATED
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
+  rules {
+    name: "wheel1_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel1/state"
+      flag_mask: 16
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
+  rules {
+    name: "wheel2_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel2/state"
+      flag_mask: 16
       window_s: 10.0
       max_ratio: 0.8
     }

@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -133,6 +134,7 @@ class ControlLoop:
         estimator: StateEstimator,
         vehicle_name: str = "",
         config_checksum: str = "",
+        wheels: list[tuple[str, tuple[float, float, float]]] | None = None,
     ) -> None:
         """Wire the loop to its topics, strategy, objective, and estimator.
 
@@ -146,6 +148,17 @@ class ControlLoop:
             vehicle_name: Composition name, echoed into health telemetry.
             config_checksum: Composition checksum, echoed into health
                 telemetry so a recorded window traces to its parameters.
+            wheels: (state_topic, body-frame spin axis) per reaction
+                wheel — the momentum-dump input. The loop subscribes to
+                each wheel's own state topic and hands the strategy the
+                summed body-frame momentum vector; None or empty means
+                no strategy on this vehicle needs it.
+
+        Raises:
+            ValueError: If the strategy emits torque AND dipole but the
+                composition names no dipole_output_topic — a dump law
+                whose dipole silently went nowhere would look exactly
+                like a broken one.
         """
         self.entry = entry
         self.strategy_name = which_impl(entry, "strategy", "control")
@@ -171,6 +184,25 @@ class ControlLoop:
         )
         self._latest_mag: hal_pb2.MagnetometerSample | None = None
         self._latest_mag_recv_ns = 0
+        # Optional dipole output: a strategy that emits torque AND dipole
+        # (momentum_dump) publishes the dipole here.
+        if type(controller).output_kind == "torque_and_dipole" and not entry.dipole_output_topic:
+            raise ValueError(
+                f"strategy {self.strategy_name!r} emits torque and dipole but the "
+                "control block names no dipole_output_topic"
+            )
+        self._dipole_pub = (
+            session.declare_publisher(entry.dipole_output_topic)
+            if entry.dipole_output_topic
+            else None
+        )
+        # Optional wheel-momentum side input, one subscriber per wheel.
+        self._wheel_axes: dict[str, tuple[float, float, float]] = dict(wheels or [])
+        self._wheel_momentum: dict[str, tuple[float, int]] = {}
+        self._wheel_subs = [
+            session.declare_subscriber(topic, partial(self._on_wheel_state, topic))
+            for topic, _ in (wheels or [])
+        ]
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._last_torque = (0.0, 0.0, 0.0)
@@ -200,6 +232,39 @@ class ControlLoop:
         with self._lock:
             self._latest_mag = msg
             self._latest_mag_recv_ns = time.monotonic_ns()
+
+    def _on_wheel_state(self, topic: str, sample: zenoh.Sample) -> None:
+        """Store one wheel's latest stored momentum (subscriber thread).
+
+        Args:
+            topic: The wheel state topic the sample arrived on.
+            sample: Incoming WheelState.
+        """
+        msg = hal_pb2.WheelState.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self._wheel_momentum[topic] = (msg.momentum_n_m_s, time.monotonic_ns())
+
+    def _wheel_momentum_body(self) -> tuple[float, float, float] | None:
+        """Sum the wheels' stored momentum into a body-frame vector.
+
+        Caller must hold the lock.
+
+        Returns:
+            The body-frame momentum, or None unless EVERY wheel has
+            reported freshly — a dump law fed a partial sum would bleed
+            momentum that is not there.
+        """
+        if not self._wheel_axes:
+            return None
+        now = time.monotonic_ns()
+        total = [0.0, 0.0, 0.0]
+        for topic, axis in self._wheel_axes.items():
+            entry = self._wheel_momentum.get(topic)
+            if entry is None or now - entry[1] > self._stale_after_ns:
+                return None
+            for index in range(3):
+                total[index] += axis[index] * entry[0]
+        return (total[0], total[1], total[2])
 
     def wait_for_first_sample(self, timeout_s: float = 5.0) -> bool:
         """Block until the first state input arrives.
@@ -233,6 +298,7 @@ class ControlLoop:
             age_ns = time.monotonic_ns() - self._latest_recv_ns
             mag = self._latest_mag
             mag_age_ns = time.monotonic_ns() - self._latest_mag_recv_ns
+            wheel_momentum = self._wheel_momentum_body()
         assert imu is not None  # guaranteed by wait_for_first_sample
         stale = age_ns > self._stale_after_ns
 
@@ -247,21 +313,15 @@ class ControlLoop:
                     and mag.header.validity == hal_pb2.VALIDITY_FLAG_VALID
                 ),
             )
+        if wheel_momentum is not None:
+            state = replace(state, wheel_momentum_n_m_s=wheel_momentum)
         output = self._controller.update(state, self._guidance.reference_at(t_s), dt_s)
 
         header_validity = int(hal_pb2.VALIDITY_FLAG_STALE) if stale else 0
-        if type(self._controller).output_kind == "dipole":
+        kind = type(self._controller).output_kind
+        if kind == "dipole":
             self._last_torque = output.dipole_a_m2
-            dipole_cmd = adcs_pb2.DipoleCommand()
-            dipole_cmd.dipole_x_a_m2, dipole_cmd.dipole_y_a_m2, dipole_cmd.dipole_z_a_m2 = (
-                output.dipole_a_m2
-            )
-            dipole_cmd.header.source = "adcs_loop"
-            dipole_cmd.header.seq = seq
-            dipole_cmd.header.sample_time_ns = time.time_ns()
-            dipole_cmd.header.publish_time_ns = time.time_ns()
-            dipole_cmd.header.validity = header_validity
-            self._pub.put(dipole_cmd.SerializeToString())
+            self._publish_dipole(self._pub, output.dipole_a_m2, seq, header_validity)
             return stale, output.saturated
 
         self._last_torque = output.torque_n_m
@@ -273,7 +333,33 @@ class ControlLoop:
         cmd.header.publish_time_ns = time.time_ns()
         cmd.header.validity = header_validity
         self._pub.put(cmd.SerializeToString())
+        if kind == "torque_and_dipole" and self._dipole_pub is not None:
+            self._publish_dipole(self._dipole_pub, output.dipole_a_m2, seq, header_validity)
         return stale, output.saturated
+
+    def _publish_dipole(
+        self,
+        publisher: zenoh.Publisher,
+        dipole_a_m2: tuple[float, float, float],
+        seq: int,
+        validity: int,
+    ) -> None:
+        """Publish one body-frame dipole command.
+
+        Args:
+            publisher: Where it goes (main or dipole output).
+            dipole_a_m2: The commanded body dipole.
+            seq: Command sequence number.
+            validity: Header validity word (STALE when inputs were).
+        """
+        cmd = adcs_pb2.DipoleCommand()
+        cmd.dipole_x_a_m2, cmd.dipole_y_a_m2, cmd.dipole_z_a_m2 = dipole_a_m2
+        cmd.header.source = "adcs_loop"
+        cmd.header.seq = seq
+        cmd.header.sample_time_ns = time.time_ns()
+        cmd.header.publish_time_ns = time.time_ns()
+        cmd.header.validity = validity
+        publisher.put(cmd.SerializeToString())
 
     def print_status(self) -> None:
         """Print a one-line live status: rates, input freshness, torque out."""
@@ -366,6 +452,8 @@ class ControlLoop:
         self._sub.undeclare()
         if self._mag_sub is not None:
             self._mag_sub.undeclare()
+        for sub in self._wheel_subs:
+            sub.undeclare()
 
 
 def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
@@ -393,7 +481,27 @@ def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
         estimator,
         vehicle_name=vehicle.name,
         config_checksum=vehicle.provenance.checksum,
+        wheels=wheel_state_inputs(vehicle),
     )
+
+
+def wheel_state_inputs(vehicle: VehicleSpec) -> list[tuple[str, tuple[float, float, float]]]:
+    """The wheel state topics and axes a momentum-aware strategy needs.
+
+    Args:
+        vehicle: Loaded vehicle composition.
+
+    Returns:
+        (state_topic, body-frame spin axis) per declared reaction wheel.
+    """
+    return [
+        (
+            entry.state_topic,
+            (entry.mounting.axis[0], entry.mounting.axis[1], entry.mounting.axis[2]),
+        )
+        for entry in vehicle.actuators
+        if which_impl(entry, "options", entry.name).endswith("reaction_wheel")
+    ]
 
 
 def main() -> int:

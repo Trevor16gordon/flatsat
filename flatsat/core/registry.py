@@ -57,6 +57,7 @@ CONTROLLERS: dict[str, str] = {
     "rate_damping": "flatsat.control.attitude.controllers.rate_damping:RateDampingController",
     "pid": "flatsat.control.attitude.controllers.pid:PidRateController",
     "bdot": "flatsat.control.attitude.controllers.bdot:BdotController",
+    "momentum_dump": ("flatsat.control.attitude.controllers.momentum_dump:MomentumDumpController"),
 }
 
 GUIDANCE: dict[str, str] = {

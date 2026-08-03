@@ -75,11 +75,15 @@ message ControlConfig {
   // Magnetometer input for magnetic strategies; empty = none. The loop
   // still paces on input_topic — the field rides along on the state.
   string mag_input_topic = 5;
+  // Where dipole commands go when the strategy emits them alongside
+  // torque (momentum_dump). Empty = the strategy must not emit both.
+  string dipole_output_topic = 6;
 
   oneof strategy {
     RateDampingOptions rate_damping = 10;
     PidOptions pid = 11;
     BdotOptions bdot = 12;
+    MomentumDumpOptions momentum_dump = 13;
   }
   oneof objective {  // absent = constant_rate (detumble)
     ConstantRateOptions constant_rate = 20;

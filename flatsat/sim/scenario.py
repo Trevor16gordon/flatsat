@@ -30,12 +30,13 @@ import math
 import threading
 import time
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 import zenoh
 
 from flatsat.apps.actuator_daemon import ActuatorDaemon
-from flatsat.apps.control_loop import ControlLoop
+from flatsat.apps.control_loop import ControlLoop, wheel_state_inputs
 from flatsat.apps.sensor_daemon import SensorDaemon
 from flatsat.control.health.arbiter import Fdir
 from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle, which_impl
@@ -49,7 +50,7 @@ from flatsat.core.registry import (
 from flatsat.mode import mode_config_pb2
 from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager
-from flatsat.msgs import mission_log_pb2, mode_pb2
+from flatsat.msgs import hal_pb2, mission_log_pb2, mode_pb2
 from flatsat.sim import mission_pb2, orbit
 from flatsat.sim.basilisk_hil import BasiliskPlant
 from flatsat.sim.plant import LocalPlant, Plant
@@ -70,11 +71,15 @@ class SuccessCriteria:
             system must be latched in; None skips the check.
         require_all_acks: When True, every registered app must have
             acked the current mode sequence.
+        max_wheel_momentum_n_m_s: Bound on the body-frame wheel momentum
+            magnitude, read from the wheels' own state topics — what a
+            momentum-dump phase must drive down; None skips the check.
     """
 
     max_omega_mag_rad_s: float | None = None
     require_mode: str | None = None
     require_all_acks: bool = False
+    max_wheel_momentum_n_m_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -306,6 +311,11 @@ def load_mission(path: Path | str) -> MissionSpec:
             ),
             require_mode=row.success.require_mode or None,
             require_all_acks=row.success.require_all_acks,
+            max_wheel_momentum_n_m_s=(
+                row.success.max_wheel_momentum_n_m_s
+                if row.success.HasField("max_wheel_momentum_n_m_s")
+                else None
+            ),
         )
         if criteria.require_mode is not None:
             _mode_value(criteria.require_mode)
@@ -345,6 +355,63 @@ def load_mission(path: Path | str) -> MissionSpec:
         epoch_gmst_rad=gmst,
         epoch_solar_angle_rad=solar,
     )
+
+
+class WheelMomentumMonitor:
+    """Latest stored momentum per wheel, summed into the body frame.
+
+    The judge's view of the wheels: the same state topics the flight
+    side publishes, mapped through the same mounting axes — the runner
+    never asks the drivers directly, because a mission criterion must be
+    checkable from recorded telemetry alone.
+    """
+
+    def __init__(
+        self, session: zenoh.Session, wheels: list[tuple[str, tuple[float, float, float]]]
+    ) -> None:
+        """Subscribe to every wheel's state topic.
+
+        Args:
+            session: Open zenoh session.
+            wheels: (state_topic, body-frame spin axis) per wheel.
+        """
+        self._axes = dict(wheels)
+        self._momentum: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._subs = [
+            session.declare_subscriber(topic, partial(self._on_state, topic)) for topic, _ in wheels
+        ]
+
+    def _on_state(self, topic: str, sample: zenoh.Sample) -> None:
+        """Store one wheel's latest momentum (subscriber thread).
+
+        Args:
+            topic: The state topic the sample arrived on.
+            sample: Incoming WheelState.
+        """
+        msg = hal_pb2.WheelState.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self._momentum[topic] = msg.momentum_n_m_s
+
+    def body_momentum_magnitude(self) -> float:
+        """|sum over wheels of axis * momentum|.
+
+        Returns:
+            The body-frame wheel momentum magnitude, N·m·s; wheels that
+            have not reported contribute zero.
+        """
+        total = [0.0, 0.0, 0.0]
+        with self._lock:
+            for topic, axis in self._axes.items():
+                momentum = self._momentum.get(topic, 0.0)
+                for index in range(3):
+                    total[index] += axis[index] * momentum
+        return math.sqrt(sum(value * value for value in total))
+
+    def close(self) -> None:
+        """Undeclare the subscriptions."""
+        for sub in self._subs:
+            sub.undeclare()
 
 
 def _truth_topic(vehicle: VehicleSpec) -> str:
@@ -517,6 +584,7 @@ class ScenarioRunner:
         loop: ControlLoop | None = None
         manager: ModeManager | None = None
         fdir: Fdir | None = None
+        momentum_monitor: WheelMomentumMonitor | None = None
         try:
             manager = ModeManager(mode_entry, session, base_topic=SCENARIO_MODE_BASE)
 
@@ -545,7 +613,9 @@ class ScenarioRunner:
                 get_estimator_class(estimator).from_config(getattr(control, estimator)),
                 vehicle_name=vehicle.name,
                 config_checksum=vehicle.provenance.checksum,
+                wheels=wheel_state_inputs(vehicle),
             )
+            momentum_monitor = WheelMomentumMonitor(session, wheel_state_inputs(vehicle))
 
             clients = [
                 ModeClient(session, app, base_topic=SCENARIO_MODE_BASE) for app in mode_entry.apps
@@ -598,7 +668,7 @@ class ScenarioRunner:
             ):
                 for phase in self.mission.phases:
                     span_id = logger.start(phase.name, mission_log_pb2.SPAN_KIND_PHASE)
-                    result = self._run_phase(phase, manager, plant)
+                    result = self._run_phase(phase, manager, plant, momentum_monitor)
                     for detail in result.details:
                         logger.annotate(detail, "info" if result.passed else "error", "runner")
                     logger.end(
@@ -611,6 +681,8 @@ class ScenarioRunner:
         finally:
             if recorder is not None:
                 recorder.close()
+            if momentum_monitor is not None:
+                momentum_monitor.close()
             if fdir is not None:
                 fdir.stop()
             if plant is not None:
@@ -637,13 +709,21 @@ class ScenarioRunner:
                 manager.close()
             session.close()
 
-    def _run_phase(self, phase: PhaseSpec, manager: ModeManager, plant: Plant) -> PhaseResult:
+    def _run_phase(
+        self,
+        phase: PhaseSpec,
+        manager: ModeManager,
+        plant: Plant,
+        momentum_monitor: WheelMomentumMonitor | None = None,
+    ) -> PhaseResult:
         """Execute and judge one phase.
 
         Args:
             phase: The phase to run.
             manager: The live mode manager.
             plant: The live plant (truth source for criteria).
+            momentum_monitor: The wheels' momentum as published on their
+                state topics, for the wheel-momentum criterion.
 
         Returns:
             The phase's judgment.
@@ -685,6 +765,16 @@ class ScenarioRunner:
             details.append(
                 f"{'ok' if ok else 'FAIL'}: |omega| {omega:.4f} rad/s "
                 f"(bound {criteria.max_omega_mag_rad_s:g})"
+            )
+        if criteria.max_wheel_momentum_n_m_s is not None:
+            momentum = (
+                momentum_monitor.body_momentum_magnitude() if momentum_monitor is not None else 0.0
+            )
+            ok = momentum <= criteria.max_wheel_momentum_n_m_s
+            passed = passed and ok
+            details.append(
+                f"{'ok' if ok else 'FAIL'}: |wheel momentum| {momentum:.5f} N·m·s "
+                f"(bound {criteria.max_wheel_momentum_n_m_s:g})"
             )
         if criteria.require_mode is not None:
             state = manager.state()

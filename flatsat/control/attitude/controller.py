@@ -49,6 +49,11 @@ class AttitudeState:
         mag_fresh: False when the field measurement is stale or flagged;
             magnetic strategies must go quiet rather than differentiate
             a frozen value into a phantom dB/dt.
+        wheel_momentum_n_m_s: Body-frame wheel momentum vector — each
+            wheel's stored momentum mapped through its mounting axis and
+            summed. None when the vehicle's wheels are not all reporting
+            fresh state; a momentum-dump law must go quiet rather than
+            bleed a stale number.
     """
 
     body_rates_rad_s: Vec3 = (0.0, 0.0, 0.0)
@@ -56,6 +61,7 @@ class AttitudeState:
     valid: bool = True
     mag_field_t: Vec3 | None = None
     mag_fresh: bool = False
+    wheel_momentum_n_m_s: Vec3 | None = None
 
 
 @dataclass(frozen=True)

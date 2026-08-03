@@ -16,6 +16,10 @@ message SuccessCriteriaConfig {
   optional double max_omega_mag_rad_s = 1;  // plant |omega| bound; absent skips
   string require_mode = 2;                  // bare mode name (NOMINAL, SAFE, ...); empty skips
   bool require_all_acks = 3;                // every registered app acked the current seq
+  // Bound on |sum over wheels of axis * momentum| — the body-frame wheel
+  // momentum vector, read from the wheels' own state topics. This is
+  // what a momentum-dump phase must drive down; absent skips.
+  optional double max_wheel_momentum_n_m_s = 4;
 }
 
 // One phase of the timeline.

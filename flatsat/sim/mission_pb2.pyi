@@ -35,26 +35,38 @@ class SuccessCriteriaConfig(_message.Message):
     MAX_OMEGA_MAG_RAD_S_FIELD_NUMBER: _builtins.int
     REQUIRE_MODE_FIELD_NUMBER: _builtins.int
     REQUIRE_ALL_ACKS_FIELD_NUMBER: _builtins.int
+    MAX_WHEEL_MOMENTUM_N_M_S_FIELD_NUMBER: _builtins.int
     max_omega_mag_rad_s: _builtins.float
     """plant |omega| bound; absent skips"""
     require_mode: _builtins.str
     """bare mode name (NOMINAL, SAFE, ...); empty skips"""
     require_all_acks: _builtins.bool
     """every registered app acked the current seq"""
+    max_wheel_momentum_n_m_s: _builtins.float
+    """Bound on |sum over wheels of axis * momentum| — the body-frame wheel
+    momentum vector, read from the wheels' own state topics. This is
+    what a momentum-dump phase must drive down; absent skips.
+    """
     def __init__(
         self,
         *,
         max_omega_mag_rad_s: _builtins.float | None = ...,
         require_mode: _builtins.str = ...,
         require_all_acks: _builtins.bool = ...,
+        max_wheel_momentum_n_m_s: _builtins.float | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["_max_omega_mag_rad_s", b"_max_omega_mag_rad_s", "max_omega_mag_rad_s", b"max_omega_mag_rad_s"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_max_omega_mag_rad_s", b"_max_omega_mag_rad_s", "_max_wheel_momentum_n_m_s", b"_max_wheel_momentum_n_m_s", "max_omega_mag_rad_s", b"max_omega_mag_rad_s", "max_wheel_momentum_n_m_s", b"max_wheel_momentum_n_m_s"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_max_omega_mag_rad_s", b"_max_omega_mag_rad_s", "max_omega_mag_rad_s", b"max_omega_mag_rad_s", "require_all_acks", b"require_all_acks", "require_mode", b"require_mode"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_max_omega_mag_rad_s", b"_max_omega_mag_rad_s", "_max_wheel_momentum_n_m_s", b"_max_wheel_momentum_n_m_s", "max_omega_mag_rad_s", b"max_omega_mag_rad_s", "max_wheel_momentum_n_m_s", b"max_wheel_momentum_n_m_s", "require_all_acks", b"require_all_acks", "require_mode", b"require_mode"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType__max_omega_mag_rad_s: _TypeAlias = _typing.Literal["max_omega_mag_rad_s"]  # noqa: Y015
     _WhichOneofArgType__max_omega_mag_rad_s: _TypeAlias = _typing.Literal["_max_omega_mag_rad_s", b"_max_omega_mag_rad_s"]  # noqa: Y015
+    _WhichOneofReturnType__max_wheel_momentum_n_m_s: _TypeAlias = _typing.Literal["max_wheel_momentum_n_m_s"]  # noqa: Y015
+    _WhichOneofArgType__max_wheel_momentum_n_m_s: _TypeAlias = _typing.Literal["_max_wheel_momentum_n_m_s", b"_max_wheel_momentum_n_m_s"]  # noqa: Y015
+    @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType__max_omega_mag_rad_s) -> _WhichOneofReturnType__max_omega_mag_rad_s | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_wheel_momentum_n_m_s) -> _WhichOneofReturnType__max_wheel_momentum_n_m_s | None: ...
 
 Global___SuccessCriteriaConfig: _TypeAlias = SuccessCriteriaConfig  # noqa: Y015
 

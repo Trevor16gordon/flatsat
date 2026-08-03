@@ -349,6 +349,24 @@ while the along-B component — 0.033 rad/s for that release attitude —
 survives, exactly as `m x B` demands. The mission bound sits above that
 floor on purpose.
 
+**The combined system (2026-08-03).** Wheels and rods now fly together:
+the `momentum_dump` strategy delegates its torque law to the SAME
+rate-damping controller a wheels-only vehicle uses (adding rods cannot
+change how the wheels fly), and commands dipole `m = k·(h x B)/|B|²`
+from the wheels' own published momentum — the external torque `-k·h_perp`
+that lets the wheels hand a deployment tumble's momentum to the field.
+The dump goes quiet, never the torque, when the field or any wheel's
+state is stale. The control loop carries the second output on
+`dipole_output_topic` and fails loudly at startup if a dual-output
+strategy has nowhere to send it; mission phases can bound the body-frame
+wheel momentum read from the wheels' state topics. `flatsat_v1` now
+carries the full complement — three wheels, three real-scale rods, a
+magnetometer — so a HIL run detumbles on wheels and then drains them
+magnetically over the following tens of minutes, at the tempo the
+1.2 A·m² rods honestly have. Still deliberately absent: a joint
+allocator (saturation redistribution, null space) — the two commands
+remain independent body-frame vectors until a vehicle needs more.
+
 ### Staged build-out
 
 1. Orbit, epoch, geomagnetic field — **done** for both plants (see the closed gap above).

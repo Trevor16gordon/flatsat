@@ -89,4 +89,5 @@ def test_state_reports_the_shared_model() -> None:
     assert flags == hal_pb2.VALIDITY_FLAG_VALID
     assert isinstance(msg, hal_pb2.WheelState)
     assert msg.torque_n_m == pytest.approx(0.03)
-    assert msg.momentum_n_m_s > 0.0
+    # +torque to the body stores negative rotor momentum (reaction).
+    assert msg.momentum_n_m_s < 0.0
