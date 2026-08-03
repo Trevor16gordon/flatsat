@@ -115,7 +115,9 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       ctx.textBaseline = 'middle';
       ctx.fillText(fmtValue(t), PAD.left - 8, py);
     }
-    for (const t of ticks(tl, tr, 7)) {
+    // Time labels are ~70px wide; ask for however many actually fit.
+    const xTarget = Math.max(3, Math.floor((w - PAD.left - PAD.right) / 90));
+    for (const t of ticks(tl, tr, xTarget)) {
       const px = Math.round(x(t)) + 0.5;
       ctx.beginPath();
       ctx.moveTo(px, PAD.top);
@@ -149,10 +151,17 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       ctx.strokeStyle = ch.color;
       ctx.beginPath();
       let started = false;
+      let runLen = 0;
+      let last: [number, number] | null = null;
+      // A run of one sample strokes nothing — mark it with a dot instead,
+      // so sparse channels (mode changes, single events) stay visible.
+      const lone: [number, number][] = [];
       for (let i = 0; i < t_ns.length; i++) {
         const t = t_ns[i] as number;
         if (t < tl || t > tr) {
+          if (runLen === 1 && last) lone.push(last);
           started = false; // leave the window rather than draw across it
+          runLen = 0;
           continue;
         }
         const px = x(t);
@@ -163,8 +172,17 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
         } else {
           ctx.lineTo(px, py);
         }
+        runLen += 1;
+        last = [px, py];
       }
+      if (runLen === 1 && last) lone.push(last);
       ctx.stroke();
+      ctx.fillStyle = ch.color;
+      for (const [px, py] of lone) {
+        ctx.beginPath();
+        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Axis box last, so traces never overhang it.
@@ -203,6 +221,17 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
 
   useEffect(() => {
     draw();
+  }, [draw]);
+
+  // The canvas is a bitmap: an OS light/dark switch restyles the DOM but
+  // leaves the last paint behind unless we repaint on the media change.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    // Next frame, not synchronously: the new theme's CSS variables may not
+    // have been recalculated when the media-query event fires.
+    const onChange = () => requestAnimationFrame(draw);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
   }, [draw]);
 
   /** Canvas-relative pixel x -> absolute time. */

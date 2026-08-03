@@ -141,7 +141,7 @@ export default function App() {
 
       {error && <div className="error-bar">could not read that file — {error}</div>}
 
-      {!blob && !error && (
+      {!blob && (
         <div className="dropzone">
           <div className="dropzone-inner">
             <p className="dz-title">drop a mission blob here</p>

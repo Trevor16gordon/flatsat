@@ -60,7 +60,7 @@ export class UploadDataSource implements DataSource {
     ];
   }
 
-  async loadRun(): Promise<MissionBlob> {
+  async loadRun(_runId: string): Promise<MissionBlob> {
     return this.blob;
   }
 

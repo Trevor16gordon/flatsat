@@ -54,6 +54,11 @@ export function Timeline({
       {spans.map((s) => {
         const start = s.start_ns ?? t0;
         const end = s.end_ns ?? t1;
+        // Clamp the bar to the visible window — when zoomed to one span,
+        // its siblings must clip at the track edge, not spill past it.
+        const visStart = Math.max(start, t0);
+        const visEnd = Math.min(end, t1);
+        const inWindow = visEnd > visStart;
         const depth = depthOf(s, byId);
         const open = s.end_ns === null;
         return (
@@ -67,20 +72,22 @@ export function Timeline({
               {s.name || '(unnamed)'}
             </div>
             <div className="lane-track">
-              <div
-                className={`bar${open ? ' open' : ''}`}
-                style={{
-                  left: `${pct(start)}%`,
-                  width: `${Math.max(pct(end) - pct(start), 0.4)}%`,
-                  background: outcomeColor(s.outcome),
-                }}
-              >
-                <span className="bar-text">
-                  {s.end_ns !== null ? duration(end - start) : 'never closed'}
-                </span>
-              </div>
+              {inWindow && (
+                <div
+                  className={`bar${open ? ' open' : ''}`}
+                  style={{
+                    left: `${pct(visStart)}%`,
+                    width: `${Math.max(pct(visEnd) - pct(visStart), 0.4)}%`,
+                    background: outcomeColor(s.outcome),
+                  }}
+                >
+                  <span className="bar-text">
+                    {s.end_ns !== null ? duration(end - start) : 'never closed'}
+                  </span>
+                </div>
+              )}
               {annotations
-                .filter((a) => a.span_id === s.span_id)
+                .filter((a) => a.span_id === s.span_id && a.time_ns >= t0 && a.time_ns <= t1)
                 .map((a, i) => (
                   <span
                     key={i}
