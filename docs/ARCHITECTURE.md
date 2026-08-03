@@ -253,3 +253,91 @@ Record a run and export it:
 python -m flatsat.sim.run_mission config/missions/composed_demo.txtpb --record
 python -m flatsat.telemetry.export ~/flatsat-missions/<run-id> -o blob.json
 ```
+
+## The simulated universe: orbit, field, and plant parity
+
+Two plants stand behind the same sim contract. `LocalPlant` is rigid-body
+dynamics plus the analytic environment in `flatsat/sim/orbit.py`; it runs
+anywhere, including the flight computer and CI. `BasiliskPlant` is real
+Basilisk and runs only where Basilisk is installed — today the ground
+machine, not the Jetson.
+
+**The parity requirement.** Both plants publish `TruthState`, and flight
+software cannot tell them apart. That is the point of the contract, and it
+carries an obligation: *a mission file must produce the same physics under
+either plant*. Where they differ, the difference must be fidelity — better
+gravity, better field — never presence or absence of a phenomenon. A
+mission that silently loses its orbit when you ask for the higher-fidelity
+plant is worse than one that never had an orbit, because the sim now
+disagrees with itself and the disagreement is invisible.
+
+> **KNOWN GAP (2026-08-03).** `BasiliskPlant` does not implement the orbit.
+> `ScenarioRunner._build_plant` passes `sigma0`, `orbit_elements` and the
+> epoch to `LocalPlant` only, so `--plant basilisk` runs attitude-only in an
+> empty universe: no gravity body, no orbital position, no magnetic field,
+> and the initial attitude discarded. Vizard therefore shows a vehicle
+> tumbling in the void rather than orbiting. Closing it means giving
+> Basilisk a `gravBodyFactory` Earth, setting the hub's initial position and
+> velocity from the same `OrbitalElements`, threading `sigma0` through, and
+> filling the same `TruthState` environment fields. Until then, treat
+> `--plant local` as the *more* complete model, which is the opposite of
+> what the names suggest.
+
+### What `orbit.py` models
+
+Two-body Kepler with **J2 nodal regression**, and a **tilted dipole**
+geomagnetic field. Both choices are load-bearing:
+
+- J2 is not a refinement. It is the entire reason sun-synchronous orbits
+  exist, so omitting it deletes the property an SSO mission is simulating.
+- The dipole gets field magnitude right to roughly 10-20%, and gets the
+  field's *rotation along the orbit* right. That rotation is the only thing
+  B-dot detumble depends on — a controller that works against a perfect
+  dipole but not the real lumpy field has been tuned to the model.
+
+Absent: drag, third bodies, higher harmonics, IGRF detail, penumbra. The
+inertial frame is not J2000 — no precession or nutation. Self-consistent
+for simulation; unsuitable for pointing a real antenna.
+
+Tests anchor to values that can be looked up rather than to the code: ISS
+period, geostationary sidereal day, the 97.4-degree SSO inclination, one
+node revolution per year, 31 uT at the magnetic equator and twice that over
+the poles, 20-45% eclipse fraction.
+
+### Orbits are configuration
+
+`config/orbits/*.txtpb` holds saved environments the way
+`config/submissions/` holds saved phases. **An unset `inclination_deg`
+means "sun-synchronous at this altitude"** — the mission states the
+property it wants and the number follows, so changing altitude cannot
+silently break sun-synchronicity.
+
+### A magnetorquer has no maximum torque
+
+Recorded here because getting it wrong is easy and the resulting sim lies
+in a flattering direction. A magnetorquer is specified by its **magnetic
+dipole moment** (A·m²). Torque is `m x B`, so:
+
+- available torque varies continuously around the orbit;
+- there is never any torque about the field line, so magnetic control is
+  underactuated at every instant;
+- detumble works only because B rotates as the vehicle orbits.
+
+Writing `max_torque_n_m` into a magnetorquer device file would grant
+authority that does not exist and make detumble look better than reality.
+The device parameter is `max_dipole_a_m2`; the plant computes the torque
+from the local field.
+
+### Staged build-out
+
+1. Orbit, epoch, geomagnetic field — **done** for `LocalPlant`, open for Basilisk (see gap above).
+2. Magnetorquer device, driver, B-dot controller.
+3. Star tracker device and driver, with sun and Earth exclusion angles.
+4. Module layer: `config/modules/*.txtpb` as procurement truth, body mass and inertia **derived** by parallel axis theorem rather than hand-typed, with an optional measured override that warns on disagreement.
+5. Power draw per device, summed into a per-mode budget.
+
+Run a mission with an orbit:
+
+```bash
+python -m flatsat.sim.run_mission config/missions/deploy_detumble_sso.txtpb --record
+```
