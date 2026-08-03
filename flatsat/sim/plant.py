@@ -23,6 +23,7 @@ import zenoh
 from flatsat.core.bus import SamplePublisher
 from flatsat.core.config import VehicleSpec
 from flatsat.msgs import sim_pb2
+from flatsat.sim import orbit
 from flatsat.sim.basilisk_hil import WheelTorqueSink, plant_from_vehicle
 
 Vec3 = tuple[float, float, float]
@@ -53,15 +54,19 @@ class Plant(Protocol):
 class RigidBody:
     """Euler-integrated rotational dynamics: I omega_dot = tau - omega x (I omega)."""
 
-    def __init__(self, inertia: list[list[float]], omega0: Vec3) -> None:
+    def __init__(
+        self, inertia: list[list[float]], omega0: Vec3, sigma0: Vec3 = (0.0, 0.0, 0.0)
+    ) -> None:
         """Set the plant's inertia and initial state.
 
         Args:
             inertia: 3x3 inertia tensor (body frame).
             omega0: Initial body rates.
+            sigma0: Initial attitude as a modified Rodrigues parameter.
         """
         self._inertia = inertia
         self.omega: list[float] = list(omega0)
+        self.sigma: list[float] = list(sigma0)
 
     def _matvec(self, vec: list[float]) -> list[float]:
         """Multiply the inertia tensor by a vector.
@@ -95,7 +100,75 @@ class RigidBody:
         for axis in range(3):
             accel = (torque_body[axis] - gyroscopic[axis]) / self._inertia[axis][axis]
             self.omega[axis] += accel * dt_s
+        self._integrate_attitude(dt_s)
         return (self.omega[0], self.omega[1], self.omega[2])
+
+    def _integrate_attitude(self, dt_s: float) -> None:
+        """Advance the MRP attitude by the current body rates.
+
+        MRPs are used rather than quaternions because they are three
+        numbers with no norm constraint to drift, which suits a simple
+        Euler step. The cost is a singularity at a full rotation, avoided
+        by switching to the SHADOW set whenever |sigma| exceeds one —
+        the same attitude, described from the other end, and the reason
+        this cannot be a plain integration.
+
+        Args:
+            dt_s: Step length.
+        """
+        s0, s1, s2 = self.sigma
+        w0, w1, w2 = self.omega
+        square = s0 * s0 + s1 * s1 + s2 * s2
+        # sigma_dot = 1/4 [(1 - s^2) I + 2 [s x] + 2 s s^T] omega
+        common = 1.0 - square
+        rate = (
+            0.25
+            * (
+                common * w0
+                + 2.0 * (s1 * w2 - s2 * w1)
+                + 2.0 * (s0 * s0 * w0 + s0 * s1 * w1 + s0 * s2 * w2)
+            ),
+            0.25
+            * (
+                common * w1
+                + 2.0 * (s2 * w0 - s0 * w2)
+                + 2.0 * (s1 * s0 * w0 + s1 * s1 * w1 + s1 * s2 * w2)
+            ),
+            0.25
+            * (
+                common * w2
+                + 2.0 * (s0 * w1 - s1 * w0)
+                + 2.0 * (s2 * s0 * w0 + s2 * s1 * w1 + s2 * s2 * w2)
+            ),
+        )
+        for axis in range(3):
+            self.sigma[axis] += rate[axis] * dt_s
+        square = sum(v * v for v in self.sigma)
+        if square > 1.0:
+            for axis in range(3):
+                self.sigma[axis] = -self.sigma[axis] / square
+
+    def dcm_body_from_inertial(self) -> list[list[float]]:
+        """Rotation carrying an inertial vector into the body frame.
+
+        Returns:
+            A 3x3 direction cosine matrix built from the current MRP.
+        """
+        s0, s1, s2 = self.sigma
+        square = s0 * s0 + s1 * s1 + s2 * s2
+        skew = [[0.0, -s2, s1], [s2, 0.0, -s0], [-s1, s0, 0.0]]
+        skew2 = [
+            [sum(skew[i][k] * skew[k][j] for k in range(3)) for j in range(3)] for i in range(3)
+        ]
+        denom = (1.0 + square) ** 2
+        return [
+            [
+                (1.0 if i == j else 0.0)
+                + (8.0 * skew2[i][j] - 4.0 * (1.0 - square) * skew[i][j]) / denom
+                for j in range(3)
+            ]
+            for i in range(3)
+        ]
 
     def rate_magnitude(self) -> float:
         """Current |omega|.
@@ -116,6 +189,10 @@ class LocalPlant:
         truth_topic: str,
         omega0: Vec3,
         rate_hz: float = 100.0,
+        sigma0: Vec3 = (0.0, 0.0, 0.0),
+        orbit_elements: orbit.OrbitalElements | None = None,
+        epoch_gmst_rad: float = 0.0,
+        epoch_solar_angle_rad: float = 0.0,
     ) -> None:
         """Build the plant from the vehicle file and wire its topics.
 
@@ -126,9 +203,19 @@ class LocalPlant:
                 vehicle's basilisk_imu entries subscribe to).
             omega0: Initial body rates.
             rate_hz: Integration and publish rate.
+            sigma0: Attitude at epoch, as an MRP.
+            orbit_elements: Orbit to propagate; None publishes attitude
+                only, which is all a reaction-wheel detumble needs.
+            epoch_gmst_rad: Greenwich sidereal angle at epoch, which
+                fixes where the tilted dipole points to begin with.
+            epoch_solar_angle_rad: Solar longitude at epoch.
         """
         _, inertia, wheels = plant_from_vehicle(vehicle)
-        self.body = RigidBody(inertia, omega0)
+        self.body = RigidBody(inertia, omega0, sigma0)
+        self._orbit = orbit_elements
+        self._epoch_gmst_rad = epoch_gmst_rad
+        self._epoch_solar_angle_rad = epoch_solar_angle_rad
+        self._sim_time_s = 0.0
         self._axes = dict(wheels)
         self._sinks = [WheelTorqueSink(session, name) for name, _ in wheels]
         self._truth = SamplePublisher(session, truth_topic, "local_plant")
@@ -150,16 +237,45 @@ class LocalPlant:
                     torque[index] += axis[index] * applied
             self.body.step((torque[0], torque[1], torque[2]), dt_s)
 
+            self._sim_time_s += dt_s
             truth = sim_pb2.TruthState()
             truth.omega_x_rad_s = self.body.omega[0]
             truth.omega_y_rad_s = self.body.omega[1]
             truth.omega_z_rad_s = self.body.omega[2]
+            truth.sigma_x = self.body.sigma[0]
+            truth.sigma_y = self.body.sigma[1]
+            truth.sigma_z = self.body.sigma[2]
+            self._fill_environment(truth)
             self._truth.publish(truth)
 
             delta = next_wake - time.monotonic_ns()
             if delta > 0:
                 self._stop.wait(delta / 1e9)
             next_wake += period_ns
+
+    def _fill_environment(self, truth: sim_pb2.TruthState) -> None:
+        """Add position, body-frame field and eclipse, if there is an orbit.
+
+        The field is rotated into the BODY frame here rather than left
+        inertial, because that is where a magnetometer measures it and
+        where ``m x B`` has to be evaluated. Leaving the rotation to
+        every consumer would mean every consumer needs the attitude.
+
+        Args:
+            truth: The message being filled.
+        """
+        if self._orbit is None:
+            return
+        t = self._sim_time_s
+        position, _ = orbit.propagate_eci(self._orbit, t)
+        field_eci = orbit.magnetic_field_eci(position, t, self._epoch_gmst_rad)
+        dcm = self.body.dcm_body_from_inertial()
+        field_body = [sum(dcm[i][j] * field_eci[j] for j in range(3)) for i in range(3)]
+
+        truth.position_x_m, truth.position_y_m, truth.position_z_m = (float(v) for v in position)
+        truth.mag_field_x_t, truth.mag_field_y_t, truth.mag_field_z_t = field_body
+        sun = orbit.sun_direction_eci(t, self._epoch_solar_angle_rad)
+        truth.in_eclipse = orbit.in_eclipse(position, sun)
 
     def rate_magnitude(self) -> float:
         """Current |omega| of the simulated body.

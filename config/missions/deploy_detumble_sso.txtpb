@@ -1,0 +1,31 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.MissionConfig
+#
+# DEPLOYMENT AND DETUMBLE — the first thing that happens to a 6U after
+# it leaves the dispenser.
+#
+# The tumble is the point. A P-POD-class deployer imparts a few degrees
+# per second about arbitrary axes, and the vehicle wakes up with no
+# attitude knowledge, possibly no sun, and a body rate it must remove
+# before anything else can work. Initial attitude is deliberately NOT
+# identity: a deployer does not release you conveniently aligned.
+#
+# Flown in a real sun-synchronous rideshare orbit so the geomagnetic
+# field the vehicle sees is the one it would actually see — which is
+# what magnetic detumble depends on.
+
+name: "deploy-detumble-sso"
+description: "6U released from a rideshare dispenser with a tumble, then detumbled"
+vehicle: "config/vehicles/test_scenario.txtpb"
+orbit: "config/orbits/spacex_rideshare_sso.txtpb"
+
+# ~5 deg/s about each axis: a typical dispenser release, not a worst case.
+omega0_rad_s: [0.09, -0.07, 0.05]
+# Arbitrary release orientation.
+sigma0: [0.2, -0.1, 0.35]
+plant_rate_hz: 100.0
+
+phases {
+  use: "config/submissions/detumble.txtpb"
+  duration_s: 20.0
+}

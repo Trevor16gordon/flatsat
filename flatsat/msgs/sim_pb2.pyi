@@ -38,6 +38,13 @@ class TruthState(_message.Message):
     SIGMA_X_FIELD_NUMBER: _builtins.int
     SIGMA_Y_FIELD_NUMBER: _builtins.int
     SIGMA_Z_FIELD_NUMBER: _builtins.int
+    POSITION_X_M_FIELD_NUMBER: _builtins.int
+    POSITION_Y_M_FIELD_NUMBER: _builtins.int
+    POSITION_Z_M_FIELD_NUMBER: _builtins.int
+    MAG_FIELD_X_T_FIELD_NUMBER: _builtins.int
+    MAG_FIELD_Y_T_FIELD_NUMBER: _builtins.int
+    MAG_FIELD_Z_T_FIELD_NUMBER: _builtins.int
+    IN_ECLIPSE_FIELD_NUMBER: _builtins.int
     omega_x_rad_s: _builtins.float
     """true body rates"""
     omega_y_rad_s: _builtins.float
@@ -46,6 +53,19 @@ class TruthState(_message.Message):
     """true attitude, MRP (sigma_BN)"""
     sigma_y: _builtins.float
     sigma_z: _builtins.float
+    position_x_m: _builtins.float
+    """Inertial position. Absent (all zero) when the run has no orbit."""
+    position_y_m: _builtins.float
+    position_z_m: _builtins.float
+    mag_field_x_t: _builtins.float
+    """Geomagnetic field in the BODY frame, which is what a magnetometer
+    measures and what magnetorquer torque (m x B) is computed in.
+    Publishing it inertially would push the same rotation into every
+    consumer.
+    """
+    mag_field_y_t: _builtins.float
+    mag_field_z_t: _builtins.float
+    in_eclipse: _builtins.bool
     @_builtins.property
     def header(self) -> _hal_pb2.Header: ...
     def __init__(
@@ -58,10 +78,17 @@ class TruthState(_message.Message):
         sigma_x: _builtins.float = ...,
         sigma_y: _builtins.float = ...,
         sigma_z: _builtins.float = ...,
+        position_x_m: _builtins.float = ...,
+        position_y_m: _builtins.float = ...,
+        position_z_m: _builtins.float = ...,
+        mag_field_x_t: _builtins.float = ...,
+        mag_field_y_t: _builtins.float = ...,
+        mag_field_z_t: _builtins.float = ...,
+        in_eclipse: _builtins.bool = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "omega_x_rad_s", b"omega_x_rad_s", "omega_y_rad_s", b"omega_y_rad_s", "omega_z_rad_s", b"omega_z_rad_s", "sigma_x", b"sigma_x", "sigma_y", b"sigma_y", "sigma_z", b"sigma_z"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "in_eclipse", b"in_eclipse", "mag_field_x_t", b"mag_field_x_t", "mag_field_y_t", b"mag_field_y_t", "mag_field_z_t", b"mag_field_z_t", "omega_x_rad_s", b"omega_x_rad_s", "omega_y_rad_s", b"omega_y_rad_s", "omega_z_rad_s", b"omega_z_rad_s", "position_x_m", b"position_x_m", "position_y_m", b"position_y_m", "position_z_m", b"position_z_m", "sigma_x", b"sigma_x", "sigma_y", b"sigma_y", "sigma_z", b"sigma_z"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

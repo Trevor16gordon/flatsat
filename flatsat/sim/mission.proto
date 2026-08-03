@@ -42,6 +42,26 @@ message PhaseConfig {
 }
 
 // The whole mission.
+// Where and when the vehicle flies. A saved orbit in config/orbits is a
+// reusable environment the same way a sub-mission is a reusable phase.
+//
+// Leaving inclination unset asks for the SUN-SYNCHRONOUS inclination at
+// this altitude, which is intent rather than a number: "keep local solar
+// time fixed" is the property a mission wants, and the ~97.4 degrees
+// that delivers it at 500 km is a consequence nobody should hand-copy.
+message OrbitConfig {
+  string name = 1;
+  string description = 2;
+  double altitude_m = 3;                   // circular orbit altitude
+  optional double inclination_deg = 4;     // absent = sun-synchronous here
+  double raan_deg = 5;                     // ascending node at epoch
+  double eccentricity = 6;
+  double arg_periapsis_deg = 7;
+  double true_anomaly_deg = 8;             // position along the orbit at epoch
+  double epoch_gmst_deg = 9;               // Greenwich sidereal angle at epoch
+  double epoch_solar_angle_deg = 10;       // solar longitude at epoch
+}
+
 message MissionConfig {
   string name = 1;
   string description = 2;
@@ -49,4 +69,11 @@ message MissionConfig {
   repeated double omega0_rad_s = 4;     // initial plant body rates, 3 values
   optional double plant_rate_hz = 5;    // absent = 100
   repeated PhaseConfig phases = 6;
+  // Saved orbit file, relative to the repository root. Empty means the
+  // run has no orbit: attitude-only, which is all a reaction-wheel
+  // detumble needs and all this harness modelled before magnetics.
+  string orbit = 7;
+  // Attitude at epoch as an MRP. A deployer releases with an arbitrary
+  // orientation, not an identity one.
+  repeated double sigma0 = 8;
 }

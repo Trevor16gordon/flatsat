@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from flatsat.msgs import hal_pb2 as flatsat_dot_msgs_dot_hal__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x66latsat/msgs/sim.proto\x12\nflatsat.v1\x1a\x16\x66latsat/msgs/hal.proto\"\xa8\x01\n\nTruthState\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\romega_x_rad_s\x18\x02 \x01(\x01\x12\x15\n\romega_y_rad_s\x18\x03 \x01(\x01\x12\x15\n\romega_z_rad_s\x18\x04 \x01(\x01\x12\x0f\n\x07sigma_x\x18\x05 \x01(\x01\x12\x0f\n\x07sigma_y\x18\x06 \x01(\x01\x12\x0f\n\x07sigma_z\x18\x07 \x01(\x01\"X\n\x0fWheelAxisTorque\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\r\n\x05wheel\x18\x02 \x01(\t\x12\x12\n\ntorque_n_m\x18\x03 \x01(\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x66latsat/msgs/sim.proto\x12\nflatsat.v1\x1a\x16\x66latsat/msgs/hal.proto\"\xc3\x02\n\nTruthState\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\x15\n\romega_x_rad_s\x18\x02 \x01(\x01\x12\x15\n\romega_y_rad_s\x18\x03 \x01(\x01\x12\x15\n\romega_z_rad_s\x18\x04 \x01(\x01\x12\x0f\n\x07sigma_x\x18\x05 \x01(\x01\x12\x0f\n\x07sigma_y\x18\x06 \x01(\x01\x12\x0f\n\x07sigma_z\x18\x07 \x01(\x01\x12\x14\n\x0cposition_x_m\x18\x08 \x01(\x01\x12\x14\n\x0cposition_y_m\x18\t \x01(\x01\x12\x14\n\x0cposition_z_m\x18\n \x01(\x01\x12\x15\n\rmag_field_x_t\x18\x0b \x01(\x01\x12\x15\n\rmag_field_y_t\x18\x0c \x01(\x01\x12\x15\n\rmag_field_z_t\x18\r \x01(\x01\x12\x12\n\nin_eclipse\x18\x0e \x01(\x08\"X\n\x0fWheelAxisTorque\x12\"\n\x06header\x18\x01 \x01(\x0b\x32\x12.flatsat.v1.Header\x12\r\n\x05wheel\x18\x02 \x01(\t\x12\x12\n\ntorque_n_m\x18\x03 \x01(\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,7 +33,7 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'flatsat.msgs.sim_pb2', _glo
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_TRUTHSTATE']._serialized_start=63
-  _globals['_TRUTHSTATE']._serialized_end=231
-  _globals['_WHEELAXISTORQUE']._serialized_start=233
-  _globals['_WHEELAXISTORQUE']._serialized_end=321
+  _globals['_TRUTHSTATE']._serialized_end=386
+  _globals['_WHEELAXISTORQUE']._serialized_start=388
+  _globals['_WHEELAXISTORQUE']._serialized_end=476
 # @@protoc_insertion_point(module_scope)

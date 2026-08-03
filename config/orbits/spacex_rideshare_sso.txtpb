@@ -1,0 +1,25 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.OrbitConfig
+#
+# SPACEX TRANSPORTER-CLASS RIDESHARE — the orbit most smallsats actually
+# get, rather than one chosen to be convenient.
+#
+# Sun-synchronous at ~525 km. INCLINATION IS DELIBERATELY UNSET: the
+# mission wants "local solar time stays fixed", and the ~97.5 degrees
+# that delivers it here is a consequence of the altitude, not an
+# independent choice. Setting both invites them to disagree.
+#
+# Retrograde, as every SSO must be — the J2 nodal drift has to be
+# eastward to chase the Sun, and only an inclination past 90 degrees
+# gives that.
+
+name: "spacex-rideshare-sso"
+description: "Transporter-class sun-synchronous rideshare, ~525 km"
+
+altitude_m: 525000.0
+eccentricity: 0.0
+raan_deg: 0.0
+arg_periapsis_deg: 0.0
+true_anomaly_deg: 0.0
+epoch_gmst_deg: 0.0
+epoch_solar_angle_deg: 0.0

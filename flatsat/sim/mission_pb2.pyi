@@ -120,9 +120,71 @@ class PhaseConfig(_message.Message):
 Global___PhaseConfig: _TypeAlias = PhaseConfig  # noqa: Y015
 
 @_typing.final
-class MissionConfig(_message.Message):
-    """The whole mission."""
+class OrbitConfig(_message.Message):
+    """The whole mission.
+    Where and when the vehicle flies. A saved orbit in config/orbits is a
+    reusable environment the same way a sub-mission is a reusable phase.
 
+    Leaving inclination unset asks for the SUN-SYNCHRONOUS inclination at
+    this altitude, which is intent rather than a number: "keep local solar
+    time fixed" is the property a mission wants, and the ~97.4 degrees
+    that delivers it at 500 km is a consequence nobody should hand-copy.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NAME_FIELD_NUMBER: _builtins.int
+    DESCRIPTION_FIELD_NUMBER: _builtins.int
+    ALTITUDE_M_FIELD_NUMBER: _builtins.int
+    INCLINATION_DEG_FIELD_NUMBER: _builtins.int
+    RAAN_DEG_FIELD_NUMBER: _builtins.int
+    ECCENTRICITY_FIELD_NUMBER: _builtins.int
+    ARG_PERIAPSIS_DEG_FIELD_NUMBER: _builtins.int
+    TRUE_ANOMALY_DEG_FIELD_NUMBER: _builtins.int
+    EPOCH_GMST_DEG_FIELD_NUMBER: _builtins.int
+    EPOCH_SOLAR_ANGLE_DEG_FIELD_NUMBER: _builtins.int
+    name: _builtins.str
+    description: _builtins.str
+    altitude_m: _builtins.float
+    """circular orbit altitude"""
+    inclination_deg: _builtins.float
+    """absent = sun-synchronous here"""
+    raan_deg: _builtins.float
+    """ascending node at epoch"""
+    eccentricity: _builtins.float
+    arg_periapsis_deg: _builtins.float
+    true_anomaly_deg: _builtins.float
+    """position along the orbit at epoch"""
+    epoch_gmst_deg: _builtins.float
+    """Greenwich sidereal angle at epoch"""
+    epoch_solar_angle_deg: _builtins.float
+    """solar longitude at epoch"""
+    def __init__(
+        self,
+        *,
+        name: _builtins.str = ...,
+        description: _builtins.str = ...,
+        altitude_m: _builtins.float = ...,
+        inclination_deg: _builtins.float | None = ...,
+        raan_deg: _builtins.float = ...,
+        eccentricity: _builtins.float = ...,
+        arg_periapsis_deg: _builtins.float = ...,
+        true_anomaly_deg: _builtins.float = ...,
+        epoch_gmst_deg: _builtins.float = ...,
+        epoch_solar_angle_deg: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_inclination_deg", b"_inclination_deg", "inclination_deg", b"inclination_deg"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_inclination_deg", b"_inclination_deg", "altitude_m", b"altitude_m", "arg_periapsis_deg", b"arg_periapsis_deg", "description", b"description", "eccentricity", b"eccentricity", "epoch_gmst_deg", b"epoch_gmst_deg", "epoch_solar_angle_deg", b"epoch_solar_angle_deg", "inclination_deg", b"inclination_deg", "name", b"name", "raan_deg", b"raan_deg", "true_anomaly_deg", b"true_anomaly_deg"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__inclination_deg: _TypeAlias = _typing.Literal["inclination_deg"]  # noqa: Y015
+    _WhichOneofArgType__inclination_deg: _TypeAlias = _typing.Literal["_inclination_deg", b"_inclination_deg"]  # noqa: Y015
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__inclination_deg) -> _WhichOneofReturnType__inclination_deg | None: ...
+
+Global___OrbitConfig: _TypeAlias = OrbitConfig  # noqa: Y015
+
+@_typing.final
+class MissionConfig(_message.Message):
     DESCRIPTOR: _descriptor.Descriptor
 
     NAME_FIELD_NUMBER: _builtins.int
@@ -131,18 +193,31 @@ class MissionConfig(_message.Message):
     OMEGA0_RAD_S_FIELD_NUMBER: _builtins.int
     PLANT_RATE_HZ_FIELD_NUMBER: _builtins.int
     PHASES_FIELD_NUMBER: _builtins.int
+    ORBIT_FIELD_NUMBER: _builtins.int
+    SIGMA0_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     description: _builtins.str
     vehicle: _builtins.str
     """vehicle file the mission flies"""
     plant_rate_hz: _builtins.float
     """absent = 100"""
+    orbit: _builtins.str
+    """Saved orbit file, relative to the repository root. Empty means the
+    run has no orbit: attitude-only, which is all a reaction-wheel
+    detumble needs and all this harness modelled before magnetics.
+    """
     @_builtins.property
     def omega0_rad_s(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
         """initial plant body rates, 3 values"""
 
     @_builtins.property
     def phases(self) -> _containers.RepeatedCompositeFieldContainer[Global___PhaseConfig]: ...
+    @_builtins.property
+    def sigma0(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
+        """Attitude at epoch as an MRP. A deployer releases with an arbitrary
+        orientation, not an identity one.
+        """
+
     def __init__(
         self,
         *,
@@ -152,10 +227,12 @@ class MissionConfig(_message.Message):
         omega0_rad_s: _abc.Iterable[_builtins.float] | None = ...,
         plant_rate_hz: _builtins.float | None = ...,
         phases: _abc.Iterable[Global___PhaseConfig] | None = ...,
+        orbit: _builtins.str = ...,
+        sigma0: _abc.Iterable[_builtins.float] | None = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["_plant_rate_hz", b"_plant_rate_hz", "plant_rate_hz", b"plant_rate_hz"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_plant_rate_hz", b"_plant_rate_hz", "description", b"description", "name", b"name", "omega0_rad_s", b"omega0_rad_s", "phases", b"phases", "plant_rate_hz", b"plant_rate_hz", "vehicle", b"vehicle"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_plant_rate_hz", b"_plant_rate_hz", "description", b"description", "name", b"name", "omega0_rad_s", b"omega0_rad_s", "orbit", b"orbit", "phases", b"phases", "plant_rate_hz", b"plant_rate_hz", "sigma0", b"sigma0", "vehicle", b"vehicle"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType__plant_rate_hz: _TypeAlias = _typing.Literal["plant_rate_hz"]  # noqa: Y015
     _WhichOneofArgType__plant_rate_hz: _TypeAlias = _typing.Literal["_plant_rate_hz", b"_plant_rate_hz"]  # noqa: Y015

@@ -22,6 +22,18 @@ message TruthState {
   double sigma_x = 5;        // true attitude, MRP (sigma_BN)
   double sigma_y = 6;
   double sigma_z = 7;
+  // Inertial position. Absent (all zero) when the run has no orbit.
+  double position_x_m = 8;
+  double position_y_m = 9;
+  double position_z_m = 10;
+  // Geomagnetic field in the BODY frame, which is what a magnetometer
+  // measures and what magnetorquer torque (m x B) is computed in.
+  // Publishing it inertially would push the same rotation into every
+  // consumer.
+  double mag_field_x_t = 11;
+  double mag_field_y_t = 12;
+  double mag_field_z_t = 13;
+  bool in_eclipse = 14;
 }
 
 // Torque one wheel is actually applying about its own spin axis,

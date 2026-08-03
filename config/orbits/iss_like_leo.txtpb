@@ -1,0 +1,22 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.OrbitConfig
+#
+# ISS-LIKE LEO — a prograde 51.6 degree orbit at 420 km, for comparison.
+#
+# Useful precisely because it is NOT sun-synchronous: its node drifts
+# westward, it has no fixed local solar time, and the geomagnetic field
+# it sees follows a different pattern. A detumble controller that works
+# in one and not the other has been tuned to an orbit rather than to
+# physics.
+
+name: "iss-like-leo"
+description: "Prograde 51.6 degree LEO at 420 km, deliberately not sun-synchronous"
+
+altitude_m: 420000.0
+inclination_deg: 51.6
+eccentricity: 0.0
+raan_deg: 0.0
+arg_periapsis_deg: 0.0
+true_anomaly_deg: 0.0
+epoch_gmst_deg: 0.0
+epoch_solar_angle_deg: 0.0

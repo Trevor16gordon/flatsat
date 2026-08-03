@@ -26,6 +26,7 @@ in seconds.
 from __future__ import annotations
 
 import hashlib
+import math
 import threading
 import time
 from dataclasses import dataclass, field
@@ -49,7 +50,7 @@ from flatsat.mode import mode_config_pb2
 from flatsat.mode.client import ModeClient
 from flatsat.mode.manager import ModeManager
 from flatsat.msgs import mission_log_pb2, mode_pb2
-from flatsat.sim import mission_pb2
+from flatsat.sim import mission_pb2, orbit
 from flatsat.sim.basilisk_hil import BasiliskPlant
 from flatsat.sim.plant import LocalPlant, Plant
 from flatsat.telemetry import mission_log, telemetry_config_pb2
@@ -112,6 +113,12 @@ class MissionSpec:
         omega0_rad_s: Initial plant body rates.
         plant_rate_hz: Plant integration/publish rate.
         phases: The timeline.
+        sigma0: Attitude at epoch, as an MRP. A deployer releases with an
+            arbitrary orientation, not an identity one.
+        orbit_path: Saved orbit file, or empty for an attitude-only run.
+        orbit_elements: The resolved orbit; None when there is no orbit.
+        epoch_gmst_rad: Greenwich sidereal angle at epoch.
+        epoch_solar_angle_rad: Solar longitude at epoch.
     """
 
     name: str
@@ -120,6 +127,11 @@ class MissionSpec:
     omega0_rad_s: tuple[float, float, float]
     plant_rate_hz: float
     phases: tuple[PhaseSpec, ...]
+    sigma0: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    orbit_path: str = ""
+    orbit_elements: orbit.OrbitalElements | None = None
+    epoch_gmst_rad: float = 0.0
+    epoch_solar_angle_rad: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -234,6 +246,38 @@ def _resolve_phase(declared: mission_pb2.PhaseConfig) -> mission_pb2.PhaseConfig
     return resolved
 
 
+def load_orbit(path: Path | str) -> tuple[orbit.OrbitalElements, float, float]:
+    """Load a saved orbit, resolving intent into numbers.
+
+    An unset inclination means "sun-synchronous at this altitude", so it
+    is computed rather than copied. That keeps the property the mission
+    actually wants — fixed local solar time — true by construction if
+    the altitude ever changes.
+
+    Args:
+        path: Orbit file, e.g. ``config/orbits/spacex_rideshare_sso.txtpb``.
+
+    Returns:
+        Tuple of (elements, epoch GMST radians, epoch solar angle radians).
+    """
+    cfg = mission_pb2.OrbitConfig()
+    load_textproto(path, cfg)
+    inclination = (
+        math.radians(cfg.inclination_deg)
+        if cfg.HasField("inclination_deg")
+        else orbit.sun_synchronous_inclination_rad(cfg.altitude_m, cfg.eccentricity)
+    )
+    elements = orbit.OrbitalElements(
+        semi_major_axis_m=orbit.R_EARTH_M + cfg.altitude_m,
+        eccentricity=cfg.eccentricity,
+        inclination_rad=inclination,
+        raan_rad=math.radians(cfg.raan_deg),
+        arg_periapsis_rad=math.radians(cfg.arg_periapsis_deg),
+        true_anomaly_rad=math.radians(cfg.true_anomaly_deg),
+    )
+    return elements, math.radians(cfg.epoch_gmst_deg), math.radians(cfg.epoch_solar_angle_deg)
+
+
 def load_mission(path: Path | str) -> MissionSpec:
     """Load and validate a mission profile.
 
@@ -279,6 +323,15 @@ def load_mission(path: Path | str) -> MissionSpec:
     omega0 = tuple(cfg.omega0_rad_s)
     if len(omega0) != 3:
         raise ValueError(f"{path}: omega0_rad_s must have 3 values")
+    sigma0 = tuple(cfg.sigma0) or (0.0, 0.0, 0.0)
+    if len(sigma0) != 3:
+        raise ValueError(f"{path}: sigma0 must have 3 values")
+
+    elements = None
+    gmst = 0.0
+    solar = 0.0
+    if cfg.orbit:
+        elements, gmst, solar = load_orbit(REPO_ROOT / cfg.orbit)
     return MissionSpec(
         name=cfg.name,
         description=cfg.description,
@@ -286,6 +339,11 @@ def load_mission(path: Path | str) -> MissionSpec:
         omega0_rad_s=(omega0[0], omega0[1], omega0[2]),
         plant_rate_hz=cfg.plant_rate_hz if cfg.HasField("plant_rate_hz") else 100.0,
         phases=tuple(phases),
+        sigma0=(sigma0[0], sigma0[1], sigma0[2]),
+        orbit_path=cfg.orbit,
+        orbit_elements=elements,
+        epoch_gmst_rad=gmst,
+        epoch_solar_angle_rad=solar,
     )
 
 
@@ -426,6 +484,10 @@ class ScenarioRunner:
             truth_topic=_truth_topic(vehicle),
             omega0=self.mission.omega0_rad_s,
             rate_hz=self.mission.plant_rate_hz,
+            sigma0=self.mission.sigma0,
+            orbit_elements=self.mission.orbit_elements,
+            epoch_gmst_rad=self.mission.epoch_gmst_rad,
+            epoch_solar_angle_rad=self.mission.epoch_solar_angle_rad,
         )
 
     def run(self) -> ScenarioResult:
