@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/components/channellist.tsx","./src/components/plotcanvas.tsx","./src/components/runheader.tsx","./src/components/timeline.tsx","./src/data/apisource.ts","./src/data/source.ts","./src/data/types.ts","./src/data/uploadsource.ts","./src/lib/format.ts","./src/lib/palette.ts","./src/lib/scale.ts","./vite.config.ts"],"version":"5.9.3"}

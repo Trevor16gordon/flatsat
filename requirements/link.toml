@@ -106,3 +106,77 @@ depends on its ground link to keep flying is not a spacecraft.
 verification = "test"
 evidence = "link_service_test.py::test_the_spacecraft_keeps_working_with_the_link_dead"
 status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-008"
+statement = """
+The GMSK physical layer shall transmit without gaps — idle time filled
+with idle symbols, queued frames taking precedence over fill — and on
+receive shall recover byte alignment at any bit phase by hunting the
+attached sync marker, tolerating a single bit error in the marker and
+delivering each framed block exactly once regardless of how reads
+segment the stream.
+"""
+rationale = """
+A silent transmit gap costs the demodulator its clock lock — the
+regression that produced 100 frames sent and 0 recovered on 2026-07-29.
+GMSK hands the receiver bits at an arbitrary phase, so byte alignment
+is a property the marker hunt must restore, not assume.
+"""
+verification = "test"
+evidence = "pluto_gmsk_test.py::test_idle_fill_keeps_the_modulator_running, ::test_queued_frames_take_precedence_over_idle, ::test_byte_alignment_is_recovered_at_any_bit_phase, ::test_sync_tolerates_a_bit_error_in_the_marker, ::test_frame_straddling_two_reads_is_not_lost, ::test_each_frame_is_delivered_exactly_once, ::test_each_marker_starts_its_own_block_at_its_own_phase"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-009"
+statement = """
+Frames shall be randomized with the CCSDS 131.0-B sequence before
+transmission, so that constant and repeating payloads still present the
+bit-transition density symbol clock recovery needs.
+"""
+rationale = """
+The sequence is pinned to the bits the standard prints, because a
+randomizer that is self-consistent but non-standard interoperates with
+nothing. Transition density is the property the randomizer exists for,
+so it is measured rather than assumed.
+"""
+verification = "test"
+evidence = "randomizer_test.py::test_sequence_matches_the_published_standard, ::test_randomizing_breaks_up_a_constant_payload, ::test_randomizing_helps_all_the_pathological_patterns"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-010"
+statement = """
+Link frames shall carry Reed-Solomon (255,223) parity; the decoder
+shall correct up to 16 corrupted bytes per codeword — bursts and
+damage to the parity region included — and shall refuse, rather than
+miscorrect, codewords beyond its correction power.
+"""
+rationale = """
+A decoder that miscorrects is worse than no decoder: it hands
+plausible wrong bytes upward with the checksum recomputed over them.
+Refusal beyond t is therefore tested as thoroughly as correction
+within it, including that pure noise is almost never accepted.
+"""
+verification = "test"
+evidence = "reed_solomon_test.py::test_corrects_up_to_sixteen_corrupted_bytes, ::test_single_bit_errors_are_corrected, ::test_corrects_a_burst_that_would_ruin_a_bit_oriented_code, ::test_corrects_errors_landing_in_the_parity_itself, ::test_refuses_beyond_its_correction_power, ::test_pure_noise_is_almost_never_accepted_as_a_codeword"
+status = "verified"
+
+[[requirement]]
+id = "FSW-LINK-011"
+statement = """
+The serial seam between the link service and the modem shall conform
+to the KISS protocol byte for byte — FEND delimiting, FESC/TFEND/TFESC
+escaping — and the decoder shall reassemble frames regardless of how
+the transport splits or batches the byte stream.
+"""
+rationale = """
+Conformance is checked against hand-written byte sequences, not only
+our own encoder: an encoder and decoder that share a mistake agree
+with each other forever and with nobody else. A real socket delivers
+bytes split anywhere, so reassembly is exercised across a live socket
+too.
+"""
+verification = "test"
+evidence = "kiss_test.py::test_encoding_matches_the_kiss_spec_byte_for_byte, ::test_delimiter_inside_the_payload_is_escaped, ::test_escape_character_inside_the_payload_is_escaped, ::test_a_frame_split_across_reads_is_reassembled, ::test_frames_cross_a_real_socket"
+status = "verified"
