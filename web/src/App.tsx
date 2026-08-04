@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChannelList } from './components/ChannelList';
+import { OrbitPanel } from './components/OrbitPanel';
 import { PlotPanel } from './components/PlotPanel';
 import type { DropZone } from './components/PlotPanel';
 import { RunHeader } from './components/RunHeader';
@@ -287,6 +288,8 @@ export default function App() {
                   selectedSpanId={selectedSpan}
                 />
               </section>
+
+              <OrbitPanel blob={blob} originNs={originNs} window={window_} />
 
               <section className="panel grow">
                 <div className="panel-head">

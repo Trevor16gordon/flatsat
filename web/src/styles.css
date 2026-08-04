@@ -143,6 +143,7 @@ body {
 .panel {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 8px; display: flex; flex-direction: column; min-height: 0;
+  flex-shrink: 0;  /* fixed panels keep their size; .main scrolls instead */
 }
 .panel.grow { flex: 1; min-height: 340px; }
 .panel-head {
@@ -339,3 +340,22 @@ body {
   background: transparent; border: 1px solid var(--line-soft);
 }
 .channel-row.plotted .plotted-dot { background: var(--accent); border-color: var(--accent); }
+
+/* ---- orbit view ---- */
+.orbit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 10px;
+}
+.orbit-canvas {
+  width: 100%;
+  height: 240px;
+  background: radial-gradient(ellipse at center, #10131c 0%, #0a0c12 100%);
+  border: 1px solid #262b3a;
+  border-radius: 4px;
+}
+.orbit-scrub {
+  width: 100%;
+  accent-color: #ffd75e;
+}
