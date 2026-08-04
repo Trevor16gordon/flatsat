@@ -163,6 +163,39 @@ class MagnetorquerDevice(_message.Message):
 Global___MagnetorquerDevice: _TypeAlias = MagnetorquerDevice  # noqa: Y015
 
 @_typing.final
+class SunSensorDevice(_message.Message):
+    """Coarse sun sensor: reports the sun unit vector with angular noise,
+    and reports DARKNESS honestly (sun_visible false) in eclipse — no
+    measurement is a measurement of shadow, not a fault.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NAME_FIELD_NUMBER: _builtins.int
+    RATE_HZ_FIELD_NUMBER: _builtins.int
+    NOISE_RAD_FIELD_NUMBER: _builtins.int
+    name: _builtins.str
+    """instance name (becomes the message source)"""
+    rate_hz: _builtins.float
+    """native output data rate"""
+    noise_rad: _builtins.float
+    """angular noise sigma on the sun direction"""
+    def __init__(
+        self,
+        *,
+        name: _builtins.str = ...,
+        rate_hz: _builtins.float = ...,
+        noise_rad: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["name", b"name", "noise_rad", b"noise_rad", "rate_hz", b"rate_hz"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___SunSensorDevice: _TypeAlias = SunSensorDevice  # noqa: Y015
+
+@_typing.final
 class MagnetometerDevice(_message.Message):
     """Magnetometer: noise and range character. Read by BOTH the flight-side
     driver (to know the device) and the simulation's sensor model (to

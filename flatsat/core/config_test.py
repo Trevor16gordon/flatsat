@@ -52,9 +52,12 @@ def test_missing_options_block_fails_loud(tmp_path: Path) -> None:
 
 def test_estimator_defaults_to_passthrough(tmp_path: Path) -> None:
     """A vehicle with no estimator block gets today's behavior explicitly."""
-    tweaked = VEHICLE.read_text().replace("passthrough {}", "")
+    # Strip the vehicle's estimator selection (flatsat_v1 flies triad).
+    lines = VEHICLE.read_text().splitlines(keepends=True)
+    start = next(i for i, line in enumerate(lines) if line.lstrip().startswith("triad {"))
+    end = next(i for i in range(start, len(lines)) if lines[i].rstrip().endswith("}"))
     target = tmp_path / "vehicle.txtpb"
-    target.write_text(tweaked)
+    target.write_text("".join(lines[:start] + lines[end + 1 :]))
     vehicle = load_vehicle(target)
     assert vehicle.control.WhichOneof("estimator") == "passthrough"
 

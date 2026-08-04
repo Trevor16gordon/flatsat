@@ -41,6 +41,7 @@ DRIVERS: dict[str, str] = {
     "basilisk_magnetometer": (
         "flatsat.hardware.drivers.basilisk_magnetometer:BasiliskMagnetometerDriver"
     ),
+    "basilisk_sun_sensor": ("flatsat.hardware.drivers.basilisk_sun_sensor:BasiliskSunSensorDriver"),
 }
 
 ACTUATORS: dict[str, str] = {
@@ -58,6 +59,7 @@ CONTROLLERS: dict[str, str] = {
     "pid": "flatsat.control.attitude.controllers.pid:PidRateController",
     "bdot": "flatsat.control.attitude.controllers.bdot:BdotController",
     "momentum_dump": ("flatsat.control.attitude.controllers.momentum_dump:MomentumDumpController"),
+    "sun_point": "flatsat.control.attitude.controllers.sun_point:SunPointController",
 }
 
 # What each strategy EMITS — mirrored as strings so the config loader can
@@ -69,6 +71,7 @@ CONTROLLER_OUTPUT_KINDS: dict[str, str] = {
     "pid": "torque",
     "bdot": "dipole",
     "momentum_dump": "torque_and_dipole",
+    "sun_point": "torque_and_dipole",
 }
 
 GUIDANCE: dict[str, str] = {
@@ -77,6 +80,7 @@ GUIDANCE: dict[str, str] = {
 
 ESTIMATORS: dict[str, str] = {
     "passthrough": "flatsat.control.attitude.estimators.passthrough:PassthroughEstimator",
+    "triad": "flatsat.control.attitude.estimators.triad:TriadEstimator",
 }
 
 MODEMS: dict[str, str] = {

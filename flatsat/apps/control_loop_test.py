@@ -278,3 +278,93 @@ def test_flagged_mag_sample_is_not_fresh() -> None:
         assert (cmd.dipole_x_a_m2, cmd.dipole_y_a_m2, cmd.dipole_z_a_m2) == (0.0, 0.0, 0.0), (
             "a flagged field must not be differentiated into a dipole"
         )
+
+
+def test_sun_sample_rides_the_state_into_the_strategy() -> None:
+    """A fresh sun on the bus becomes alignment torque; a stale one holds.
+
+    White-box injection like the mag tests: this pins the STEP's sun
+    plumbing (attach, fresh gate), not the subscriber machinery.
+    """
+    import time as time_module
+
+    from flatsat.msgs import adcs_pb2, hal_pb2
+
+    entry = vehicle_pb2.ControlConfig(
+        rate_hz=50.0,
+        input_topic="test/sungate/in",
+        sun_input_topic="test/sungate/css",
+        output_topic="test/sungate/torque",
+        dipole_output_topic="test/sungate/dipole",
+        stale_after_s=0.5,
+        sun_point=control_options_pb2.SunPointOptions(
+            point_axis=[0.0, 0.0, 1.0],
+            k_align=0.001,
+            kp=0.02,
+            kd=0.0,
+            max_torque_n_m=0.05,
+            dump_gain=0.15,
+            max_dipole_a_m2=1.0,
+        ),
+        constant_rate=control_options_pb2.ConstantRateOptions(),
+        passthrough=control_options_pb2.PassthroughOptions(),
+    )
+    observer = zenoh.open(zenoh.Config())
+    loop_session = zenoh.open(zenoh.Config())
+    torques: list[adcs_pb2.WheelTorqueCommand] = []
+    sub = observer.declare_subscriber(
+        entry.output_topic,
+        lambda s: torques.append(
+            adcs_pb2.WheelTorqueCommand.FromString(bytes(s.payload.to_bytes()))
+        ),
+    )
+    loop = ControlLoop(
+        loop_session,
+        entry,
+        get_controller_class("sun_point").from_config(entry.sun_point),
+        get_guidance_class("constant_rate").from_config(entry.constant_rate),
+        get_estimator_class("passthrough").from_config(entry.passthrough),
+    )
+    time_module.sleep(0.5)  # discovery
+    try:
+        imu = hal_pb2.ImuSample()  # zero rates: any torque is alignment
+        sun = hal_pb2.SunSensorSample()
+        sun.sun_x, sun.sun_y, sun.sun_z = 1.0, 0.0, 0.0
+        sun.sun_visible = True
+        deadline = time_module.monotonic() + 5.0
+        seq = 0
+        while not torques and time_module.monotonic() < deadline:
+            now = time_module.monotonic_ns()
+            with loop._lock:  # noqa: SLF001 — white-box injection
+                loop._latest = imu  # noqa: SLF001
+                loop._latest_recv_ns = now  # noqa: SLF001
+                loop._latest_sun = sun  # noqa: SLF001
+                loop._latest_sun_recv_ns = now  # noqa: SLF001
+            seq += 1
+            loop._step(seq, 0.0)  # noqa: SLF001
+            time_module.sleep(0.05)
+        assert torques, "torque command never published"
+        # a=+z aimed at s=+x: k_align * (a x s) = 0.001 along +y.
+        assert torques[0].torque_y_n_m == pytest.approx(0.001)
+        assert torques[0].torque_x_n_m == pytest.approx(0.0)
+        # Now age the sun beyond the threshold: alignment must pause.
+        torques.clear()
+        deadline = time_module.monotonic() + 5.0
+        while not torques and time_module.monotonic() < deadline:
+            now = time_module.monotonic_ns()
+            with loop._lock:  # noqa: SLF001
+                loop._latest = imu  # noqa: SLF001
+                loop._latest_recv_ns = now  # noqa: SLF001
+                loop._latest_sun_recv_ns = now - int(2e9)  # noqa: SLF001
+            seq += 1
+            loop._step(seq, 0.0)  # noqa: SLF001
+            time_module.sleep(0.05)
+        assert torques, "torque command never published after staling"
+        assert torques[0].torque_y_n_m == pytest.approx(0.0), (
+            "a stale sun must not keep steering the vehicle"
+        )
+    finally:
+        loop.close()
+        sub.undeclare()
+        loop_session.close()
+        observer.close()

@@ -60,3 +60,26 @@ message ConstantRateOptions {
 
 // passthrough: the measurement IS the estimate — nothing to configure.
 message PassthroughOptions {}
+
+// triad: deterministic two-vector attitude (TRIAD) from the magnetometer
+// and sun sensor, against the ONBOARD models in flatsat/sim/orbit.py —
+// the same pure-python models the plants fly, which is what makes the
+// estimate testable everywhere. Attitude is invalid in eclipse (one
+// vector is not an attitude); rates still pass through from the gyro.
+message TriadOptions {
+  string orbit = 1;  // saved orbit file the onboard models propagate (required)
+}
+
+// sun_point: the flagship pointing law. Wheels align a body axis with
+// the MEASURED sun vector (alignment + rate damping); magnetorquers keep
+// dumping wheel momentum, exactly the momentum_dump law. In eclipse the
+// alignment term pauses — rate damping and the dump carry through.
+message SunPointOptions {
+  repeated double point_axis = 1;       // body axis to aim at the sun; 3 values (required)
+  optional double k_align = 2;          // alignment gain [N·m per rad-ish]; required
+  optional double kp = 3;               // required; rate damping N·m / (rad/s)
+  optional double kd = 4;               // required; N·m / (rad/s²)
+  optional double max_torque_n_m = 5;   // wheel envelope; absent = 1.0
+  optional double dump_gain = 6;        // required; dipole per unit (h x B)/|B|²
+  optional double max_dipole_a_m2 = 7;  // rod envelope; absent = 1.0
+}

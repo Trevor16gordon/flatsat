@@ -95,6 +95,18 @@ message MagnetometerSample {
   double mag_z_t = 4;
 }
 
+// Coarse sun sensor sample. Body frame unit vector; sun_visible false
+// (with zeroed vector) is the honest eclipse reading, not a fault.
+// Field numbers 6-8 for the vector, disjoint from ImuSample's 2-4, so a
+// mis-routed decode yields absence rather than plausible gyro rates.
+message SunSensorSample {
+  Header header = 1;
+  bool sun_visible = 5;
+  double sun_x = 6;
+  double sun_y = 7;
+  double sun_z = 8;
+}
+
 // Magnetorquer rod state: the dipole actually being driven along the
 // rod's own axis (post-envelope). No speed, no momentum — a rod stores
 // nothing; its authority lives entirely in the local field.

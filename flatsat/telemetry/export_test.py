@@ -197,6 +197,10 @@ def test_topic_patterns_resolve_every_kind_distinctly() -> None:
         "hal/mag0/sample": hal_pb2.MagnetometerSample,
         "test/bdt/hal/mag/sample": hal_pb2.MagnetometerSample,
         "hal/imu0/sample": hal_pb2.ImuSample,
+        # SunSensorSample's vector fields are disjoint from ImuSample's,
+        # but an unrouted css topic would still decode as an empty IMU.
+        "hal/css0/sample": hal_pb2.SunSensorSample,
+        "test/scn/hal/css/sample": hal_pb2.SunSensorSample,
         # TemperatureSample shares ImuSample's field 2: unrouted, the die
         # temperature plots as a 50 rad/s gyro rate.
         "hal/thermal_tj/sample": hal_pb2.TemperatureSample,

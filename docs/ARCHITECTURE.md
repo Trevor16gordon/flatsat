@@ -367,11 +367,30 @@ magnetically over the following tens of minutes, at the tempo the
 allocator (saturation redistribution, null space) — the two commands
 remain independent body-frame vectors until a vehicle needs more.
 
+**Attitude knowledge and sun pointing (2026-08-04).** The vehicle now
+KNOWS where it points, not just how fast it spins. A coarse sun sensor
+(`css0`, 0.02 rad cone noise, honest darkness in eclipse — `sun_visible`
+false is a measurement, STALE is the fault) joins the magnetometer, and
+the `triad` estimator turns the two measured directions plus onboard
+models — deliberately the SAME pure-python `sim/orbit.py` the plants fly,
+which is what makes the estimate checkable against truth — into a full
+MRP attitude. Sun is the primary vector (its model error is tiny next to
+a dipole field's); in eclipse or on a degenerate pair `attitude_valid`
+goes false and rates keep passing through. The flagship `sun_point`
+strategy aims a body axis at the MEASURED sun (`k_align · a×s` — no
+attitude estimate in the loop, so pointing survives everything but
+darkness), keeps the detumble PD for rate damping, and reuses the
+momentum-dump dipole law verbatim. In eclipse the alignment term pauses
+and damping holds. The fastloop tier closes the loop against plant
+truth: TRIAD tracks within the sensor floor, acquisition from a tumble
+settles under 5°, and shadow produces NaN attitude — never an invented
+one.
+
 ### Staged build-out
 
 1. Orbit, epoch, geomagnetic field — **done** for both plants (see the closed gap above).
 2. Magnetorquer device, driver, B-dot controller — **done** (see above).
-3. Star tracker device and driver, with sun and Earth exclusion angles.
+3. Coarse sun sensor + magnetometer + TRIAD, sun-pointing strategy — **done** (see above). A star tracker (with sun/Earth exclusion angles) remains the fine-knowledge upgrade when degrees stop being enough.
 4. Module layer: `config/modules/*.txtpb` as procurement truth, body mass and inertia **derived** by parallel axis theorem rather than hand-typed, with an optional measured override that warns on disagreement.
 5. Power draw per device, summed into a per-mode budget.
 

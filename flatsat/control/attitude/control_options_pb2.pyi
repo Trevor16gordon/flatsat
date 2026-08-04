@@ -274,3 +274,105 @@ class PassthroughOptions(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___PassthroughOptions: _TypeAlias = PassthroughOptions  # noqa: Y015
+
+@_typing.final
+class TriadOptions(_message.Message):
+    """triad: deterministic two-vector attitude (TRIAD) from the magnetometer
+    and sun sensor, against the ONBOARD models in flatsat/sim/orbit.py —
+    the same pure-python models the plants fly, which is what makes the
+    estimate testable everywhere. Attitude is invalid in eclipse (one
+    vector is not an attitude); rates still pass through from the gyro.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    ORBIT_FIELD_NUMBER: _builtins.int
+    orbit: _builtins.str
+    """saved orbit file the onboard models propagate (required)"""
+    def __init__(
+        self,
+        *,
+        orbit: _builtins.str = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["orbit", b"orbit"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___TriadOptions: _TypeAlias = TriadOptions  # noqa: Y015
+
+@_typing.final
+class SunPointOptions(_message.Message):
+    """sun_point: the flagship pointing law. Wheels align a body axis with
+    the MEASURED sun vector (alignment + rate damping); magnetorquers keep
+    dumping wheel momentum, exactly the momentum_dump law. In eclipse the
+    alignment term pauses — rate damping and the dump carry through.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    POINT_AXIS_FIELD_NUMBER: _builtins.int
+    K_ALIGN_FIELD_NUMBER: _builtins.int
+    KP_FIELD_NUMBER: _builtins.int
+    KD_FIELD_NUMBER: _builtins.int
+    MAX_TORQUE_N_M_FIELD_NUMBER: _builtins.int
+    DUMP_GAIN_FIELD_NUMBER: _builtins.int
+    MAX_DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    k_align: _builtins.float
+    """alignment gain [N·m per rad-ish]; required"""
+    kp: _builtins.float
+    """required; rate damping N·m / (rad/s)"""
+    kd: _builtins.float
+    """required; N·m / (rad/s²)"""
+    max_torque_n_m: _builtins.float
+    """wheel envelope; absent = 1.0"""
+    dump_gain: _builtins.float
+    """required; dipole per unit (h x B)/|B|²"""
+    max_dipole_a_m2: _builtins.float
+    """rod envelope; absent = 1.0"""
+    @_builtins.property
+    def point_axis(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
+        """body axis to aim at the sun; 3 values (required)"""
+
+    def __init__(
+        self,
+        *,
+        point_axis: _abc.Iterable[_builtins.float] | None = ...,
+        k_align: _builtins.float | None = ...,
+        kp: _builtins.float | None = ...,
+        kd: _builtins.float | None = ...,
+        max_torque_n_m: _builtins.float | None = ...,
+        dump_gain: _builtins.float | None = ...,
+        max_dipole_a_m2: _builtins.float | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain", "_k_align", b"_k_align", "_kd", b"_kd", "_kp", b"_kp", "_max_dipole_a_m2", b"_max_dipole_a_m2", "_max_torque_n_m", b"_max_torque_n_m", "dump_gain", b"dump_gain", "k_align", b"k_align", "kd", b"kd", "kp", b"kp", "max_dipole_a_m2", b"max_dipole_a_m2", "max_torque_n_m", b"max_torque_n_m"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain", "_k_align", b"_k_align", "_kd", b"_kd", "_kp", b"_kp", "_max_dipole_a_m2", b"_max_dipole_a_m2", "_max_torque_n_m", b"_max_torque_n_m", "dump_gain", b"dump_gain", "k_align", b"k_align", "kd", b"kd", "kp", b"kp", "max_dipole_a_m2", b"max_dipole_a_m2", "max_torque_n_m", b"max_torque_n_m", "point_axis", b"point_axis"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__dump_gain: _TypeAlias = _typing.Literal["dump_gain"]  # noqa: Y015
+    _WhichOneofArgType__dump_gain: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain"]  # noqa: Y015
+    _WhichOneofReturnType__k_align: _TypeAlias = _typing.Literal["k_align"]  # noqa: Y015
+    _WhichOneofArgType__k_align: _TypeAlias = _typing.Literal["_k_align", b"_k_align"]  # noqa: Y015
+    _WhichOneofReturnType__kd: _TypeAlias = _typing.Literal["kd"]  # noqa: Y015
+    _WhichOneofArgType__kd: _TypeAlias = _typing.Literal["_kd", b"_kd"]  # noqa: Y015
+    _WhichOneofReturnType__kp: _TypeAlias = _typing.Literal["kp"]  # noqa: Y015
+    _WhichOneofArgType__kp: _TypeAlias = _typing.Literal["_kp", b"_kp"]  # noqa: Y015
+    _WhichOneofReturnType__max_dipole_a_m2: _TypeAlias = _typing.Literal["max_dipole_a_m2"]  # noqa: Y015
+    _WhichOneofArgType__max_dipole_a_m2: _TypeAlias = _typing.Literal["_max_dipole_a_m2", b"_max_dipole_a_m2"]  # noqa: Y015
+    _WhichOneofReturnType__max_torque_n_m: _TypeAlias = _typing.Literal["max_torque_n_m"]  # noqa: Y015
+    _WhichOneofArgType__max_torque_n_m: _TypeAlias = _typing.Literal["_max_torque_n_m", b"_max_torque_n_m"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__dump_gain) -> _WhichOneofReturnType__dump_gain | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__k_align) -> _WhichOneofReturnType__k_align | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kd) -> _WhichOneofReturnType__kd | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kp) -> _WhichOneofReturnType__kp | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_dipole_a_m2) -> _WhichOneofReturnType__max_dipole_a_m2 | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_torque_n_m) -> _WhichOneofReturnType__max_torque_n_m | None: ...
+
+Global___SunPointOptions: _TypeAlias = SunPointOptions  # noqa: Y015

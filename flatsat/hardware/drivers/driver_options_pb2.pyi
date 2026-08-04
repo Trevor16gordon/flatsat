@@ -177,6 +177,49 @@ class BasiliskMagnetometerOptions(_message.Message):
 Global___BasiliskMagnetometerOptions: _TypeAlias = BasiliskMagnetometerOptions  # noqa: Y015
 
 @_typing.final
+class BasiliskSunSensorOptions(_message.Message):
+    """basilisk_sun_sensor: the truth stream's body-frame sun vector through
+    the device model.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SPEC_FIELD_NUMBER: _builtins.int
+    TRUTH_TOPIC_FIELD_NUMBER: _builtins.int
+    STALE_AFTER_S_FIELD_NUMBER: _builtins.int
+    SEED_FIELD_NUMBER: _builtins.int
+    spec: _builtins.str
+    """device file; empty = config/devices/css0.txtpb"""
+    truth_topic: _builtins.str
+    """empty = sim/truth/state"""
+    stale_after_s: _builtins.float
+    """absent = 0.5"""
+    seed: _builtins.int
+    """corruption RNG seed; absent = unseeded"""
+    def __init__(
+        self,
+        *,
+        spec: _builtins.str = ...,
+        truth_topic: _builtins.str = ...,
+        stale_after_s: _builtins.float | None = ...,
+        seed: _builtins.int | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_seed", b"_seed", "_stale_after_s", b"_stale_after_s", "seed", b"seed", "stale_after_s", b"stale_after_s"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_seed", b"_seed", "_stale_after_s", b"_stale_after_s", "seed", b"seed", "spec", b"spec", "stale_after_s", b"stale_after_s", "truth_topic", b"truth_topic"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__seed: _TypeAlias = _typing.Literal["seed"]  # noqa: Y015
+    _WhichOneofArgType__seed: _TypeAlias = _typing.Literal["_seed", b"_seed"]  # noqa: Y015
+    _WhichOneofReturnType__stale_after_s: _TypeAlias = _typing.Literal["stale_after_s"]  # noqa: Y015
+    _WhichOneofArgType__stale_after_s: _TypeAlias = _typing.Literal["_stale_after_s", b"_stale_after_s"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__seed) -> _WhichOneofReturnType__seed | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__stale_after_s) -> _WhichOneofReturnType__stale_after_s | None: ...
+
+Global___BasiliskSunSensorOptions: _TypeAlias = BasiliskSunSensorOptions  # noqa: Y015
+
+@_typing.final
 class BasiliskMagnetorquerOptions(_message.Message):
     """basilisk_magnetorquer: rod fake whose applied dipole feeds the sim."""
 

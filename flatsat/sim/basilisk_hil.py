@@ -123,6 +123,8 @@ def fill_environment(
     truth.position_x_m, truth.position_y_m, truth.position_z_m = (float(v) for v in position_eci_m)
     truth.mag_field_x_t, truth.mag_field_y_t, truth.mag_field_z_t = field_body
     sun = orbit.sun_direction_eci(t_s, epoch_solar_angle_rad)
+    sun_body = [sum(dcm[i][j] * sun[j] for j in range(3)) for i in range(3)]
+    truth.sun_x, truth.sun_y, truth.sun_z = sun_body
     truth.in_eclipse = orbit.in_eclipse(position_eci_m, sun)
 
 
@@ -965,9 +967,7 @@ def main() -> int:
     epoch_gmst_rad = 0.0
     epoch_solar_angle_rad = 0.0
     if args.orbit:
-        # Lazy import: scenario imports this module, so importing it at
-        # the top would be a cycle. At call time it is already loaded.
-        from flatsat.sim.scenario import load_orbit
+        from flatsat.sim.orbit_config import load_orbit
 
         orbit_elements, epoch_gmst_rad, epoch_solar_angle_rad = load_orbit(args.orbit)
     session = open_session(args.connect)

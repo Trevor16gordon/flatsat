@@ -45,6 +45,9 @@ class TruthState(_message.Message):
     MAG_FIELD_Y_T_FIELD_NUMBER: _builtins.int
     MAG_FIELD_Z_T_FIELD_NUMBER: _builtins.int
     IN_ECLIPSE_FIELD_NUMBER: _builtins.int
+    SUN_X_FIELD_NUMBER: _builtins.int
+    SUN_Y_FIELD_NUMBER: _builtins.int
+    SUN_Z_FIELD_NUMBER: _builtins.int
     omega_x_rad_s: _builtins.float
     """true body rates"""
     omega_y_rad_s: _builtins.float
@@ -66,6 +69,13 @@ class TruthState(_message.Message):
     mag_field_y_t: _builtins.float
     mag_field_z_t: _builtins.float
     in_eclipse: _builtins.bool
+    sun_x: _builtins.float
+    """Unit vector toward the Sun, BODY frame — where a sun sensor
+    measures it. Zeros when the run has no orbit. Meaningless while
+    in_eclipse (a sun sensor sees nothing; the truth still knows).
+    """
+    sun_y: _builtins.float
+    sun_z: _builtins.float
     @_builtins.property
     def header(self) -> _hal_pb2.Header: ...
     def __init__(
@@ -85,10 +95,13 @@ class TruthState(_message.Message):
         mag_field_y_t: _builtins.float = ...,
         mag_field_z_t: _builtins.float = ...,
         in_eclipse: _builtins.bool = ...,
+        sun_x: _builtins.float = ...,
+        sun_y: _builtins.float = ...,
+        sun_z: _builtins.float = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "in_eclipse", b"in_eclipse", "mag_field_x_t", b"mag_field_x_t", "mag_field_y_t", b"mag_field_y_t", "mag_field_z_t", b"mag_field_z_t", "omega_x_rad_s", b"omega_x_rad_s", "omega_y_rad_s", b"omega_y_rad_s", "omega_z_rad_s", b"omega_z_rad_s", "position_x_m", b"position_x_m", "position_y_m", b"position_y_m", "position_z_m", b"position_z_m", "sigma_x", b"sigma_x", "sigma_y", b"sigma_y", "sigma_z", b"sigma_z"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "in_eclipse", b"in_eclipse", "mag_field_x_t", b"mag_field_x_t", "mag_field_y_t", b"mag_field_y_t", "mag_field_z_t", b"mag_field_z_t", "omega_x_rad_s", b"omega_x_rad_s", "omega_y_rad_s", b"omega_y_rad_s", "omega_z_rad_s", b"omega_z_rad_s", "position_x_m", b"position_x_m", "position_y_m", b"position_y_m", "position_z_m", b"position_z_m", "sigma_x", b"sigma_x", "sigma_y", b"sigma_y", "sigma_z", b"sigma_z", "sun_x", b"sun_x", "sun_y", b"sun_y", "sun_z", b"sun_z"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

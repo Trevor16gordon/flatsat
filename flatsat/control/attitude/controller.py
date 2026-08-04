@@ -54,6 +54,14 @@ class AttitudeState:
             summed. None when the vehicle's wheels are not all reporting
             fresh state; a momentum-dump law must go quiet rather than
             bleed a stale number.
+        sun_body: Measured unit vector toward the sun, body frame; None
+            when the vehicle carries no sun sensor.
+        sun_visible: False in eclipse or when the measurement is stale —
+            a pointing law must pause its alignment, not chase zeros.
+        sigma_bn: Estimated attitude (MRP, body from inertial) when the
+            estimator can produce one; None otherwise.
+        attitude_valid: False when sigma_bn is absent or untrustworthy
+            (eclipse starves TRIAD of its second vector).
     """
 
     body_rates_rad_s: Vec3 = (0.0, 0.0, 0.0)
@@ -62,6 +70,10 @@ class AttitudeState:
     mag_field_t: Vec3 | None = None
     mag_fresh: bool = False
     wheel_momentum_n_m_s: Vec3 | None = None
+    sun_body: Vec3 | None = None
+    sun_visible: bool = False
+    sigma_bn: Vec3 | None = None
+    attitude_valid: bool = False
 
 
 @dataclass(frozen=True)

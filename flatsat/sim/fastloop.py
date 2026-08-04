@@ -44,6 +44,7 @@ from flatsat.hardware.actuator import project_body_torque
 from flatsat.hardware.models.imu import apply_gyro_model, imu_temperature
 from flatsat.hardware.models.magnetometer import apply_mag_model
 from flatsat.hardware.models.magnetorquer import MagnetorquerModel
+from flatsat.hardware.models.sun_sensor import apply_sun_model
 from flatsat.hardware.models.wheel import WheelModel
 from flatsat.msgs import hal_pb2, sim_pb2
 from flatsat.sim import orbit
@@ -64,6 +65,10 @@ class FastLoopResult:
         dipole_mag_a_m2: |commanded body dipole|.
         imu_temperature_c: The modeled die temperature.
         in_eclipse: Whether the vehicle was shadowed.
+        sun_angle_deg: Angle between the controller's point axis and the
+            TRUE sun direction; NaN without a sun or a pointing law.
+        attitude_error_deg: Angle between the estimated and TRUE
+            attitude; NaN when the estimator produced no attitude.
     """
 
     times_s: list[float] = field(default_factory=list)
@@ -72,6 +77,8 @@ class FastLoopResult:
     dipole_mag_a_m2: list[float] = field(default_factory=list)
     imu_temperature_c: list[float] = field(default_factory=list)
     in_eclipse: list[bool] = field(default_factory=list)
+    sun_angle_deg: list[float] = field(default_factory=list)
+    attitude_error_deg: list[float] = field(default_factory=list)
 
     @property
     def final_omega_mag_rad_s(self) -> float:
@@ -132,9 +139,15 @@ def run_fast_loop(
     # Devices, from the same entries the daemons resolve.
     imu_spec = None
     mag_spec = None
+    sun_spec = None
     for sensor in vehicle.sensors:
         kind = sensor.WhichOneof("options")
-        if kind == "basilisk_imu":
+        if kind == "basilisk_sun_sensor":
+            spec_path = sensor.basilisk_sun_sensor.spec
+            from flatsat.core.config import load_sun_sensor_spec
+
+            sun_spec, _ = load_sun_sensor_spec(spec_path) if spec_path else load_sun_sensor_spec()
+        elif kind == "basilisk_imu":
             spec_path = sensor.basilisk_imu.spec
             from flatsat.core.config import load_imu_spec
 
@@ -193,10 +206,24 @@ def run_fast_loop(
             imu.gyro_x_rad_s, imu.gyro_y_rad_s, imu.gyro_z_rad_s = gx, gy, gz
             temperature_c = imu_temperature(temperature_c, imu_spec, eclipse, dt)
             imu.temperature_c = temperature_c
-        state = estimator.update(imu, 0.0, True, dt)
+        mag_msg = None
         if mag_spec is not None and field_body is not None:
             measured, _mflags = apply_mag_model(field_body, mag_spec, rng)
-            state = _with_mag(state, measured)
+            mag_msg = hal_pb2.MagnetometerSample()
+            mag_msg.mag_x_t, mag_msg.mag_y_t, mag_msg.mag_z_t = measured
+        sun_msg = None
+        sun_true: Vec3 | None = None
+        if sun_spec is not None and orbit_elements is not None:
+            sun_true = (truth.sun_x, truth.sun_y, truth.sun_z)
+            (sx, sy, sz), visible = apply_sun_model(sun_true, eclipse, sun_spec, rng)
+            sun_msg = hal_pb2.SunSensorSample()
+            sun_msg.sun_x, sun_msg.sun_y, sun_msg.sun_z = sx, sy, sz
+            sun_msg.sun_visible = visible
+        state = estimator.update(imu, 0.0, True, dt, mag=mag_msg, sun=sun_msg)
+        if mag_msg is not None:
+            state = _with_mag(state, (mag_msg.mag_x_t, mag_msg.mag_y_t, mag_msg.mag_z_t))
+        if sun_msg is not None:
+            state = _with_sun(state, sun_msg)
         if wheels:
             state = _with_wheel_momentum(state, wheels)
 
@@ -230,6 +257,8 @@ def run_fast_loop(
         result.dipole_mag_a_m2.append(dipole_mag)
         result.imu_temperature_c.append(temperature_c)
         result.in_eclipse.append(eclipse)
+        result.sun_angle_deg.append(_sun_angle_deg(controller, sun_true, eclipse))
+        result.attitude_error_deg.append(_attitude_error_deg(state, body))
     return result
 
 
@@ -260,6 +289,63 @@ def _with_mag(state: AttitudeState, measured: Vec3) -> AttitudeState:
     from dataclasses import replace
 
     return replace(state, mag_field_t=measured, mag_fresh=True)
+
+
+def _with_sun(state: AttitudeState, sun_msg: hal_pb2.SunSensorSample) -> AttitudeState:
+    """Attach a fresh sun measurement, as the control loop would.
+
+    Args:
+        state: The estimator's output.
+        sun_msg: The corrupted sun sample.
+
+    Returns:
+        The state with the sun riding along.
+    """
+    from dataclasses import replace
+
+    return replace(
+        state,
+        sun_body=(sun_msg.sun_x, sun_msg.sun_y, sun_msg.sun_z),
+        sun_visible=sun_msg.sun_visible,
+    )
+
+
+def _sun_angle_deg(controller: object, sun_true: Vec3 | None, eclipse: bool) -> float:
+    """Pointing error against the TRUE sun, when the law points at one.
+
+    Args:
+        controller: The active strategy; only sun-pointing laws qualify.
+        sun_true: True body-frame sun direction, or None without orbit.
+        eclipse: Whether the vehicle is shadowed (no meaningful angle).
+
+    Returns:
+        Degrees between point axis and the true sun; NaN when undefined.
+    """
+    axis = getattr(controller, "point_axis", None)
+    if axis is None or sun_true is None or eclipse:
+        return float("nan")
+    dot = axis[0] * sun_true[0] + axis[1] * sun_true[1] + axis[2] * sun_true[2]
+    return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+
+def _attitude_error_deg(state: AttitudeState, body: RigidBody) -> float:
+    """Angle between the estimated and true attitude.
+
+    Args:
+        state: The estimator output (sigma_bn when attitude_valid).
+        body: The plant carrying the true attitude.
+
+    Returns:
+        The rotation angle in degrees; NaN without a valid estimate.
+    """
+    if state.sigma_bn is None or not state.attitude_valid:
+        return float("nan")
+    from flatsat.sim.basilisk_hil import mrp_to_dcm
+
+    est = np.array(mrp_to_dcm(state.sigma_bn))
+    true = np.array(body.dcm_body_from_inertial())
+    cos_angle = (float(np.trace(est @ true.T)) - 1.0) / 2.0
+    return math.degrees(math.acos(max(-1.0, min(1.0, cos_angle))))
 
 
 def _with_wheel_momentum(

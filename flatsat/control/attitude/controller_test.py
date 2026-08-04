@@ -42,6 +42,15 @@ def _options(max_torque_n_m: float = 1e6) -> dict[str, Message]:
         "momentum_dump": control_options_pb2.MomentumDumpOptions(
             kp=0.02, kd=0.005, max_torque_n_m=max_torque_n_m, dump_gain=0.15, max_dipole_a_m2=1.0
         ),
+        "sun_point": control_options_pb2.SunPointOptions(
+            point_axis=[0.0, 0.0, 1.0],
+            k_align=0.001,
+            kp=0.02,
+            kd=0.005,
+            max_torque_n_m=max_torque_n_m,
+            dump_gain=0.15,
+            max_dipole_a_m2=1.0,
+        ),
     }
 
 

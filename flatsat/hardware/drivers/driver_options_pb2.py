@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-flatsat/hardware/drivers/driver_options.proto\x12\nflatsat.v1\"$\n\x14JetsonThermalOptions\x12\x0c\n\x04zone\x18\x01 \x01(\t\"\x81\x01\n\x12\x42\x61siliskImuOptions\x12\x0c\n\x04spec\x18\x01 \x01(\t\x12\x13\n\x0btruth_topic\x18\x02 \x01(\t\x12\x1a\n\rstale_after_s\x18\x03 \x01(\x01H\x00\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\x03H\x01\x88\x01\x01\x42\x10\n\x0e_stale_after_sB\x07\n\x05_seed\")\n\x17SimReactionWheelOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\".\n\x1c\x42\x61siliskReactionWheelOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\"\x8a\x01\n\x1b\x42\x61siliskMagnetometerOptions\x12\x0c\n\x04spec\x18\x01 \x01(\t\x12\x13\n\x0btruth_topic\x18\x02 \x01(\t\x12\x1a\n\rstale_after_s\x18\x03 \x01(\x01H\x00\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\x03H\x01\x88\x01\x01\x42\x10\n\x0e_stale_after_sB\x07\n\x05_seed\"-\n\x1b\x42\x61siliskMagnetorquerOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\tb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n-flatsat/hardware/drivers/driver_options.proto\x12\nflatsat.v1\"$\n\x14JetsonThermalOptions\x12\x0c\n\x04zone\x18\x01 \x01(\t\"\x81\x01\n\x12\x42\x61siliskImuOptions\x12\x0c\n\x04spec\x18\x01 \x01(\t\x12\x13\n\x0btruth_topic\x18\x02 \x01(\t\x12\x1a\n\rstale_after_s\x18\x03 \x01(\x01H\x00\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\x03H\x01\x88\x01\x01\x42\x10\n\x0e_stale_after_sB\x07\n\x05_seed\")\n\x17SimReactionWheelOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\".\n\x1c\x42\x61siliskReactionWheelOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\t\"\x8a\x01\n\x1b\x42\x61siliskMagnetometerOptions\x12\x0c\n\x04spec\x18\x01 \x01(\t\x12\x13\n\x0btruth_topic\x18\x02 \x01(\t\x12\x1a\n\rstale_after_s\x18\x03 \x01(\x01H\x00\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\x03H\x01\x88\x01\x01\x42\x10\n\x0e_stale_after_sB\x07\n\x05_seed\"\x87\x01\n\x18\x42\x61siliskSunSensorOptions\x12\x0c\n\x04spec\x18\x01 \x01(\t\x12\x13\n\x0btruth_topic\x18\x02 \x01(\t\x12\x1a\n\rstale_after_s\x18\x03 \x01(\x01H\x00\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\x03H\x01\x88\x01\x01\x42\x10\n\x0e_stale_after_sB\x07\n\x05_seed\"-\n\x1b\x42\x61siliskMagnetorquerOptions\x12\x0e\n\x06\x64\x65vice\x18\x01 \x01(\tb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,6 +41,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_BASILISKREACTIONWHEELOPTIONS']._serialized_end=320
   _globals['_BASILISKMAGNETOMETEROPTIONS']._serialized_start=323
   _globals['_BASILISKMAGNETOMETEROPTIONS']._serialized_end=461
-  _globals['_BASILISKMAGNETORQUEROPTIONS']._serialized_start=463
-  _globals['_BASILISKMAGNETORQUEROPTIONS']._serialized_end=508
+  _globals['_BASILISKSUNSENSOROPTIONS']._serialized_start=464
+  _globals['_BASILISKSUNSENSOROPTIONS']._serialized_end=599
+  _globals['_BASILISKMAGNETORQUEROPTIONS']._serialized_start=601
+  _globals['_BASILISKMAGNETORQUEROPTIONS']._serialized_end=646
 # @@protoc_insertion_point(module_scope)

@@ -177,3 +177,44 @@ physics, so mission bounds sit above that floor.
 verification = "test"
 evidence = "momentum_dump_test.py (law, quiet rules, torque parity with rate_damping); scenario_test.py::test_momentum_dump_mission_succeeds (whole chain: wheels detumble, rods drain wheel momentum read from the wheels' state topics)"
 status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-013"
+statement = """
+The TRIAD estimator shall produce a full attitude only when a fresh
+magnetometer vector AND a visible sun vector are both available, deriving
+its reference directions from onboard orbit/field/sun models, and shall
+mark the attitude invalid — while still passing gyro rates through — in
+eclipse or when the vector pair is degenerate.
+"""
+rationale = """
+Two measured directions plus two modeled directions determine attitude;
+one does not. An estimator that extrapolates through eclipse or a
+parallel pair reports confidence it does not have, and a pointing law
+downstream would act on it. The onboard models are the same pure-python
+orbit module the plants fly, which is what makes the estimate checkable
+against truth.
+"""
+verification = "test"
+evidence = "triad_test.py (exact recovery, eclipse/degenerate refusal, MRP conversion); fastloop_test.py::test_triad_tracks_truth_within_sensor_noise, ::test_eclipse_blinds_triad_honestly (full chain against plant truth)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-014"
+statement = """
+The sun-pointing law shall steer the configured body axis toward the
+MEASURED sun direction with torque k_align * (axis x sun), shall pause the
+alignment term — keeping rate damping and the momentum dump active — when
+the sun is not visible, and shall reuse the momentum-dump dipole law
+unchanged.
+"""
+rationale = """
+Aiming at the measurement itself needs no attitude estimate, so pointing
+survives everything but darkness. In eclipse the sun vector is zeros;
+chasing it would torque toward garbage, and holding attitude on rate
+damping is the honest degraded mode. Momentum still accumulates while
+pointing, so the dump must keep running.
+"""
+verification = "test"
+evidence = "sun_point_test.py (alignment torque, eclipse pause, dump parity, quiet rules); fastloop_test.py::test_sun_pointing_acquires_and_holds_the_sun (acquisition from a tumble through eclipse, real device scales)"
+status = "verified"

@@ -53,6 +53,15 @@ message MagnetorquerDevice {
   double max_dipole_a_m2 = 2;         // dipole envelope; commands clip (and flag) beyond
 }
 
+// Coarse sun sensor: reports the sun unit vector with angular noise,
+// and reports DARKNESS honestly (sun_visible false) in eclipse — no
+// measurement is a measurement of shadow, not a fault.
+message SunSensorDevice {
+  string name = 1;                    // instance name (becomes the message source)
+  double rate_hz = 2;                 // native output data rate
+  double noise_rad = 3;               // angular noise sigma on the sun direction
+}
+
 // Magnetometer: noise and range character. Read by BOTH the flight-side
 // driver (to know the device) and the simulation's sensor model (to
 // corrupt the truth field the way the device would).

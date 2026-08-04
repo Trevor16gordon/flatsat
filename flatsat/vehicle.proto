@@ -47,6 +47,7 @@ message SensorConfig {
     JetsonThermalOptions jetson_thermal = 10;
     BasiliskImuOptions basilisk_imu = 11;
     BasiliskMagnetometerOptions basilisk_magnetometer = 12;
+    BasiliskSunSensorOptions basilisk_sun_sensor = 13;
   }
 }
 
@@ -76,20 +77,25 @@ message ControlConfig {
   // still paces on input_topic — the field rides along on the state.
   string mag_input_topic = 5;
   // Where dipole commands go when the strategy emits them alongside
-  // torque (momentum_dump). Empty = the strategy must not emit both.
+  // torque (momentum_dump, sun_point). Empty = the strategy must not
+  // emit both.
   string dipole_output_topic = 6;
+  // Sun sensor input for attitude/pointing strategies; empty = none.
+  string sun_input_topic = 7;
 
   oneof strategy {
     RateDampingOptions rate_damping = 10;
     PidOptions pid = 11;
     BdotOptions bdot = 12;
     MomentumDumpOptions momentum_dump = 13;
+    SunPointOptions sun_point = 14;
   }
   oneof objective {  // absent = constant_rate (detumble)
     ConstantRateOptions constant_rate = 20;
   }
   oneof estimator {  // absent = passthrough
     PassthroughOptions passthrough = 30;
+    TriadOptions triad = 31;
   }
 }
 

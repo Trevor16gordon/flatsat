@@ -51,11 +51,13 @@ class StateEstimator(ABC):
         age_s: float,
         fresh: bool,
         dt_s: float,
+        mag: hal_pb2.MagnetometerSample | None = None,
+        sun: hal_pb2.SunSensorSample | None = None,
     ) -> AttitudeState:
-        """Fold one measurement into the state estimate.
+        """Fold the measurements into the state estimate.
 
         Args:
-            measurement: Latest sensor sample (its header carries the
+            measurement: Latest IMU sample (its header carries the
                 acquisition validity flags).
             age_s: Age of the measurement when this step ran.
             fresh: False when the measurement is older than the loop's
@@ -63,6 +65,9 @@ class StateEstimator(ABC):
                 threshold; the estimator owns what staleness does to the
                 estimate.
             dt_s: Nominal time since the previous step, in seconds.
+            mag: Latest magnetometer sample, when the vehicle has one
+                and it is fresh; None otherwise.
+            sun: Latest sun sensor sample, same contract.
 
         Returns:
             The state estimate the controller should act on.

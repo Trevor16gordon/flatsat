@@ -14,6 +14,7 @@ DT = 0.01
 # One typed options instance per registered estimator.
 ESTIMATOR_OPTIONS: dict[str, Message] = {
     "passthrough": control_options_pb2.PassthroughOptions(),
+    "triad": control_options_pb2.TriadOptions(orbit="config/orbits/starlink_leo.txtpb"),
 }
 
 

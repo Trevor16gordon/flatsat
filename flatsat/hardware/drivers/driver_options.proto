@@ -45,6 +45,15 @@ message BasiliskMagnetometerOptions {
   optional int64 seed = 4;            // corruption RNG seed; absent = unseeded
 }
 
+// basilisk_sun_sensor: the truth stream's body-frame sun vector through
+// the device model.
+message BasiliskSunSensorOptions {
+  string spec = 1;                    // device file; empty = config/devices/css0.txtpb
+  string truth_topic = 2;             // empty = sim/truth/state
+  optional double stale_after_s = 3;  // absent = 0.5
+  optional int64 seed = 4;            // corruption RNG seed; absent = unseeded
+}
+
 // basilisk_magnetorquer: rod fake whose applied dipole feeds the sim.
 message BasiliskMagnetorquerOptions {
   string device = 1;  // magnetorquer device file (required)

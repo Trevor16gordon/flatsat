@@ -294,6 +294,44 @@ class MagnetometerSample(_message.Message):
 Global___MagnetometerSample: _TypeAlias = MagnetometerSample  # noqa: Y015
 
 @_typing.final
+class SunSensorSample(_message.Message):
+    """Coarse sun sensor sample. Body frame unit vector; sun_visible false
+    (with zeroed vector) is the honest eclipse reading, not a fault.
+    Field numbers 6-8 for the vector, disjoint from ImuSample's 2-4, so a
+    mis-routed decode yields absence rather than plausible gyro rates.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    SUN_VISIBLE_FIELD_NUMBER: _builtins.int
+    SUN_X_FIELD_NUMBER: _builtins.int
+    SUN_Y_FIELD_NUMBER: _builtins.int
+    SUN_Z_FIELD_NUMBER: _builtins.int
+    sun_visible: _builtins.bool
+    sun_x: _builtins.float
+    sun_y: _builtins.float
+    sun_z: _builtins.float
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        sun_visible: _builtins.bool = ...,
+        sun_x: _builtins.float = ...,
+        sun_y: _builtins.float = ...,
+        sun_z: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "sun_visible", b"sun_visible", "sun_x", b"sun_x", "sun_y", b"sun_y", "sun_z", b"sun_z"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___SunSensorSample: _TypeAlias = SunSensorSample  # noqa: Y015
+
+@_typing.final
 class MagnetorquerState(_message.Message):
     """Magnetorquer rod state: the dipole actually being driven along the
     rod's own axis (post-envelope). No speed, no momentum — a rod stores

@@ -464,6 +464,38 @@ def describe_magnetorquer_spec(spec: devices_pb2.MagnetorquerDevice, prov: Prove
     ]
 
 
+def load_sun_sensor_spec(
+    path: Path | str | None = None,
+) -> tuple[devices_pb2.SunSensorDevice, Provenance]:
+    """Load a sun sensor device specification.
+
+    Args:
+        path: Override file; defaults to ``config/devices/css0.txtpb``.
+
+    Returns:
+        Tuple of (device spec, provenance).
+    """
+    spec = devices_pb2.SunSensorDevice()
+    prov = load_textproto(Path(path) if path else CONFIG_ROOT / "devices" / "css0.txtpb", spec)
+    return spec, prov
+
+
+def describe_sun_sensor_spec(spec: devices_pb2.SunSensorDevice, prov: Provenance) -> list[str]:
+    """Render a sun sensor spec for logs/telemetry echo.
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device characteristics in effect.
+    """
+    return [
+        f"sun sensor spec: {prov.describe()} ({spec.name})",
+        f"sun sensor spec: angular noise {spec.noise_rad:g} rad",
+    ]
+
+
 def load_magnetometer_spec(
     path: Path | str | None = None,
 ) -> tuple[devices_pb2.MagnetometerDevice, Provenance]:

@@ -191,6 +191,14 @@ class ControlLoop:
         )
         self._latest_mag: hal_pb2.MagnetometerSample | None = None
         self._latest_mag_recv_ns = 0
+        # Optional sun sensor side input, same contract as the mag.
+        self._sun_sub = (
+            session.declare_subscriber(entry.sun_input_topic, self._on_sun)
+            if entry.sun_input_topic
+            else None
+        )
+        self._latest_sun: hal_pb2.SunSensorSample | None = None
+        self._latest_sun_recv_ns = 0
         # Optional dipole output: a strategy that emits torque AND dipole
         # (momentum_dump) publishes the dipole here.
         self._dipole_pub = (
@@ -234,6 +242,17 @@ class ControlLoop:
         with self._lock:
             self._latest_mag = msg
             self._latest_mag_recv_ns = time.monotonic_ns()
+
+    def _on_sun(self, sample: zenoh.Sample) -> None:
+        """Store the latest sun sensor sample (subscriber thread).
+
+        Args:
+            sample: Incoming SunSensorSample.
+        """
+        msg = hal_pb2.SunSensorSample.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self._latest_sun = msg
+            self._latest_sun_recv_ns = time.monotonic_ns()
 
     def _on_wheel_state(self, topic: str, sample: zenoh.Sample) -> None:
         """Store one wheel's latest stored momentum (subscriber thread).
@@ -300,12 +319,41 @@ class ControlLoop:
             age_ns = time.monotonic_ns() - self._latest_recv_ns
             mag = self._latest_mag
             mag_age_ns = time.monotonic_ns() - self._latest_mag_recv_ns
+            sun = self._latest_sun
+            sun_age_ns = time.monotonic_ns() - self._latest_sun_recv_ns
             wheel_momentum = self._wheel_momentum_body()
         assert imu is not None  # guaranteed by wait_for_first_sample
         stale = age_ns > self._stale_after_ns
+        # Estimator-grade inputs: fresh by age AND unflagged. TRIAD fed a
+        # range-flagged field would fold garbage into an attitude.
+        mag_fresh_sample = (
+            mag
+            if (
+                mag is not None
+                and mag_age_ns <= self._stale_after_ns
+                and mag.header.validity == hal_pb2.VALIDITY_FLAG_VALID
+            )
+            else None
+        )
+        sun_fresh_sample = (
+            sun
+            if (
+                sun is not None
+                and sun_age_ns <= self._stale_after_ns
+                and sun.header.validity == hal_pb2.VALIDITY_FLAG_VALID
+            )
+            else None
+        )
 
         dt_s = 1.0 / self.entry.rate_hz
-        state = self._estimator.update(imu, age_ns / 1e9, not stale, dt_s)
+        state = self._estimator.update(
+            imu,
+            age_ns / 1e9,
+            not stale,
+            dt_s,
+            mag=mag_fresh_sample,
+            sun=sun_fresh_sample,
+        )
         if self._mag_sub is not None and mag is not None:
             state = replace(
                 state,
@@ -314,6 +362,12 @@ class ControlLoop:
                     mag_age_ns <= self._stale_after_ns
                     and mag.header.validity == hal_pb2.VALIDITY_FLAG_VALID
                 ),
+            )
+        if self._sun_sub is not None and sun_fresh_sample is not None:
+            state = replace(
+                state,
+                sun_body=(sun_fresh_sample.sun_x, sun_fresh_sample.sun_y, sun_fresh_sample.sun_z),
+                sun_visible=sun_fresh_sample.sun_visible,
             )
         if wheel_momentum is not None:
             state = replace(state, wheel_momentum_n_m_s=wheel_momentum)
@@ -464,6 +518,8 @@ class ControlLoop:
         self._sub.undeclare()
         if self._mag_sub is not None:
             self._mag_sub.undeclare()
+        if self._sun_sub is not None:
+            self._sun_sub.undeclare()
         for sub in self._wheel_subs:
             sub.undeclare()
 

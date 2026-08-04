@@ -34,6 +34,12 @@ message TruthState {
   double mag_field_y_t = 12;
   double mag_field_z_t = 13;
   bool in_eclipse = 14;
+  // Unit vector toward the Sun, BODY frame — where a sun sensor
+  // measures it. Zeros when the run has no orbit. Meaningless while
+  // in_eclipse (a sun sensor sees nothing; the truth still knows).
+  double sun_x = 15;
+  double sun_y = 16;
+  double sun_z = 17;
 }
 
 // Torque one wheel is actually applying about its own spin axis,

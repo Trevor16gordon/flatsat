@@ -15,7 +15,7 @@
 # wheel zeroes.
 
 name: "flatsat-v1"
-description: "Flat-sat: 3-wheel + 3-rod ADCS, magnetometer, Jetson housekeeping, PD detumble with magnetic momentum dump"
+description: "Flat-sat: 3-wheel + 3-rod ADCS, mag + sun sensor, TRIAD attitude, sun pointing with magnetic momentum dump"
 
 # Physical model — integration truth, read by flight software AND by the
 # sim bridge to build its plant, so the two cannot disagree by accident.
@@ -41,6 +41,17 @@ sensors {
   rate_hz: 50
   basilisk_magnetometer {
     spec: "config/devices/mag0.txtpb"
+    truth_topic: "sim/truth/state"
+    stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "css0"
+  topic: "hal/css0/sample"
+  rate_hz: 10
+  basilisk_sun_sensor {
+    spec: "config/devices/css0.txtpb"
     truth_topic: "sim/truth/state"
     stale_after_s: 0.5
   }
@@ -126,25 +137,30 @@ control {
   rate_hz: 100
   input_topic: "hal/imu0/sample"
   mag_input_topic: "hal/mag0/sample"
+  sun_input_topic: "hal/css0/sample"
   output_topic: "adcs/wheel_torque"
   dipole_output_topic: "adcs/dipole"
   stale_after_s: 0.05
-  momentum_dump {                      # wheels fly attitude, rods bleed momentum
-    kp: 0.02                           # same PD tempo the one-wheel vehicle flew
+  sun_point {                          # wheels aim +z at the sun, rods bleed momentum
+    point_axis: [0.0, 0.0, 1.0]        # solar-panel normal
+    k_align: 0.001                     # gentle: settles in minutes, not seconds
+    kp: 0.02                           # rate damping, same tempo as detumble
     kd: 0.005
     max_torque_n_m: 0.05               # reaction-wheel envelope; commands clip to it
     dump_gain: 0.02                    # rods sit at their rail until h_perp < ~2 mN·m·s
     max_dipole_a_m2: 1.2               # mtq0 device envelope
   }
-  constant_rate {                      # zero target = detumble
+  constant_rate {                      # rate reference for the damping term
     target_rates_rad_s: [0.0, 0.0, 0.0]
   }
-  passthrough {}                       # estimator: measurement IS the estimate
+  triad {                              # attitude from mag + sun vs onboard models;
+    orbit: "config/orbits/starlink_leo.txtpb"  # KEEP CONSISTENT with the bridge --orbit
+  }
 }
 
 mode {  # mission state: who must ack transitions
   apps: [
-    "imu0", "mag0", "thermal_tj",
+    "imu0", "mag0", "css0", "thermal_tj",
     "wheel0", "wheel1", "wheel2",
     "mtq_x", "mtq_y", "mtq_z",
     "adcs", "recorder", "fdir"

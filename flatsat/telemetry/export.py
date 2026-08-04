@@ -68,6 +68,7 @@ TOPIC_PATTERNS: list[tuple[str, type[Message]]] = [
     # thermal_tj offering "gyro_x_rad_s" at 50 rad/s — the die in °C).
     ("*/mag*/sample", hal_pb2.MagnetometerSample),
     ("*/thermal*/sample", hal_pb2.TemperatureSample),
+    ("*/css*/sample", hal_pb2.SunSensorSample),
     ("*/sample", hal_pb2.ImuSample),
     # Magnetorquer rod state before the generic wheel-state rule.
     ("*/mtq*/state", hal_pb2.MagnetorquerState),

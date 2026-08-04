@@ -1,0 +1,12 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.SunSensorDevice
+#
+# Coarse sun sensor specification — DEVICE-INTRINSIC truth. A CSS is a
+# photodiode arrangement, not an imager: a few degrees of angular noise
+# is the honest class of accuracy, and it is exactly enough for TRIAD
+# attitude to a couple of degrees and sun pointing to the same. Values
+# are placeholder until a physical part is characterized.
+
+name: "css0"
+rate_hz: 10.0
+noise_rad: 0.02   # ~1.1 degrees angular sigma

@@ -6,6 +6,8 @@ seconds of CPU — the check the user actually wants: do the control
 algorithms work at the scales the hardware really has?
 """
 
+import math
+import statistics
 import time
 
 import pytest
@@ -82,6 +84,73 @@ def test_thermal_model_breathes_with_the_eclipse() -> None:
     assert not all(result.in_eclipse), "and must also see sun"
     swing = max(result.imu_temperature_c) - min(result.imu_temperature_c)
     assert swing > 5.0, f"temperature swing {swing:.1f} C — thermal model not breathing"
+
+
+@pytest.mark.verifies("FSW-ADCS-013")
+def test_triad_tracks_truth_within_sensor_noise() -> None:
+    """The full estimation chain: corrupted CSS + mag through TRIAD.
+
+    The onboard models in flatsat_v1's triad block are starlink_leo —
+    the SAME orbit and epoch this run flies — so the residual error is
+    the sensors' to own: css0's 0.02 rad cone noise dominates.
+    """
+    result = run_fast_loop(
+        load_vehicle(),
+        duration_s=300.0,
+        omega0=(0.02, -0.01, 0.015),
+        sigma0=(0.2, -0.1, 0.35),
+        orbit_elements=_starlink(),
+        dt_s=0.1,
+    )
+    errors = [e for e in result.attitude_error_deg if not math.isnan(e)]
+    assert len(errors) > 100, "TRIAD produced almost no valid attitudes in full sun"
+    median = statistics.median(errors)
+    assert median < 3.0, f"median attitude error {median:.2f} deg vs the ~1.2 deg sensor floor"
+
+
+@pytest.mark.verifies("FSW-ADCS-014")
+def test_sun_pointing_acquires_and_holds_the_sun() -> None:
+    """From a tumble, +z must end up on the sun and stay there.
+
+    An hour of sim time guarantees settled sunlit samples on the far
+    side of whatever eclipse arc the window contains.
+    """
+    result = run_fast_loop(
+        load_vehicle(),
+        duration_s=3600.0,
+        omega0=(0.05, -0.04, 0.03),
+        sigma0=(0.2, -0.1, 0.35),
+        orbit_elements=_starlink(),
+        dt_s=0.2,
+    )
+    sunlit = [a for a in result.sun_angle_deg if not math.isnan(a)]
+    assert len(sunlit) > 1000, "the window saw almost no sun"
+    tail = sunlit[-200:]
+    held = statistics.mean(tail)
+    assert held < 5.0, f"pointing settled at {held:.1f} deg off-sun"
+    assert result.final_omega_mag_rad_s < 0.01, "vehicle still moving after acquisition"
+
+
+@pytest.mark.verifies("FSW-ADCS-013")
+def test_eclipse_blinds_triad_honestly() -> None:
+    """In shadow the estimator must refuse an attitude, never invent one."""
+    result = run_fast_loop(
+        load_vehicle(),
+        duration_s=7200.0,
+        omega0=(0.01, 0.0, 0.0),
+        orbit_elements=_starlink(),
+        dt_s=0.5,
+    )
+    assert any(result.in_eclipse), "this orbit must see shadow"
+    dark_errors = [
+        e for e, dark in zip(result.attitude_error_deg, result.in_eclipse, strict=True) if dark
+    ]
+    assert all(math.isnan(e) for e in dark_errors), "TRIAD claimed an attitude in the dark"
+    lit_errors = [
+        e for e, dark in zip(result.attitude_error_deg, result.in_eclipse, strict=True) if not dark
+    ]
+    valid_fraction = sum(1 for e in lit_errors if not math.isnan(e)) / len(lit_errors)
+    assert valid_fraction > 0.9, f"only {valid_fraction:.0%} of sunlit steps had an attitude"
 
 
 def test_no_orbit_means_no_magnetic_authority() -> None:
