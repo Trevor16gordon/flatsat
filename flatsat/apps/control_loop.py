@@ -208,6 +208,14 @@ class ControlLoop:
         )
         self._latest_sun: hal_pb2.SunSensorSample | None = None
         self._latest_sun_recv_ns = 0
+        # Optional star tracker side input, same contract as the others.
+        self._star_sub = (
+            session.declare_subscriber(entry.star_input_topic, self._on_star)
+            if entry.star_input_topic
+            else None
+        )
+        self._latest_star: hal_pb2.StarTrackerSample | None = None
+        self._latest_star_recv_ns = 0
         # Optional dipole output: a strategy that emits torque AND dipole
         # (momentum_dump) publishes the dipole here.
         self._dipole_pub = (
@@ -262,6 +270,17 @@ class ControlLoop:
         with self._lock:
             self._latest_sun = msg
             self._latest_sun_recv_ns = time.monotonic_ns()
+
+    def _on_star(self, sample: zenoh.Sample) -> None:
+        """Store the latest star tracker sample (subscriber thread).
+
+        Args:
+            sample: Incoming StarTrackerSample.
+        """
+        msg = hal_pb2.StarTrackerSample.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self._latest_star = msg
+            self._latest_star_recv_ns = time.monotonic_ns()
 
     def _on_wheel_state(self, topic: str, sample: zenoh.Sample) -> None:
         """Store one wheel's latest stored momentum (subscriber thread).
@@ -330,6 +349,8 @@ class ControlLoop:
             mag_age_ns = time.monotonic_ns() - self._latest_mag_recv_ns
             sun = self._latest_sun
             sun_age_ns = time.monotonic_ns() - self._latest_sun_recv_ns
+            star = self._latest_star
+            star_age_ns = time.monotonic_ns() - self._latest_star_recv_ns
             wheel_momentum = self._wheel_momentum_body()
         assert imu is not None  # guaranteed by wait_for_first_sample
         stale = age_ns > self._stale_after_ns
@@ -353,6 +374,18 @@ class ControlLoop:
             )
             else None
         )
+        # The star tracker's freshness deadline follows ITS cadence (a
+        # 5 Hz device can never satisfy a 50 ms IMU deadline); validity
+        # gating matches the others.
+        star_fresh_sample = (
+            star
+            if (
+                star is not None
+                and star_age_ns <= max(self._stale_after_ns, int(1e9))
+                and star.header.validity == hal_pb2.VALIDITY_FLAG_VALID
+            )
+            else None
+        )
 
         dt_s = 1.0 / self.entry.rate_hz
         state = self._estimator.update(
@@ -362,6 +395,7 @@ class ControlLoop:
             dt_s,
             mag=mag_fresh_sample,
             sun=sun_fresh_sample,
+            star=star_fresh_sample,
         )
         if self._mag_sub is not None and mag is not None:
             state = replace(
@@ -448,10 +482,14 @@ class ControlLoop:
             if type(self._controller).output_kind == "dipole"
             else ("torque", "N·m")
         )
+        # Pointing laws expose their live off-target angle; print it so
+        # the journal answers "is it pointed" without a telemetry export.
+        angle = getattr(self._controller, "last_target_angle_deg", None)
+        target = f"  off-target {angle:6.2f} deg" if angle is not None else ""
         print(
             f"[adcs] |omega|={mag_mrad:7.2f} mrad/s  "
             f"{label}=({cx:+.2e},{cy:+.2e},{cz:+.2e}) {units}  "
-            f"input age {age_ms:6.1f} ms  samples rx {rx}",
+            f"input age {age_ms:6.1f} ms  samples rx {rx}{target}",
             flush=True,
         )
 
@@ -531,6 +569,8 @@ class ControlLoop:
             self._mag_sub.undeclare()
         if self._sun_sub is not None:
             self._sun_sub.undeclare()
+        if self._star_sub is not None:
+            self._star_sub.undeclare()
         for sub in self._wheel_subs:
             sub.undeclare()
 

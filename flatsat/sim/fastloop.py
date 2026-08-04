@@ -44,6 +44,7 @@ from flatsat.hardware.actuator import project_body_torque
 from flatsat.hardware.models.imu import apply_gyro_model, imu_temperature
 from flatsat.hardware.models.magnetometer import apply_mag_model
 from flatsat.hardware.models.magnetorquer import MagnetorquerModel
+from flatsat.hardware.models.star_tracker import apply_star_model
 from flatsat.hardware.models.sun_sensor import apply_sun_model
 from flatsat.hardware.models.wheel import WheelModel
 from flatsat.msgs import hal_pb2, sim_pb2
@@ -67,6 +68,8 @@ class FastLoopResult:
         in_eclipse: Whether the vehicle was shadowed.
         sun_angle_deg: Angle between the controller's point axis and the
             TRUE sun direction; NaN without a sun or a pointing law.
+        nadir_angle_deg: Angle between the controller's point axis and
+            the TRUE Earth direction; NaN without an orbit or an axis.
         attitude_error_deg: Angle between the estimated and TRUE
             attitude; NaN when the estimator produced no attitude.
     """
@@ -78,6 +81,7 @@ class FastLoopResult:
     imu_temperature_c: list[float] = field(default_factory=list)
     in_eclipse: list[bool] = field(default_factory=list)
     sun_angle_deg: list[float] = field(default_factory=list)
+    nadir_angle_deg: list[float] = field(default_factory=list)
     attitude_error_deg: list[float] = field(default_factory=list)
 
     @property
@@ -140,9 +144,17 @@ def run_fast_loop(
     imu_spec = None
     mag_spec = None
     sun_spec = None
+    star_spec = None
     for sensor in vehicle.sensors:
         kind = sensor.WhichOneof("options")
-        if kind == "basilisk_sun_sensor":
+        if kind == "basilisk_star_tracker":
+            spec_path = sensor.basilisk_star_tracker.spec
+            from flatsat.core.config import load_star_tracker_spec
+
+            star_spec, _ = (
+                load_star_tracker_spec(spec_path) if spec_path else load_star_tracker_spec()
+            )
+        elif kind == "basilisk_sun_sensor":
             spec_path = sensor.basilisk_sun_sensor.spec
             from flatsat.core.config import load_sun_sensor_spec
 
@@ -219,7 +231,27 @@ def run_fast_loop(
             sun_msg = hal_pb2.SunSensorSample()
             sun_msg.sun_x, sun_msg.sun_y, sun_msg.sun_z = sx, sy, sz
             sun_msg.sun_visible = visible
-        state = estimator.update(imu, 0.0, True, dt, mag=mag_msg, sun=sun_msg)
+        star_msg = None
+        nadir_true: Vec3 | None = None
+        if orbit_elements is not None:
+            radius = float(np.linalg.norm(position))
+            if radius > 0.0:
+                nadir_eci = -np.asarray(position) / radius
+                nadir_vec = np.array(body.dcm_body_from_inertial()) @ nadir_eci
+                nadir_true = (float(nadir_vec[0]), float(nadir_vec[1]), float(nadir_vec[2]))
+        if star_spec is not None:
+            sigma_now = body.sigma
+            (stx, sty, stz), star_ok = apply_star_model(
+                (sigma_now[0], sigma_now[1], sigma_now[2]),
+                sun_true if sun_true is not None else (0.0, 0.0, 0.0),
+                nadir_true if nadir_true is not None else (0.0, 0.0, 0.0),
+                star_spec,
+                rng,
+            )
+            star_msg = hal_pb2.StarTrackerSample()
+            star_msg.sigma_x, star_msg.sigma_y, star_msg.sigma_z = stx, sty, stz
+            star_msg.star_valid = star_ok
+        state = estimator.update(imu, 0.0, True, dt, mag=mag_msg, sun=sun_msg, star=star_msg)
         if mag_msg is not None:
             state = _with_mag(state, (mag_msg.mag_x_t, mag_msg.mag_y_t, mag_msg.mag_z_t))
         if sun_msg is not None:
@@ -258,6 +290,7 @@ def run_fast_loop(
         result.imu_temperature_c.append(temperature_c)
         result.in_eclipse.append(eclipse)
         result.sun_angle_deg.append(_sun_angle_deg(controller, sun_true, eclipse))
+        result.nadir_angle_deg.append(_axis_angle_deg(controller, nadir_true))
         result.attitude_error_deg.append(_attitude_error_deg(state, body))
     return result
 
@@ -325,6 +358,23 @@ def _sun_angle_deg(controller: object, sun_true: Vec3 | None, eclipse: bool) -> 
     if axis is None or sun_true is None or eclipse:
         return float("nan")
     dot = axis[0] * sun_true[0] + axis[1] * sun_true[1] + axis[2] * sun_true[2]
+    return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+
+def _axis_angle_deg(controller: object, target_body: Vec3 | None) -> float:
+    """Angle between the controller's point axis and a TRUE direction.
+
+    Args:
+        controller: The active strategy; needs a ``point_axis``.
+        target_body: True body-frame target direction, or None.
+
+    Returns:
+        Degrees between them; NaN when undefined.
+    """
+    axis = getattr(controller, "point_axis", None)
+    if axis is None or target_body is None:
+        return float("nan")
+    dot = axis[0] * target_body[0] + axis[1] * target_body[1] + axis[2] * target_body[2]
     return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
 
 

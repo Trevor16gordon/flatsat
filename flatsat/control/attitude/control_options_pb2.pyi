@@ -376,3 +376,115 @@ class SunPointOptions(_message.Message):
     def WhichOneof(self, oneof_group: _WhichOneofArgType__max_torque_n_m) -> _WhichOneofReturnType__max_torque_n_m | None: ...
 
 Global___SunPointOptions: _TypeAlias = SunPointOptions  # noqa: Y015
+
+@_typing.final
+class StarAttitudeOptions(_message.Message):
+    """Nadir (Earth) pointing: align a body axis with the COMPUTED direction
+    to Earth's center. Nothing on this vehicle measures Earth, so the
+    target comes from knowledge: the TRIAD attitude rotates the onboard
+    orbit model's -r_hat into the body frame. That makes this law honest
+    about its dependency — when the estimator has no attitude (eclipse,
+    with a sun/mag TRIAD), the alignment PAUSES and rate damping holds.
+    The magnetic momentum dump runs throughout, as in sun_point.
+    Star tracker attitude estimator: the measured MRP when the tracker
+    has stars, TRIAD as fallback when it is blinded (if an orbit is
+    configured for the onboard models), gyro passthrough always. The
+    eclipse-proof upgrade: a star tracker sees BETTER in shadow.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    ORBIT_FIELD_NUMBER: _builtins.int
+    orbit: _builtins.str
+    """enables the TRIAD fallback; empty = no fallback"""
+    def __init__(
+        self,
+        *,
+        orbit: _builtins.str | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_orbit", b"_orbit", "orbit", b"orbit"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_orbit", b"_orbit", "orbit", b"orbit"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__orbit: _TypeAlias = _typing.Literal["orbit"]  # noqa: Y015
+    _WhichOneofArgType__orbit: _TypeAlias = _typing.Literal["_orbit", b"_orbit"]  # noqa: Y015
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__orbit) -> _WhichOneofReturnType__orbit | None: ...
+
+Global___StarAttitudeOptions: _TypeAlias = StarAttitudeOptions  # noqa: Y015
+
+@_typing.final
+class NadirPointOptions(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    ORBIT_FIELD_NUMBER: _builtins.int
+    POINT_AXIS_FIELD_NUMBER: _builtins.int
+    K_ALIGN_FIELD_NUMBER: _builtins.int
+    KP_FIELD_NUMBER: _builtins.int
+    KD_FIELD_NUMBER: _builtins.int
+    MAX_TORQUE_N_M_FIELD_NUMBER: _builtins.int
+    DUMP_GAIN_FIELD_NUMBER: _builtins.int
+    MAX_DIPOLE_A_M2_FIELD_NUMBER: _builtins.int
+    orbit: _builtins.str
+    """onboard orbit file; required — MUST match the plant's"""
+    k_align: _builtins.float
+    """alignment gain; required"""
+    kp: _builtins.float
+    """required; rate damping N·m / (rad/s)"""
+    kd: _builtins.float
+    """required; N·m / (rad/s²)"""
+    max_torque_n_m: _builtins.float
+    """wheel envelope; absent = 1.0"""
+    dump_gain: _builtins.float
+    """required; dipole per unit (h x B)/|B|²"""
+    max_dipole_a_m2: _builtins.float
+    """rod envelope; absent = 1.0"""
+    @_builtins.property
+    def point_axis(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
+        """body axis to aim at Earth; 3 values (required)"""
+
+    def __init__(
+        self,
+        *,
+        orbit: _builtins.str | None = ...,
+        point_axis: _abc.Iterable[_builtins.float] | None = ...,
+        k_align: _builtins.float | None = ...,
+        kp: _builtins.float | None = ...,
+        kd: _builtins.float | None = ...,
+        max_torque_n_m: _builtins.float | None = ...,
+        dump_gain: _builtins.float | None = ...,
+        max_dipole_a_m2: _builtins.float | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain", "_k_align", b"_k_align", "_kd", b"_kd", "_kp", b"_kp", "_max_dipole_a_m2", b"_max_dipole_a_m2", "_max_torque_n_m", b"_max_torque_n_m", "_orbit", b"_orbit", "dump_gain", b"dump_gain", "k_align", b"k_align", "kd", b"kd", "kp", b"kp", "max_dipole_a_m2", b"max_dipole_a_m2", "max_torque_n_m", b"max_torque_n_m", "orbit", b"orbit"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain", "_k_align", b"_k_align", "_kd", b"_kd", "_kp", b"_kp", "_max_dipole_a_m2", b"_max_dipole_a_m2", "_max_torque_n_m", b"_max_torque_n_m", "_orbit", b"_orbit", "dump_gain", b"dump_gain", "k_align", b"k_align", "kd", b"kd", "kp", b"kp", "max_dipole_a_m2", b"max_dipole_a_m2", "max_torque_n_m", b"max_torque_n_m", "orbit", b"orbit", "point_axis", b"point_axis"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__dump_gain: _TypeAlias = _typing.Literal["dump_gain"]  # noqa: Y015
+    _WhichOneofArgType__dump_gain: _TypeAlias = _typing.Literal["_dump_gain", b"_dump_gain"]  # noqa: Y015
+    _WhichOneofReturnType__k_align: _TypeAlias = _typing.Literal["k_align"]  # noqa: Y015
+    _WhichOneofArgType__k_align: _TypeAlias = _typing.Literal["_k_align", b"_k_align"]  # noqa: Y015
+    _WhichOneofReturnType__kd: _TypeAlias = _typing.Literal["kd"]  # noqa: Y015
+    _WhichOneofArgType__kd: _TypeAlias = _typing.Literal["_kd", b"_kd"]  # noqa: Y015
+    _WhichOneofReturnType__kp: _TypeAlias = _typing.Literal["kp"]  # noqa: Y015
+    _WhichOneofArgType__kp: _TypeAlias = _typing.Literal["_kp", b"_kp"]  # noqa: Y015
+    _WhichOneofReturnType__max_dipole_a_m2: _TypeAlias = _typing.Literal["max_dipole_a_m2"]  # noqa: Y015
+    _WhichOneofArgType__max_dipole_a_m2: _TypeAlias = _typing.Literal["_max_dipole_a_m2", b"_max_dipole_a_m2"]  # noqa: Y015
+    _WhichOneofReturnType__max_torque_n_m: _TypeAlias = _typing.Literal["max_torque_n_m"]  # noqa: Y015
+    _WhichOneofArgType__max_torque_n_m: _TypeAlias = _typing.Literal["_max_torque_n_m", b"_max_torque_n_m"]  # noqa: Y015
+    _WhichOneofReturnType__orbit: _TypeAlias = _typing.Literal["orbit"]  # noqa: Y015
+    _WhichOneofArgType__orbit: _TypeAlias = _typing.Literal["_orbit", b"_orbit"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__dump_gain) -> _WhichOneofReturnType__dump_gain | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__k_align) -> _WhichOneofReturnType__k_align | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kd) -> _WhichOneofReturnType__kd | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kp) -> _WhichOneofReturnType__kp | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_dipole_a_m2) -> _WhichOneofReturnType__max_dipole_a_m2 | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_torque_n_m) -> _WhichOneofReturnType__max_torque_n_m | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__orbit) -> _WhichOneofReturnType__orbit | None: ...
+
+Global___NadirPointOptions: _TypeAlias = NadirPointOptions  # noqa: Y015

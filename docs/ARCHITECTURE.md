@@ -407,11 +407,33 @@ truth: TRIAD tracks within the sensor floor, acquisition from a tumble
 settles under 5°, and shadow produces NaN attitude — never an invented
 one.
 
+**Earth pointing and the star tracker (2026-08-04, later).** Nothing on
+the vehicle MEASURES the Earth direction, so `nadir_point` runs on
+knowledge: the estimator's attitude rotates the onboard orbit model's
+`-r_hat` into the body frame and the familiar `k_align·(a×n)` alignment
+steers onto it — pausing honestly whenever `attitude_valid` is false,
+because steering on a guess points at one. With sun/mag TRIAD alone
+that pause is the whole eclipse arc; the fix is the star tracker,
+modeled at the fidelity GNC stacks actually use (the vendor owns
+photons-to-quaternion): truth attitude through anisotropic noise
+(roll ~7x cross-boresight, arcsecond class) plus the exclusion-cone
+blackout rules — sun or Earth near the boresight is BLINDED, an
+unflagged invalid measurement distinct from STALE, and eclipse is the
+tracker's best weather. The `star_attitude` estimator ladders down one
+honest rung at a time: tracker → TRIAD fallback → rates-only. st0's
+boresight looks out along -z, so a nadir-pointed vehicle never sees
+Earth in the cone and a sun inside it implies daylight — where TRIAD
+covers — which is why fastloop shows Earth pointing riding straight
+through shadow. One operational constraint, stated in the vehicle file:
+the onboard orbit epoch is the flight stack's start, so start it
+alongside the plant.
+
 ### Staged build-out
 
 1. Orbit, epoch, geomagnetic field — **done** for both plants (see the closed gap above).
 2. Magnetorquer device, driver, B-dot controller — **done** (see above).
-3. Coarse sun sensor + magnetometer + TRIAD, sun-pointing strategy — **done** (see above). A star tracker (with sun/Earth exclusion angles) remains the fine-knowledge upgrade when degrees stop being enough.
+3. Coarse sun sensor + magnetometer + TRIAD, sun-pointing strategy — **done** (see above).
+4. Star tracker (quaternion-level, sun/Earth exclusion cones) + nadir pointing — **done** (see above). The open upgrade is an IMAGE-level tracker: a catalog-rendered star camera and a solver (classical pyramid/QUEST baseline, then an ML variant on the Jetson's GPU) replacing the measurement-level model behind the same StarTrackerSample contract.
 4. Module layer: `config/modules/*.txtpb` as procurement truth, body mass and inertia **derived** by parallel axis theorem rather than hand-typed, with an optional measured override that warns on disagreement.
 5. Power draw per device, summed into a per-mode budget.
 

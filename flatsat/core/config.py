@@ -496,6 +496,40 @@ def describe_sun_sensor_spec(spec: devices_pb2.SunSensorDevice, prov: Provenance
     ]
 
 
+def load_star_tracker_spec(
+    path: Path | str | None = None,
+) -> tuple[devices_pb2.StarTrackerDevice, Provenance]:
+    """Load a star tracker device specification.
+
+    Args:
+        path: Override file; defaults to ``config/devices/st0.txtpb``.
+
+    Returns:
+        Tuple of (device spec, provenance).
+    """
+    spec = devices_pb2.StarTrackerDevice()
+    prov = load_textproto(Path(path) if path else CONFIG_ROOT / "devices" / "st0.txtpb", spec)
+    return spec, prov
+
+
+def describe_star_tracker_spec(spec: devices_pb2.StarTrackerDevice, prov: Provenance) -> list[str]:
+    """Render a star tracker spec for logs/telemetry echo.
+
+    Args:
+        spec: The device spec.
+        prov: Its provenance.
+
+    Returns:
+        Lines naming the device characteristics in effect.
+    """
+    return [
+        f"star tracker spec: {prov.describe()} ({spec.name})",
+        f"star tracker spec: cross {spec.cross_noise_rad:g} rad, roll {spec.roll_noise_rad:g} "
+        f"rad, sun excl {spec.sun_exclusion_deg:g} deg, earth excl "
+        f"{spec.earth_exclusion_deg:g} deg",
+    ]
+
+
 def load_magnetometer_spec(
     path: Path | str | None = None,
 ) -> tuple[devices_pb2.MagnetometerDevice, Provenance]:

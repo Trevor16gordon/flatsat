@@ -11,8 +11,10 @@ here when a characterization campaign first produces them —
 discovered knowledge updates the data file, never the design.
 """
 
+from collections import abc as _abc
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
+from google.protobuf.internal import containers as _containers
 import builtins as _builtins
 import sys
 import typing as _typing
@@ -235,3 +237,53 @@ class MagnetometerDevice(_message.Message):
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___MagnetometerDevice: _TypeAlias = MagnetometerDevice  # noqa: Y015
+
+@_typing.final
+class StarTrackerDevice(_message.Message):
+    """A quaternion-level star tracker: the industry-standard GNC fidelity
+    (vendors own photons-to-quaternion; the control stack consumes
+    attitude + noise + blackout rules). Cross-boresight and roll noise
+    differ on real devices by ~5-10x, so both are specified.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    NAME_FIELD_NUMBER: _builtins.int
+    RATE_HZ_FIELD_NUMBER: _builtins.int
+    CROSS_NOISE_RAD_FIELD_NUMBER: _builtins.int
+    ROLL_NOISE_RAD_FIELD_NUMBER: _builtins.int
+    BORESIGHT_FIELD_NUMBER: _builtins.int
+    SUN_EXCLUSION_DEG_FIELD_NUMBER: _builtins.int
+    EARTH_EXCLUSION_DEG_FIELD_NUMBER: _builtins.int
+    name: _builtins.str
+    rate_hz: _builtins.float
+    cross_noise_rad: _builtins.float
+    """1-sigma error perpendicular to boresight"""
+    roll_noise_rad: _builtins.float
+    """1-sigma error about the boresight"""
+    sun_exclusion_deg: _builtins.float
+    """sun within this cone of boresight = blinded"""
+    earth_exclusion_deg: _builtins.float
+    """nadir within this cone of boresight = blinded"""
+    @_builtins.property
+    def boresight(self) -> _containers.RepeatedScalarFieldContainer[_builtins.float]:
+        """body-frame look direction; 3 values"""
+
+    def __init__(
+        self,
+        *,
+        name: _builtins.str = ...,
+        rate_hz: _builtins.float = ...,
+        cross_noise_rad: _builtins.float = ...,
+        roll_noise_rad: _builtins.float = ...,
+        boresight: _abc.Iterable[_builtins.float] | None = ...,
+        sun_exclusion_deg: _builtins.float = ...,
+        earth_exclusion_deg: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["boresight", b"boresight", "cross_noise_rad", b"cross_noise_rad", "earth_exclusion_deg", b"earth_exclusion_deg", "name", b"name", "rate_hz", b"rate_hz", "roll_noise_rad", b"roll_noise_rad", "sun_exclusion_deg", b"sun_exclusion_deg"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___StarTrackerDevice: _TypeAlias = StarTrackerDevice  # noqa: Y015

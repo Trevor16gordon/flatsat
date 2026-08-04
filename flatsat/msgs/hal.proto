@@ -110,6 +110,21 @@ message SunSensorSample {
 // Magnetorquer rod state: the dipole actually being driven along the
 // rod's own axis (post-envelope). No speed, no momentum — a rod stores
 // nothing; its authority lives entirely in the local field.
+// One star tracker attitude solution. Real star trackers are smart
+// devices: photons in, ATTITUDE out — so this sample carries the MRP,
+// not an image. Field numbers 9-12 are disjoint from every other hal
+// sample (see the MagnetometerSample lesson above).
+message StarTrackerSample {
+  Header header = 1;
+  double sigma_x = 9;    // measured attitude, MRP (sigma_BN)
+  double sigma_y = 10;
+  double sigma_z = 11;
+  // False while BLINDED (sun/Earth inside the exclusion cone): pointing
+  // near a bright body is a real condition the estimator must ride out,
+  // not a device fault — the STALE flag stays reserved for silence.
+  bool star_valid = 12;
+}
+
 message MagnetorquerState {
   Header header = 1;
   double dipole_a_m2 = 2;

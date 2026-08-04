@@ -332,12 +332,53 @@ class SunSensorSample(_message.Message):
 Global___SunSensorSample: _TypeAlias = SunSensorSample  # noqa: Y015
 
 @_typing.final
-class MagnetorquerState(_message.Message):
+class StarTrackerSample(_message.Message):
     """Magnetorquer rod state: the dipole actually being driven along the
     rod's own axis (post-envelope). No speed, no momentum — a rod stores
     nothing; its authority lives entirely in the local field.
+    One star tracker attitude solution. Real star trackers are smart
+    devices: photons in, ATTITUDE out — so this sample carries the MRP,
+    not an image. Field numbers 9-12 are disjoint from every other hal
+    sample (see the MagnetometerSample lesson above).
     """
 
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HEADER_FIELD_NUMBER: _builtins.int
+    SIGMA_X_FIELD_NUMBER: _builtins.int
+    SIGMA_Y_FIELD_NUMBER: _builtins.int
+    SIGMA_Z_FIELD_NUMBER: _builtins.int
+    STAR_VALID_FIELD_NUMBER: _builtins.int
+    sigma_x: _builtins.float
+    """measured attitude, MRP (sigma_BN)"""
+    sigma_y: _builtins.float
+    sigma_z: _builtins.float
+    star_valid: _builtins.bool
+    """False while BLINDED (sun/Earth inside the exclusion cone): pointing
+    near a bright body is a real condition the estimator must ride out,
+    not a device fault — the STALE flag stays reserved for silence.
+    """
+    @_builtins.property
+    def header(self) -> Global___Header: ...
+    def __init__(
+        self,
+        *,
+        header: Global___Header | None = ...,
+        sigma_x: _builtins.float = ...,
+        sigma_y: _builtins.float = ...,
+        sigma_z: _builtins.float = ...,
+        star_valid: _builtins.bool = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["header", b"header"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["header", b"header", "sigma_x", b"sigma_x", "sigma_y", b"sigma_y", "sigma_z", b"sigma_z", "star_valid", b"star_valid"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___StarTrackerSample: _TypeAlias = StarTrackerSample  # noqa: Y015
+
+@_typing.final
+class MagnetorquerState(_message.Message):
     DESCRIPTOR: _descriptor.Descriptor
 
     HEADER_FIELD_NUMBER: _builtins.int

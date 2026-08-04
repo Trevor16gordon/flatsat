@@ -218,3 +218,48 @@ pointing, so the dump must keep running.
 verification = "test"
 evidence = "sun_point_test.py (alignment torque, eclipse pause, dump parity, quiet rules); fastloop_test.py::test_sun_pointing_acquires_and_holds_the_sun (acquisition from a tumble through eclipse, real device scales)"
 status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-015"
+statement = """
+The nadir-pointing law shall aim the configured body axis at Earth's
+center COMPUTED from the estimator's attitude and the onboard orbit
+model, shall pause the alignment term — keeping rate damping and the
+momentum dump active — whenever no valid attitude is available, and
+shall track nadir within a bound set above the orbit-rate equilibrium
+offset physics imposes.
+"""
+rationale = """
+Nothing on the vehicle measures the Earth direction; Earth pointing is
+knowledge, not sensing, and a law that keeps steering on stale knowledge
+points at a guess. Tracking nadir requires rotating at orbit rate, which
+the rate-damping term resists — the steady offset that balance creates
+is physics, so the verification bound sits above it rather than being
+tuned away.
+"""
+verification = "test"
+evidence = "nadir_point_test.py (computed target, knowledge gating, dump parity); fastloop_test.py::test_nadir_pointing_acquires_earth_and_tracks_it, ::test_star_tracker_keeps_earth_pointing_through_eclipse (acquisition and eclipse-proof hold at real device scales)"
+status = "verified"
+
+[[requirement]]
+id = "FSW-ADCS-016"
+statement = """
+The star tracker device model shall corrupt the true attitude with
+anisotropic noise (roll about the boresight worse than cross-boresight),
+shall report BLINDED — an unflagged invalid measurement, distinct from
+STALE — when the sun or Earth enters its exclusion cone, and shall
+remain fully functional in eclipse. The star_attitude estimator shall
+degrade one rung at a time: tracker, TRIAD fallback, rates-only, with
+attitude_valid false the moment no rung can produce an attitude.
+"""
+rationale = """
+A star tracker is the eclipse-proof attitude source — it sees BETTER in
+shadow — but it goes dark near bright bodies, and blinding is an
+operating condition every mission plans around, not a device fault. An
+estimator that hid which rung produced its attitude would leave the
+pointing law trusting arcsecond knowledge that silently became
+degrees, or nothing.
+"""
+verification = "test"
+evidence = "star_tracker_test.py (noise scale/anisotropy, exclusion cones, eclipse-friendliness); basilisk_star_tracker_test.py (STALE vs blinded contract over the bus); star_attitude_test.py (the ladder, including the fallback clock); fastloop_test.py::test_star_tracker_keeps_earth_pointing_through_eclipse"
+status = "verified"

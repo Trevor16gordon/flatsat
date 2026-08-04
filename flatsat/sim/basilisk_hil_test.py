@@ -278,7 +278,7 @@ def test_sun_point_axis_read_from_the_vehicle() -> None:
     from flatsat.core.config import load_vehicle
     from flatsat.sim.basilisk_hil import _sun_point_axis
 
-    vehicle = load_vehicle()  # flatsat_v1 flies sun_point with +z
-    assert _sun_point_axis(vehicle) == (0.0, 0.0, 1.0)
-    vehicle.control.rate_damping.SetInParent()  # switch the strategy oneof
+    vehicle = load_vehicle()  # flatsat_v1 flies nadir_point: no off-sun gauge
     assert _sun_point_axis(vehicle) is None
+    vehicle.control.sun_point.point_axis[:] = [0.0, 0.0, 1.0]  # switch the oneof
+    assert _sun_point_axis(vehicle) == (0.0, 0.0, 1.0)

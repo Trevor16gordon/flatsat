@@ -29,25 +29,46 @@ import zenoh
 
 HUB_ENDPOINT = "tcp/127.0.0.1:7448"
 
+# Probe sessions whose close() timed out are parked here FOR THE LIFE OF
+# THE PROCESS: dropping them retries the close inside zenoh's destructor,
+# which panics on a second timeout — and pytest pins that unraisable
+# panic on whatever test happens to be running (seen with a live HIL
+# bridge crowding the bus). A deliberate leak of two sessions is cheaper
+# than a phantom test failure.
+_PARKED_SESSIONS: list[zenoh.Session] = []
+
 
 def _multicast_healthy() -> bool:
     """Can two fresh local sessions exchange one message?
+
+    Any exception here — including a close() timeout, seen in the field
+    when a live HIL bridge crowds the bus — means the bus environment is
+    NOT one the tests can rely on, which is exactly what the hub
+    fallback exists for. The probe must never kill the suite itself.
 
     Returns:
         True when multicast scouting delivers between local sessions.
     """
     received: list[int] = []
-    a = zenoh.open(zenoh.Config())
-    b = zenoh.open(zenoh.Config())
-    sub = a.declare_subscriber("test/conftest/mcast_probe", lambda _sample: received.append(1))
-    pub = b.declare_publisher("test/conftest/mcast_probe")
-    deadline = time.monotonic() + 3.0
-    while not received and time.monotonic() < deadline:
-        pub.put(b"probe")
-        time.sleep(0.1)
-    sub.undeclare()
-    a.close()
-    b.close()
+    sessions: list[zenoh.Session] = []
+    try:
+        a = zenoh.open(zenoh.Config())
+        sessions.append(a)
+        b = zenoh.open(zenoh.Config())
+        sessions.append(b)
+        sub = a.declare_subscriber("test/conftest/mcast_probe", lambda _sample: received.append(1))
+        pub = b.declare_publisher("test/conftest/mcast_probe")
+        deadline = time.monotonic() + 3.0
+        while not received and time.monotonic() < deadline:
+            pub.put(b"probe")
+            time.sleep(0.1)
+        sub.undeclare()
+        a.close()
+        b.close()
+    except zenoh.ZError as error:
+        print(f"\n[conftest] multicast probe failed outright ({error}) — treating as broken")
+        _PARKED_SESSIONS.extend(sessions)
+        return False
     return bool(received)
 
 
@@ -107,4 +128,10 @@ def zenoh_bus_fallback() -> Iterator[None]:
         yield
     finally:
         zenoh.open = original_open
-        hub.close()
+        try:
+            hub.close()
+        except zenoh.ZError as error:
+            # Suite teardown must not manufacture a failure: park the
+            # hub like a failed probe session (see _PARKED_SESSIONS).
+            print(f"\n[conftest] hub close failed ({error}) — parking the session")
+            _PARKED_SESSIONS.append(hub)

@@ -15,7 +15,7 @@
 # wheel zeroes.
 
 name: "flatsat-v1"
-description: "Flat-sat: 3-wheel + 3-rod ADCS, mag + sun sensor, TRIAD attitude, sun pointing with magnetic momentum dump"
+description: "Flat-sat: 3-wheel + 3-rod ADCS, mag + sun + star tracker, nadir pointing with magnetic momentum dump"
 
 # Physical model — integration truth, read by flight software AND by the
 # sim bridge to build its plant, so the two cannot disagree by accident.
@@ -54,6 +54,17 @@ sensors {
     spec: "config/devices/css0.txtpb"
     truth_topic: "sim/truth/state"
     stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "st0"
+  topic: "hal/st0/sample"
+  rate_hz: 5
+  basilisk_star_tracker {
+    spec: "config/devices/st0.txtpb"
+    truth_topic: "sim/truth/state"
+    stale_after_s: 1.0
   }
 }
 
@@ -138,11 +149,14 @@ control {
   input_topic: "hal/imu0/sample"
   mag_input_topic: "hal/mag0/sample"
   sun_input_topic: "hal/css0/sample"
+  star_input_topic: "hal/st0/sample"
   output_topic: "adcs/wheel_torque"
   dipole_output_topic: "adcs/dipole"
   stale_after_s: 0.05
-  sun_point {                          # wheels aim +z at the sun, rods bleed momentum
-    point_axis: [0.0, 0.0, 1.0]        # solar-panel normal
+  nadir_point {                        # wheels aim +z at EARTH, rods bleed momentum
+    orbit: "config/orbits/starlink_leo.txtpb"  # KEEP CONSISTENT with the bridge --orbit;
+                                       # start the flight stack WITH the bridge (epoch sync)
+    point_axis: [0.0, 0.0, 1.0]        # instrument face
     k_align: 0.001                     # gentle: settles in minutes, not seconds
     kp: 0.02                           # rate damping, same tempo as detumble
     kd: 0.005
@@ -153,14 +167,14 @@ control {
   constant_rate {                      # rate reference for the damping term
     target_rates_rad_s: [0.0, 0.0, 0.0]
   }
-  triad {                              # attitude from mag + sun vs onboard models;
-    orbit: "config/orbits/starlink_leo.txtpb"  # KEEP CONSISTENT with the bridge --orbit
+  star_attitude {                      # tracker MRP when it has stars (eclipse-proof);
+    orbit: "config/orbits/starlink_leo.txtpb"  # TRIAD fallback when blinded, rates last
   }
 }
 
 mode {  # mission state: who must ack transitions
   apps: [
-    "imu0", "mag0", "css0", "thermal_tj",
+    "imu0", "mag0", "css0", "st0", "thermal_tj",
     "wheel0", "wheel1", "wheel2",
     "mtq_x", "mtq_y", "mtq_z",
     "adcs", "recorder", "fdir"

@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from flatsat.core.config import load_vehicle
+from flatsat.core.config import VehicleSpec, load_vehicle
 from flatsat.sim import orbit
 from flatsat.sim.fastloop import run_fast_loop
 
@@ -21,6 +21,40 @@ STARLINK_INCLINATION_RAD = 0.9250245035569946  # 53 degrees
 
 def _starlink() -> orbit.OrbitalElements:
     return orbit.circular(550e3, STARLINK_INCLINATION_RAD)
+
+
+def _sun_point_vehicle() -> VehicleSpec:
+    """flatsat_v1 rewired to the SUN-pointing posture (strategy + TRIAD).
+
+    The committed vehicle flies nadir_point + star_attitude; these tests
+    pin the sun stack specifically, so they select it explicitly — a
+    mission posture is a config edit, and so is a test's.
+
+    Returns:
+        The modified vehicle.
+    """
+    vehicle = load_vehicle()
+    control = vehicle.control
+    control.sun_point.point_axis[:] = [0.0, 0.0, 1.0]
+    control.sun_point.k_align = 0.001
+    control.sun_point.kp = 0.02
+    control.sun_point.kd = 0.005
+    control.sun_point.max_torque_n_m = 0.05
+    control.sun_point.dump_gain = 0.02
+    control.sun_point.max_dipole_a_m2 = 1.2
+    control.triad.orbit = "config/orbits/starlink_leo.txtpb"
+    return vehicle
+
+
+def _triad_only_vehicle() -> VehicleSpec:
+    """flatsat_v1 with the star tracker removed from the estimator ladder.
+
+    Returns:
+        The modified vehicle (keeps nadir_point; estimator = plain triad).
+    """
+    vehicle = load_vehicle()
+    vehicle.control.triad.orbit = "config/orbits/starlink_leo.txtpb"
+    return vehicle
 
 
 @pytest.mark.verifies("FSW-ADCS-007", "FSW-ADCS-012")
@@ -90,12 +124,12 @@ def test_thermal_model_breathes_with_the_eclipse() -> None:
 def test_triad_tracks_truth_within_sensor_noise() -> None:
     """The full estimation chain: corrupted CSS + mag through TRIAD.
 
-    The onboard models in flatsat_v1's triad block are starlink_leo —
-    the SAME orbit and epoch this run flies — so the residual error is
-    the sensors' to own: css0's 0.02 rad cone noise dominates.
+    The onboard models in the triad block are starlink_leo — the SAME
+    orbit and epoch this run flies — so the residual error is the
+    sensors' to own: css0's 0.02 rad cone noise dominates.
     """
     result = run_fast_loop(
-        load_vehicle(),
+        _triad_only_vehicle(),
         duration_s=300.0,
         omega0=(0.02, -0.01, 0.015),
         sigma0=(0.2, -0.1, 0.35),
@@ -116,7 +150,7 @@ def test_sun_pointing_acquires_and_holds_the_sun() -> None:
     side of whatever eclipse arc the window contains.
     """
     result = run_fast_loop(
-        load_vehicle(),
+        _sun_point_vehicle(),
         duration_s=3600.0,
         omega0=(0.05, -0.04, 0.03),
         sigma0=(0.2, -0.1, 0.35),
@@ -135,7 +169,7 @@ def test_sun_pointing_acquires_and_holds_the_sun() -> None:
 def test_eclipse_blinds_triad_honestly() -> None:
     """In shadow the estimator must refuse an attitude, never invent one."""
     result = run_fast_loop(
-        load_vehicle(),
+        _triad_only_vehicle(),
         duration_s=7200.0,
         omega0=(0.01, 0.0, 0.0),
         orbit_elements=_starlink(),
@@ -151,6 +185,61 @@ def test_eclipse_blinds_triad_honestly() -> None:
     ]
     valid_fraction = sum(1 for e in lit_errors if not math.isnan(e)) / len(lit_errors)
     assert valid_fraction > 0.9, f"only {valid_fraction:.0%} of sunlit steps had an attitude"
+
+
+@pytest.mark.verifies("FSW-ADCS-015")
+def test_nadir_pointing_acquires_earth_and_tracks_it() -> None:
+    """flatsat_v1 as committed: +z onto Earth, tracked at orbit rate.
+
+    Tracking nadir means rotating once per orbit, so the equilibrium
+    carries a small steady offset (alignment torque balancing damping,
+    ~1.3 deg at these gains) plus attitude-knowledge error. The bound
+    is set above that PHYSICS, not tuned to flatter.
+    """
+    result = run_fast_loop(
+        load_vehicle(),
+        duration_s=3600.0,
+        omega0=(0.05, -0.04, 0.03),
+        sigma0=(0.2, -0.1, 0.35),
+        orbit_elements=_starlink(),
+        dt_s=0.2,
+    )
+    tail = [a for a in result.nadir_angle_deg[-500:] if not math.isnan(a)]
+    assert len(tail) > 400
+    held = statistics.mean(tail)
+    assert held < 5.0, f"nadir pointing settled at {held:.1f} deg off-Earth"
+    assert result.final_omega_mag_rad_s < 0.01
+
+
+@pytest.mark.verifies("FSW-ADCS-015", "FSW-ADCS-016")
+def test_star_tracker_keeps_earth_pointing_through_eclipse() -> None:
+    """The payoff: attitude knowledge survives shadow, so nadir does too.
+
+    With plain TRIAD the alignment pauses for the whole eclipse arc;
+    with the star tracker the estimator ladder never loses attitude
+    (the -z boresight keeps Earth out of view, and a sun inside the
+    exclusion cone implies daylight — where TRIAD covers).
+    """
+    result = run_fast_loop(
+        load_vehicle(),
+        duration_s=7200.0,
+        omega0=(0.02, -0.01, 0.015),
+        orbit_elements=_starlink(),
+        dt_s=0.5,
+    )
+    assert any(result.in_eclipse), "this orbit must see shadow"
+    dark_errors = [
+        e
+        for e, dark in zip(result.attitude_error_deg, result.in_eclipse, strict=True)
+        if dark and not math.isnan(e)
+    ]
+    total_dark = sum(1 for dark in result.in_eclipse if dark)
+    assert len(dark_errors) > 0.9 * total_dark, "the tracker must carry attitude through shadow"
+    assert statistics.median(dark_errors) < 0.1, "arcsecond-class device, sub-0.1 deg knowledge"
+    settle = len(result.nadir_angle_deg) // 4
+    tail = [a for a in result.nadir_angle_deg[settle:] if not math.isnan(a)]
+    worst = max(tail)
+    assert worst < 8.0, f"nadir pointing excursion {worst:.1f} deg — eclipse hole not closed"
 
 
 def test_no_orbit_means_no_magnetic_authority() -> None:

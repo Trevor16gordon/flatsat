@@ -48,6 +48,7 @@ message SensorConfig {
     BasiliskImuOptions basilisk_imu = 11;
     BasiliskMagnetometerOptions basilisk_magnetometer = 12;
     BasiliskSunSensorOptions basilisk_sun_sensor = 13;
+    BasiliskStarTrackerOptions basilisk_star_tracker = 14;
   }
 }
 
@@ -82,6 +83,8 @@ message ControlConfig {
   string dipole_output_topic = 6;
   // Sun sensor input for attitude/pointing strategies; empty = none.
   string sun_input_topic = 7;
+  // Star tracker input for attitude estimators; empty = none.
+  string star_input_topic = 8;
 
   oneof strategy {
     RateDampingOptions rate_damping = 10;
@@ -89,6 +92,7 @@ message ControlConfig {
     BdotOptions bdot = 12;
     MomentumDumpOptions momentum_dump = 13;
     SunPointOptions sun_point = 14;
+    NadirPointOptions nadir_point = 15;
   }
   oneof objective {  // absent = constant_rate (detumble)
     ConstantRateOptions constant_rate = 20;
@@ -96,6 +100,7 @@ message ControlConfig {
   oneof estimator {  // absent = passthrough
     PassthroughOptions passthrough = 30;
     TriadOptions triad = 31;
+    StarAttitudeOptions star_attitude = 32;
   }
 }
 

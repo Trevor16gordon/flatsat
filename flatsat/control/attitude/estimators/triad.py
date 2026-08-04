@@ -35,6 +35,31 @@ from flatsat.sim import orbit
 from flatsat.sim.orbit_config import load_orbit
 
 
+def mrp_to_dcm(sigma: Vec3) -> np.ndarray:
+    """Convert an MRP to a direction cosine matrix [BN] (body from inertial).
+
+    The onboard-side twin of the plants' converter; a parity test pins
+    the two against each other so they cannot drift apart.
+
+    Args:
+        sigma: The MRP (sigma_BN).
+
+    Returns:
+        The 3x3 rotation matrix.
+    """
+    s = np.asarray(sigma, dtype=float)
+    s2 = float(s @ s)
+    tilde = np.array(
+        [
+            [0.0, -s[2], s[1]],
+            [s[2], 0.0, -s[0]],
+            [-s[1], s[0], 0.0],
+        ]
+    )
+    eye = np.eye(3)
+    return np.asarray(eye + (8.0 * tilde @ tilde - 4.0 * (1.0 - s2) * tilde) / (1.0 + s2) ** 2)
+
+
 def dcm_to_mrp(dcm: np.ndarray) -> Vec3:
     """Convert a direction cosine matrix to a modified Rodrigues parameter.
 
@@ -164,6 +189,7 @@ class TriadEstimator(StateEstimator):
         dt_s: float,
         mag: hal_pb2.MagnetometerSample | None = None,
         sun: hal_pb2.SunSensorSample | None = None,
+        star: hal_pb2.StarTrackerSample | None = None,
     ) -> AttitudeState:
         """Fold the vector measurements into a full attitude when possible.
 
@@ -174,6 +200,8 @@ class TriadEstimator(StateEstimator):
             dt_s: Nominal step, accumulated as the onboard clock.
             mag: Latest magnetometer sample; required for attitude.
             sun: Latest sun sensor sample; required and sun_visible.
+            star: Ignored — TRIAD is the sensor pair's estimator; the
+                star_attitude estimator is the one that consumes this.
 
         Returns:
             The estimate; ``attitude_valid`` only when both vectors were

@@ -32,8 +32,54 @@ from flatsat.control.attitude.controller import (
     AttitudeState,
     ControlLimits,
     ControlOutput,
+    Vec3,
 )
 from flatsat.control.attitude.controllers.rate_damping import RateDampingController
+
+
+def dump_dipole(
+    state: AttitudeState, dump_gain: float, max_dipole_a_m2: float
+) -> tuple[Vec3 | None, bool]:
+    """The magnetic momentum-dump law: ``m = k (h x B) / |B|^2``, clipped.
+
+    ONE implementation shared by every strategy that carries rods
+    alongside wheels (momentum_dump, sun_point, nadir_point) — the dump
+    must behave identically no matter what the wheels are doing.
+
+    Args:
+        state: Current estimate; field and wheel momentum ride on it.
+        dump_gain: Dipole per unit ``(h x B)/|B|²``.
+        max_dipole_a_m2: Per-axis clip.
+
+    Returns:
+        (dipole, saturated) — dipole is None when the law must go QUIET:
+        stale/absent field or missing wheel momentum. A dump driven by
+        an untrustworthy B would torque in an unknown direction.
+    """
+    field = state.mag_field_t
+    momentum = state.wheel_momentum_n_m_s
+    if field is None or not state.mag_fresh or momentum is None:
+        return None, False
+    b_square = field[0] ** 2 + field[1] ** 2 + field[2] ** 2
+    if b_square <= 0.0:
+        return None, False
+    hx, hy, hz = momentum
+    bx, by, bz = field
+    scale = dump_gain / b_square
+    unclipped = (
+        scale * (hy * bz - hz * by),
+        scale * (hz * bx - hx * bz),
+        scale * (hx * by - hy * bx),
+    )
+    limit = max_dipole_a_m2
+    return (
+        (
+            max(-limit, min(limit, unclipped[0])),
+            max(-limit, min(limit, unclipped[1])),
+            max(-limit, min(limit, unclipped[2])),
+        ),
+        any(abs(value) > limit for value in unclipped),
+    )
 
 
 class MomentumDumpController(AttitudeController):
@@ -121,30 +167,14 @@ class MomentumDumpController(AttitudeController):
             The clipped torque command with the dump dipole alongside.
         """
         damping = self._damping.update(state, reference, dt_s)
-
-        field = state.mag_field_t
-        momentum = state.wheel_momentum_n_m_s
-        if field is None or not state.mag_fresh or momentum is None:
+        dipole, dipole_saturated = dump_dipole(state, self.dump_gain, self.max_dipole_a_m2)
+        if dipole is None:
             return damping
-        b_square = field[0] ** 2 + field[1] ** 2 + field[2] ** 2
-        if b_square <= 0.0:
-            return damping
-
-        hx, hy, hz = momentum
-        bx, by, bz = field
-        scale = self.dump_gain / b_square
-        unclipped = (
-            scale * (hy * bz - hz * by),
-            scale * (hz * bx - hx * bz),
-            scale * (hx * by - hy * bx),
-        )
-        limit = self.max_dipole_a_m2
-        clipped = tuple(max(-limit, min(limit, value)) for value in unclipped)
         return ControlOutput(
             torque_n_m=damping.torque_n_m,
-            dipole_a_m2=(clipped[0], clipped[1], clipped[2]),
+            dipole_a_m2=dipole,
             torque_saturated=damping.torque_saturated,
-            dipole_saturated=any(abs(value) > limit for value in unclipped),
+            dipole_saturated=dipole_saturated,
         )
 
     def reset(self) -> None:

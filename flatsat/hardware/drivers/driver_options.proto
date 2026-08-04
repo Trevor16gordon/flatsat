@@ -58,3 +58,13 @@ message BasiliskSunSensorOptions {
 message BasiliskMagnetorquerOptions {
   string device = 1;  // magnetorquer device file (required)
 }
+
+// Star tracker fed by plant truth: true attitude through the device
+// model (noise + exclusion blinding). Same shape as the other
+// basilisk_* sensor options.
+message BasiliskStarTrackerOptions {
+  string spec = 1;                   // device file; empty = config/devices/st0.txtpb
+  string truth_topic = 2;            // empty = sim/truth/state
+  optional double stale_after_s = 3; // truth age beyond which reads are STALE
+  optional uint32 seed = 4;          // deterministic corruption for tests
+}

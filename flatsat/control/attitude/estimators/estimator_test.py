@@ -15,6 +15,9 @@ DT = 0.01
 ESTIMATOR_OPTIONS: dict[str, Message] = {
     "passthrough": control_options_pb2.PassthroughOptions(),
     "triad": control_options_pb2.TriadOptions(orbit="config/orbits/starlink_leo.txtpb"),
+    "star_attitude": control_options_pb2.StarAttitudeOptions(
+        orbit="config/orbits/starlink_leo.txtpb"
+    ),
 }
 
 

@@ -83,3 +83,29 @@ message SunPointOptions {
   optional double dump_gain = 6;        // required; dipole per unit (h x B)/|B|²
   optional double max_dipole_a_m2 = 7;  // rod envelope; absent = 1.0
 }
+
+// Nadir (Earth) pointing: align a body axis with the COMPUTED direction
+// to Earth's center. Nothing on this vehicle measures Earth, so the
+// target comes from knowledge: the TRIAD attitude rotates the onboard
+// orbit model's -r_hat into the body frame. That makes this law honest
+// about its dependency — when the estimator has no attitude (eclipse,
+// with a sun/mag TRIAD), the alignment PAUSES and rate damping holds.
+// The magnetic momentum dump runs throughout, as in sun_point.
+// Star tracker attitude estimator: the measured MRP when the tracker
+// has stars, TRIAD as fallback when it is blinded (if an orbit is
+// configured for the onboard models), gyro passthrough always. The
+// eclipse-proof upgrade: a star tracker sees BETTER in shadow.
+message StarAttitudeOptions {
+  optional string orbit = 1;  // enables the TRIAD fallback; empty = no fallback
+}
+
+message NadirPointOptions {
+  optional string orbit = 1;            // onboard orbit file; required — MUST match the plant's
+  repeated double point_axis = 2;       // body axis to aim at Earth; 3 values (required)
+  optional double k_align = 3;          // alignment gain; required
+  optional double kp = 4;               // required; rate damping N·m / (rad/s)
+  optional double kd = 5;               // required; N·m / (rad/s²)
+  optional double max_torque_n_m = 6;   // wheel envelope; absent = 1.0
+  optional double dump_gain = 7;        // required; dipole per unit (h x B)/|B|²
+  optional double max_dipole_a_m2 = 8;  // rod envelope; absent = 1.0
+}

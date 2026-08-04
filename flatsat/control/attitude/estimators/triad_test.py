@@ -6,7 +6,14 @@ import numpy as np
 import pytest
 
 from flatsat.control.attitude import control_options_pb2
-from flatsat.control.attitude.estimators.triad import TriadEstimator, dcm_to_mrp, triad_dcm
+from flatsat.control.attitude.estimators.triad import (
+    TriadEstimator,
+    dcm_to_mrp,
+    triad_dcm,
+)
+from flatsat.control.attitude.estimators.triad import (
+    mrp_to_dcm as onboard_mrp_to_dcm,
+)
 from flatsat.msgs import hal_pb2
 from flatsat.sim import orbit
 from flatsat.sim.basilisk_hil import mrp_to_dcm
@@ -51,6 +58,12 @@ def _estimator() -> TriadEstimator:
 def test_dcm_mrp_roundtrip(sigma: tuple[float, float, float]) -> None:
     recovered = dcm_to_mrp(np.array(mrp_to_dcm(sigma)))
     assert recovered == pytest.approx(sigma, abs=1e-9)
+
+
+@pytest.mark.parametrize("sigma", [(0.0, 0.0, 0.0), (0.1, -0.2, 0.15), (0.4, 0.3, -0.5)])
+def test_onboard_mrp_to_dcm_matches_the_plants(sigma: tuple[float, float, float]) -> None:
+    """The onboard converter and the plants' converter must be twins."""
+    assert np.allclose(onboard_mrp_to_dcm(sigma), np.array(mrp_to_dcm(sigma)), atol=1e-12)
 
 
 def test_triad_dcm_recovers_an_exact_rotation() -> None:

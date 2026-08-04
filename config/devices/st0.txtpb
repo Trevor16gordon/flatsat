@@ -1,0 +1,16 @@
+# proto-file: flatsat/hardware/devices.proto
+# proto-message: flatsat.v1.StarTrackerDevice
+#
+# Quaternion-level star tracker, ST-16 class numbers: arcsecond-family
+# cross-boresight accuracy, the usual 6-7x worse roll. Boresight looks
+# out along -z: with the vehicle nadir-pointing (+z at Earth) the Earth
+# NEVER enters the field of view, and the sun sweeps past once per
+# orbit — the exclusion cone makes those passes honest blackouts.
+
+name: "st0"
+rate_hz: 5.0
+cross_noise_rad: 0.00003    # ~6 arcsec, 1-sigma
+roll_noise_rad: 0.0002      # ~40 arcsec, 1-sigma
+boresight: [0.0, 0.0, -1.0]
+sun_exclusion_deg: 30.0
+earth_exclusion_deg: 25.0

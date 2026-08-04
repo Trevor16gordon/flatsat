@@ -201,6 +201,7 @@ def test_topic_patterns_resolve_every_kind_distinctly() -> None:
         # but an unrouted css topic would still decode as an empty IMU.
         "hal/css0/sample": hal_pb2.SunSensorSample,
         "test/scn/hal/css/sample": hal_pb2.SunSensorSample,
+        "hal/st0/sample": hal_pb2.StarTrackerSample,
         # TemperatureSample shares ImuSample's field 2: unrouted, the die
         # temperature plots as a 50 rad/s gyro rate.
         "hal/thermal_tj/sample": hal_pb2.TemperatureSample,

@@ -69,6 +69,7 @@ TOPIC_PATTERNS: list[tuple[str, type[Message]]] = [
     ("*/mag*/sample", hal_pb2.MagnetometerSample),
     ("*/thermal*/sample", hal_pb2.TemperatureSample),
     ("*/css*/sample", hal_pb2.SunSensorSample),
+    ("*/st*/sample", hal_pb2.StarTrackerSample),
     ("*/sample", hal_pb2.ImuSample),
     # Magnetorquer rod state before the generic wheel-state rule.
     ("*/mtq*/state", hal_pb2.MagnetorquerState),

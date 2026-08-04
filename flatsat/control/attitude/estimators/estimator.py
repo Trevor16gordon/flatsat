@@ -53,6 +53,7 @@ class StateEstimator(ABC):
         dt_s: float,
         mag: hal_pb2.MagnetometerSample | None = None,
         sun: hal_pb2.SunSensorSample | None = None,
+        star: hal_pb2.StarTrackerSample | None = None,
     ) -> AttitudeState:
         """Fold the measurements into the state estimate.
 
@@ -68,6 +69,7 @@ class StateEstimator(ABC):
             mag: Latest magnetometer sample, when the vehicle has one
                 and it is fresh; None otherwise.
             sun: Latest sun sensor sample, same contract.
+            star: Latest star tracker sample, same contract.
 
         Returns:
             The state estimate the controller should act on.

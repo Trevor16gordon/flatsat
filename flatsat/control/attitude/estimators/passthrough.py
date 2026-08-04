@@ -38,6 +38,7 @@ class PassthroughEstimator(StateEstimator):
         dt_s: float,
         mag: hal_pb2.MagnetometerSample | None = None,
         sun: hal_pb2.SunSensorSample | None = None,
+        star: hal_pb2.StarTrackerSample | None = None,
     ) -> AttitudeState:
         """Map the measurement directly onto the state estimate.
 
@@ -49,6 +50,7 @@ class PassthroughEstimator(StateEstimator):
             dt_s: Unused — passthrough carries no dynamics.
             mag: Ignored — passthrough estimates nothing from the field.
             sun: Ignored likewise.
+            star: Ignored likewise.
 
         Returns:
             The estimate: gyro rates verbatim, valid only if fresh and

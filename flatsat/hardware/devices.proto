@@ -72,3 +72,17 @@ message MagnetometerDevice {
   double full_scale_t = 4;            // measurement limit; beyond it the device rails
   double lsb_t = 5;                   // quantization step of the output
 }
+
+// A quaternion-level star tracker: the industry-standard GNC fidelity
+// (vendors own photons-to-quaternion; the control stack consumes
+// attitude + noise + blackout rules). Cross-boresight and roll noise
+// differ on real devices by ~5-10x, so both are specified.
+message StarTrackerDevice {
+  string name = 1;
+  double rate_hz = 2;
+  double cross_noise_rad = 3;       // 1-sigma error perpendicular to boresight
+  double roll_noise_rad = 4;        // 1-sigma error about the boresight
+  repeated double boresight = 5;    // body-frame look direction; 3 values
+  double sun_exclusion_deg = 6;     // sun within this cone of boresight = blinded
+  double earth_exclusion_deg = 7;   // nadir within this cone of boresight = blinded
+}
