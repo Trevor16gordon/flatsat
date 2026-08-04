@@ -20,4 +20,9 @@ accel_noise_m_s2: 0.02
 accel_full_scale_m_s2: 156.9   # ±16 g
 
 # Housekeeping
-temperature_c: 25.0
+temperature_c: 25.0          # initial/nominal die temperature
+# Orbital thermal model (designed values until characterization): the die
+# relaxes toward these equilibria as the vehicle crosses the terminator.
+temperature_sunlit_c: 38.0
+temperature_eclipse_c: 4.0
+thermal_time_constant_s: 420.0

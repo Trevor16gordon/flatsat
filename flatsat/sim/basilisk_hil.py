@@ -400,6 +400,44 @@ class SensorDisplaySink:
             return self.value
 
 
+def _imu_axis_mrad_s(axis: int) -> Callable[[bytes], float]:
+    """A parser for one gyro axis magnitude, in mrad/s.
+
+    Args:
+        axis: 0, 1 or 2 for x, y, z.
+
+    Returns:
+        Payload bytes -> |gyro_axis| in mrad/s.
+    """
+
+    def parse(payload: bytes) -> float:
+        """Extract one axis magnitude.
+
+        Args:
+            payload: Serialized ImuSample.
+
+        Returns:
+            |rate| of the chosen axis in mrad/s.
+        """
+        msg = hal_pb2.ImuSample.FromString(payload)
+        rates = (msg.gyro_x_rad_s, msg.gyro_y_rad_s, msg.gyro_z_rad_s)
+        return 1000.0 * abs(rates[axis])
+
+    return parse
+
+
+def _imu_temperature_c(payload: bytes) -> float:
+    """Die temperature of an ImuSample, for the thermal gauge.
+
+    Args:
+        payload: Serialized ImuSample.
+
+    Returns:
+        The reported temperature in Celsius.
+    """
+    return hal_pb2.ImuSample.FromString(payload).temperature_c
+
+
 def _imu_rate_mrad_s(payload: bytes) -> float:
     """|gyro| of an ImuSample, in mrad/s for the gauge.
 
@@ -524,11 +562,12 @@ class BasiliskPlant:
         self._rw_msgs: list[Any] = []
         self._messaging: Any = None
         self._rw_write_time_ns = 0
-        # Vizard Devices gauges: (label, units, max, sink) per sensor.
-        self._gauge_display: list[tuple[str, str, float, SensorDisplaySink]] = []
+        # Vizard Devices gauges: (label, units, max, latest-value getter).
+        self._gauge_display: list[tuple[str, str, float, Callable[[], float]]] = []
         self._gauge_structs: list[Any] = []
         self._viz: Any = None
         if viz_live or viz_save:
+            rate_max = 400.0  # mrad/s; covers an aggressive deployment tumble
             for sensor in vehicle.sensors:
                 sensor_kind = sensor.WhichOneof("options")
                 if sensor_kind == "basilisk_imu":
@@ -536,8 +575,27 @@ class BasiliskPlant:
                         (
                             f"{sensor.name} |rate|",
                             "mrad/s",
-                            150.0,
-                            SensorDisplaySink(session, sensor.topic, _imu_rate_mrad_s),
+                            rate_max,
+                            SensorDisplaySink(session, sensor.topic, _imu_rate_mrad_s).latest,
+                        )
+                    )
+                    for axis_index, axis_name in enumerate(("wx", "wy", "wz")):
+                        self._gauge_display.append(
+                            (
+                                f"{sensor.name} |{axis_name}|",
+                                "mrad/s",
+                                rate_max,
+                                SensorDisplaySink(
+                                    session, sensor.topic, _imu_axis_mrad_s(axis_index)
+                                ).latest,
+                            )
+                        )
+                    self._gauge_display.append(
+                        (
+                            f"{sensor.name} temp",
+                            "C",
+                            60.0,
+                            SensorDisplaySink(session, sensor.topic, _imu_temperature_c).latest,
                         )
                     )
                 elif sensor_kind == "basilisk_magnetometer":
@@ -546,7 +604,7 @@ class BasiliskPlant:
                             f"{sensor.name} |B|",
                             "uT",
                             65.0,
-                            SensorDisplaySink(session, sensor.topic, _mag_field_ut),
+                            SensorDisplaySink(session, sensor.topic, _mag_field_ut).latest,
                         )
                     )
             for entry in vehicle.actuators:
@@ -560,13 +618,22 @@ class BasiliskPlant:
                     else 0.0
                 )
                 axis = (entry.mounting.axis[0], entry.mounting.axis[1], entry.mounting.axis[2])
-                self._rw_display.append(
-                    (
-                        WheelDisplaySink(session, entry.state_topic),
-                        axis,
-                        spec.max_torque_n_m,
-                        omega_max,
-                    )
+                wheel_sink = WheelDisplaySink(session, entry.state_topic)
+                self._rw_display.append((wheel_sink, axis, spec.max_torque_n_m, omega_max))
+
+                def wheel_speed(sink: WheelDisplaySink = wheel_sink) -> float:
+                    """|rotor speed| of one wheel, for its gauge.
+
+                    Args:
+                        sink: The wheel's display sink (bound per wheel).
+
+                    Returns:
+                        The speed magnitude in rad/s.
+                    """
+                    return abs(sink.latest()[0])
+
+                self._gauge_display.append(
+                    (f"{entry.name} |speed|", "rad/s", omega_max, wheel_speed)
                 )
         self._truth_pub = SamplePublisher(session, truth_topic, "sim_truth")
         self._lock = threading.Lock()
@@ -696,8 +763,8 @@ class BasiliskPlant:
             msg.write(payload, self._rw_write_time_ns)
         if self._viz is not None and self._gauge_display:
             storage = self._viz.scData[0].genericStorageList
-            for index, (_label, _units, max_value, gauge_sink) in enumerate(self._gauge_display):
-                storage[index].currentValue = min(gauge_sink.latest(), max_value)
+            for index, (_label, _units, max_value, gauge_value) in enumerate(self._gauge_display):
+                storage[index].currentValue = min(gauge_value(), max_value)
 
     def _add_earth_and_orbit(self, sc: object) -> None:
         """Give the spacecraft the SAME universe the local plant flies in.

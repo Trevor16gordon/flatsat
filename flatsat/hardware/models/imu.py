@@ -18,12 +18,44 @@ invented bias model would be fiction that the controller then "learns".
 
 from __future__ import annotations
 
+import math
 import random
 
 from flatsat.hardware import devices_pb2
 from flatsat.msgs import hal_pb2
 
 Vec3 = tuple[float, float, float]
+
+
+def imu_temperature(
+    previous_c: float,
+    spec: devices_pb2.ImuDevice,
+    in_eclipse: bool,
+    dt_s: float,
+) -> float:
+    """Advance the die temperature one step of the orbital thermal model.
+
+    First-order relaxation toward a sunlit or eclipse equilibrium — the
+    simplest model that makes a temperature BREATHE with the terminator
+    instead of sitting at a constant, and honestly labeled as designed
+    rather than characterized. A zero time constant disables it: the die
+    stays at the nominal ``temperature_c`` (a bench part sees no orbit).
+
+    Args:
+        previous_c: Temperature at the previous step.
+        spec: Device spec carrying the equilibria and time constant.
+        in_eclipse: Whether the vehicle is currently shadowed.
+        dt_s: Time since the previous step.
+
+    Returns:
+        The new die temperature in Celsius.
+    """
+    tau = spec.thermal_time_constant_s
+    if tau <= 0.0 or dt_s <= 0.0:
+        return previous_c
+    target = spec.temperature_eclipse_c if in_eclipse else spec.temperature_sunlit_c
+    alpha = 1.0 - math.exp(-dt_s / tau)
+    return previous_c + (target - previous_c) * alpha
 
 
 def apply_gyro_model(

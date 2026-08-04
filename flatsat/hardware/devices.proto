@@ -22,7 +22,15 @@ message ImuDevice {
   double gyro_lsb_rad_s = 5;          // quantization step of the gyro output
   double accel_noise_m_s2 = 6;        // white-noise sigma per accelerometer axis
   double accel_full_scale_m_s2 = 7;   // accelerometer measurement limit
-  double temperature_c = 8;           // nominal reported die temperature
+  double temperature_c = 8;           // nominal reported die temperature (also the initial value)
+  // Orbital thermal response — MODELED, not measured: the die relaxes
+  // first-order toward a sunlit or eclipse equilibrium as the vehicle
+  // crosses the terminator. Zero time constant = static temperature_c
+  // (the pre-thermal behavior, and the right choice for a bench part
+  // that never sees space).
+  double temperature_sunlit_c = 9;    // equilibrium in sunlight
+  double temperature_eclipse_c = 10;  // equilibrium in shadow
+  double thermal_time_constant_s = 11;  // first-order lag; 0 disables the model
 }
 
 // Reaction wheel: torque and momentum envelopes.

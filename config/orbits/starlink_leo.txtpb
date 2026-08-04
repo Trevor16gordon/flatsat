@@ -1,0 +1,23 @@
+# proto-file: flatsat/sim/mission.proto
+# proto-message: flatsat.v1.OrbitConfig
+#
+# STARLINK-CLASS LEO — the first-shell constellation orbit: 550 km at
+# 53 degrees. INCLINATION IS DELIBERATELY SET: unlike the rideshare SSO,
+# this orbit does not want sun-synchronicity — it wants coverage of
+# inhabited latitudes, and 53 degrees is that choice. The node precesses
+# westward under J2 (prograde orbit), local solar time drifts, and the
+# vehicle sees real eclipse seasons — which is exactly what makes it the
+# right environment for watching device temperatures breathe with the
+# terminator crossings.
+
+name: "starlink-leo"
+description: "Starlink first-shell class orbit: 550 km, 53 degrees"
+
+altitude_m: 550000.0
+inclination_deg: 53.0
+eccentricity: 0.0
+raan_deg: 0.0
+arg_periapsis_deg: 0.0
+true_anomaly_deg: 0.0
+epoch_gmst_deg: 0.0
+epoch_solar_angle_deg: 0.0

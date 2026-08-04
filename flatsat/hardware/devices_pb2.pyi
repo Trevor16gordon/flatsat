@@ -41,6 +41,9 @@ class ImuDevice(_message.Message):
     ACCEL_NOISE_M_S2_FIELD_NUMBER: _builtins.int
     ACCEL_FULL_SCALE_M_S2_FIELD_NUMBER: _builtins.int
     TEMPERATURE_C_FIELD_NUMBER: _builtins.int
+    TEMPERATURE_SUNLIT_C_FIELD_NUMBER: _builtins.int
+    TEMPERATURE_ECLIPSE_C_FIELD_NUMBER: _builtins.int
+    THERMAL_TIME_CONSTANT_S_FIELD_NUMBER: _builtins.int
     name: _builtins.str
     """instance name (becomes the message source)"""
     rate_hz: _builtins.float
@@ -56,7 +59,19 @@ class ImuDevice(_message.Message):
     accel_full_scale_m_s2: _builtins.float
     """accelerometer measurement limit"""
     temperature_c: _builtins.float
-    """nominal reported die temperature"""
+    """nominal reported die temperature (also the initial value)"""
+    temperature_sunlit_c: _builtins.float
+    """Orbital thermal response — MODELED, not measured: the die relaxes
+    first-order toward a sunlit or eclipse equilibrium as the vehicle
+    crosses the terminator. Zero time constant = static temperature_c
+    (the pre-thermal behavior, and the right choice for a bench part
+    that never sees space).
+    equilibrium in sunlight
+    """
+    temperature_eclipse_c: _builtins.float
+    """equilibrium in shadow"""
+    thermal_time_constant_s: _builtins.float
+    """first-order lag; 0 disables the model"""
     def __init__(
         self,
         *,
@@ -68,10 +83,13 @@ class ImuDevice(_message.Message):
         accel_noise_m_s2: _builtins.float = ...,
         accel_full_scale_m_s2: _builtins.float = ...,
         temperature_c: _builtins.float = ...,
+        temperature_sunlit_c: _builtins.float = ...,
+        temperature_eclipse_c: _builtins.float = ...,
+        thermal_time_constant_s: _builtins.float = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["accel_full_scale_m_s2", b"accel_full_scale_m_s2", "accel_noise_m_s2", b"accel_noise_m_s2", "gyro_full_scale_rad_s", b"gyro_full_scale_rad_s", "gyro_lsb_rad_s", b"gyro_lsb_rad_s", "gyro_noise_rad_s", b"gyro_noise_rad_s", "name", b"name", "rate_hz", b"rate_hz", "temperature_c", b"temperature_c"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["accel_full_scale_m_s2", b"accel_full_scale_m_s2", "accel_noise_m_s2", b"accel_noise_m_s2", "gyro_full_scale_rad_s", b"gyro_full_scale_rad_s", "gyro_lsb_rad_s", b"gyro_lsb_rad_s", "gyro_noise_rad_s", b"gyro_noise_rad_s", "name", b"name", "rate_hz", b"rate_hz", "temperature_c", b"temperature_c", "temperature_eclipse_c", b"temperature_eclipse_c", "temperature_sunlit_c", b"temperature_sunlit_c", "thermal_time_constant_s", b"thermal_time_constant_s"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

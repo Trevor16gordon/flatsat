@@ -27,7 +27,7 @@ from flatsat.core.bus import HalMessage
 from flatsat.core.config import Provenance, describe_imu_spec, load_imu_spec
 from flatsat.hardware import devices_pb2
 from flatsat.hardware.drivers import driver_options_pb2
-from flatsat.hardware.models.imu import apply_gyro_model
+from flatsat.hardware.models.imu import apply_gyro_model, imu_temperature
 from flatsat.hardware.sensor import SensorDriver
 from flatsat.msgs import hal_pb2, sim_pb2
 
@@ -66,7 +66,12 @@ class BasiliskImuDriver(SensorDriver):
         self._session = session if session is not None else zenoh.open(zenoh.Config())
         self._lock = threading.Lock()
         self._truth: tuple[float, float, float] | None = None
+        self._in_eclipse = False
         self._recv_ns = 0
+        # Orbital thermal state: starts at the nominal die temperature
+        # and relaxes toward the sunlit/eclipse equilibrium per read.
+        self._temperature_c = spec.temperature_c
+        self._last_read_monotonic: float | None = None
         self._sub = self._session.declare_subscriber(truth_topic, self._on_truth)
 
     def _on_truth(self, sample: zenoh.Sample) -> None:
@@ -78,6 +83,7 @@ class BasiliskImuDriver(SensorDriver):
         msg = sim_pb2.TruthState.FromString(bytes(sample.payload.to_bytes()))
         with self._lock:
             self._truth = (msg.omega_x_rad_s, msg.omega_y_rad_s, msg.omega_z_rad_s)
+            self._in_eclipse = msg.in_eclipse
             self._recv_ns = time.monotonic_ns()
 
     @classmethod
@@ -113,11 +119,19 @@ class BasiliskImuDriver(SensorDriver):
         """
         with self._lock:
             truth = self._truth
+            in_eclipse = self._in_eclipse
             age_ns = time.monotonic_ns() - self._recv_ns
+        now = time.monotonic()
+        dt_s = 0.0 if self._last_read_monotonic is None else now - self._last_read_monotonic
+        self._last_read_monotonic = now
         msg = hal_pb2.ImuSample()
-        msg.temperature_c = self._spec.temperature_c
         if truth is None or age_ns > self._stale_after_ns:
+            # No fresh truth: the thermal state HOLDS (no eclipse info to
+            # relax toward) and the sample is flagged, not invented.
+            msg.temperature_c = self._temperature_c
             return msg, int(hal_pb2.VALIDITY_FLAG_STALE)
+        self._temperature_c = imu_temperature(self._temperature_c, self._spec, in_eclipse, dt_s)
+        msg.temperature_c = self._temperature_c
         (gx, gy, gz), flags = apply_gyro_model(truth, self._spec, self._rng)
         msg.gyro_x_rad_s = gx
         msg.gyro_y_rad_s = gy
