@@ -472,6 +472,66 @@ def _mag_field_ut(payload: bytes) -> float:
     return 1e6 * math.sqrt(msg.mag_x_t**2 + msg.mag_y_t**2 + msg.mag_z_t**2)
 
 
+def _sun_visible(payload: bytes) -> float:
+    """1.0 when the CSS sees the sun, 0.0 in darkness.
+
+    Args:
+        payload: Serialized SunSensorSample.
+
+    Returns:
+        The visibility as a gauge value.
+    """
+    return 1.0 if hal_pb2.SunSensorSample.FromString(payload).sun_visible else 0.0
+
+
+def _sun_off_axis_deg(axis: Vec3) -> Callable[[bytes], float]:
+    """Extractor: angle between a body axis and the MEASURED sun.
+
+    Args:
+        axis: The pointing axis to compare against (normalized here).
+
+    Returns:
+        Payload -> degrees off-sun; 0.0 in darkness (read it together
+        with the sun-visible gauge — dark means "no angle", not "aimed").
+    """
+    norm = math.sqrt(sum(v * v for v in axis))
+    ax, ay, az = axis[0] / norm, axis[1] / norm, axis[2] / norm
+
+    def off_axis(payload: bytes) -> float:
+        """Degrees between the configured axis and the measured sun.
+
+        Args:
+            payload: Serialized SunSensorSample.
+
+        Returns:
+            The angle, or 0.0 when the sun is not visible.
+        """
+        msg = hal_pb2.SunSensorSample.FromString(payload)
+        if not msg.sun_visible:
+            return 0.0
+        dot = ax * msg.sun_x + ay * msg.sun_y + az * msg.sun_z
+        return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+    return off_axis
+
+
+def _sun_point_axis(vehicle: VehicleSpec) -> Vec3 | None:
+    """The configured pointing axis, when this vehicle flies sun_point.
+
+    Args:
+        vehicle: Loaded vehicle composition.
+
+    Returns:
+        The axis, or None when no pointing law (no off-sun gauge then).
+    """
+    if vehicle.control.WhichOneof("strategy") != "sun_point":
+        return None
+    axis = vehicle.control.sun_point.point_axis
+    if len(axis) != 3 or not any(axis):
+        return None
+    return (axis[0], axis[1], axis[2])
+
+
 class _RwDisplayFeed:
     """The shim vizSupport expects: an object carrying ``rwOutMsgs``.
 
@@ -615,6 +675,27 @@ class BasiliskPlant:
                             SensorDisplaySink(session, sensor.topic, _mag_field_ut).latest,
                         )
                     )
+                elif sensor_kind == "basilisk_sun_sensor":
+                    self._gauge_display.append(
+                        (
+                            f"{sensor.name} sun",
+                            "lit",
+                            1.0,
+                            SensorDisplaySink(session, sensor.topic, _sun_visible).latest,
+                        )
+                    )
+                    point_axis = _sun_point_axis(vehicle)
+                    if point_axis is not None:
+                        self._gauge_display.append(
+                            (
+                                f"{sensor.name} off-sun",
+                                "deg",
+                                180.0,
+                                SensorDisplaySink(
+                                    session, sensor.topic, _sun_off_axis_deg(point_axis)
+                                ).latest,
+                            )
+                        )
             for entry in vehicle.actuators:
                 kind = which_impl(entry, "options", entry.name)
                 if not kind.endswith("reaction_wheel"):

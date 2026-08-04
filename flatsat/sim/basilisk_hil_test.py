@@ -250,3 +250,35 @@ def test_basilisk_plant_flies_the_orbit_and_reports_the_environment() -> None:
     )
     assert displacement > 1e3, "vehicle is not orbiting"
     assert not first.in_eclipse, "epoch point is sunward of the Earth at solar angle 0"
+
+
+def test_sun_gauge_extractors_read_the_css_sample() -> None:
+    """The Vizard sun gauges: visibility flag and off-axis angle."""
+    import math
+
+    from flatsat.msgs import hal_pb2
+    from flatsat.sim.basilisk_hil import _sun_off_axis_deg, _sun_visible
+
+    msg = hal_pb2.SunSensorSample()
+    msg.sun_x, msg.sun_y, msg.sun_z = 1.0, 0.0, 0.0
+    msg.sun_visible = True
+    lit = msg.SerializeToString()
+    assert _sun_visible(lit) == 1.0
+    # +z axis vs a +x sun: 90 degrees off.
+    assert _sun_off_axis_deg((0.0, 0.0, 1.0))(lit) == pytest.approx(90.0)
+    assert _sun_off_axis_deg((2.0, 0.0, 0.0))(lit) == pytest.approx(0.0)
+    dark = hal_pb2.SunSensorSample().SerializeToString()
+    assert _sun_visible(dark) == 0.0
+    assert _sun_off_axis_deg((0.0, 0.0, 1.0))(dark) == 0.0, "darkness has no angle"
+    assert math.isfinite(_sun_off_axis_deg((0.0, 0.0, 1.0))(lit))
+
+
+def test_sun_point_axis_read_from_the_vehicle() -> None:
+    """The off-sun gauge exists only when the vehicle flies sun_point."""
+    from flatsat.core.config import load_vehicle
+    from flatsat.sim.basilisk_hil import _sun_point_axis
+
+    vehicle = load_vehicle()  # flatsat_v1 flies sun_point with +z
+    assert _sun_point_axis(vehicle) == (0.0, 0.0, 1.0)
+    vehicle.control.rate_damping.SetInParent()  # switch the strategy oneof
+    assert _sun_point_axis(vehicle) is None
