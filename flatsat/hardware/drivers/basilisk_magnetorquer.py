@@ -88,21 +88,18 @@ class BasiliskMagnetorquerDriver(ActuatorDriver):
         spec, prov = load_magnetorquer_spec(options.device)
         return cls(name=name, model=MagnetorquerModel(spec), provenance=prov)
 
-    def apply(self, torque_n_m: float) -> int:
+    def apply(self, dipole_a_m2: float) -> int:
         """Run the device model, then feed the applied dipole to the sim.
 
-        The argument is the daemon's mounting projection of the body-frame
-        DIPOLE command (this driver declares ``command_kind = "dipole"``),
-        despite the contract parameter's torque name — the projection math
-        is identical, only the units differ.
-
         Args:
-            torque_n_m: Commanded dipole along the rod axis, A·m².
+            dipole_a_m2: Commanded dipole along the rod axis, after the
+                daemon's mounting projection of the body DipoleCommand
+                (this driver declares ``command_kind = "dipole"``).
 
         Returns:
             Validity flags from the shared magnetorquer model (RANGE).
         """
-        flags = self._model.apply(torque_n_m)
+        flags = self._model.apply(dipole_a_m2)
 
         feedback = sim_pb2.MagnetorquerDipole()
         feedback.rod = self._name

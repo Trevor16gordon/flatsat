@@ -231,9 +231,14 @@ class WheelState(_message.Message):
     speed_rad_s: _builtins.float
     """rotor speed about the spin axis"""
     momentum_n_m_s: _builtins.float
-    """stored angular momentum about the spin axis"""
+    """Stored ROTOR angular momentum about the spin axis — the REACTION to
+    what the wheel applies: +torque_n_m to the body DECREASES this.
+    Sign is load-bearing: the momentum-dump law and mission criteria
+    consume it, and the inverted convention once turned the dump into
+    positive feedback (wheels spun up exponentially).
+    """
     torque_n_m: _builtins.float
-    """torque actually being applied about the spin axis"""
+    """torque actually being applied TO THE BODY about the spin axis"""
     saturated: _builtins.bool
     """momentum at the envelope — torque authority degraded"""
     @_builtins.property

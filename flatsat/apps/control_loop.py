@@ -163,6 +163,13 @@ class ControlLoop:
         self.entry = entry
         self.strategy_name = which_impl(entry, "strategy", "control")
         self.objective_name = which_impl(entry, "objective", "control")
+        # Validate the composition BEFORE declaring any bus resources, so
+        # a refused loop leaves nothing behind to undeclare.
+        if type(controller).output_kind == "torque_and_dipole" and not entry.dipole_output_topic:
+            raise ValueError(
+                f"strategy {self.strategy_name!r} emits torque and dipole but the "
+                "control block names no dipole_output_topic"
+            )
         self.vehicle_name = vehicle_name
         self.config_checksum = config_checksum
         self._health = SamplePublisher(session, health_topic("adcs"), "adcs_loop")
@@ -186,11 +193,6 @@ class ControlLoop:
         self._latest_mag_recv_ns = 0
         # Optional dipole output: a strategy that emits torque AND dipole
         # (momentum_dump) publishes the dipole here.
-        if type(controller).output_kind == "torque_and_dipole" and not entry.dipole_output_topic:
-            raise ValueError(
-                f"strategy {self.strategy_name!r} emits torque and dipole but the "
-                "control block names no dipole_output_topic"
-            )
         self._dipole_pub = (
             session.declare_publisher(entry.dipole_output_topic)
             if entry.dipole_output_topic
@@ -205,7 +207,7 @@ class ControlLoop:
         ]
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._last_torque = (0.0, 0.0, 0.0)
+        self._last_command = (0.0, 0.0, 0.0)
         self.samples_received = 0
         self.scheduling = ""
         self.cpu_affinity = ""
@@ -320,11 +322,11 @@ class ControlLoop:
         header_validity = int(hal_pb2.VALIDITY_FLAG_STALE) if stale else 0
         kind = type(self._controller).output_kind
         if kind == "dipole":
-            self._last_torque = output.dipole_a_m2
+            self._last_command = output.dipole_a_m2
             self._publish_dipole(self._pub, output.dipole_a_m2, seq, header_validity)
             return stale, output.saturated
 
-        self._last_torque = output.torque_n_m
+        self._last_command = output.torque_n_m
         cmd = adcs_pb2.WheelTorqueCommand()
         cmd.torque_x_n_m, cmd.torque_y_n_m, cmd.torque_z_n_m = output.torque_n_m
         cmd.header.source = "adcs_loop"
@@ -362,7 +364,12 @@ class ControlLoop:
         publisher.put(cmd.SerializeToString())
 
     def print_status(self) -> None:
-        """Print a one-line live status: rates, input freshness, torque out."""
+        """Print a one-line live status: rates, input freshness, command out.
+
+        The command line is labeled in the strategy's own units — an
+        operator watching a magnetic vehicle must not read dipoles as
+        newton-meters.
+        """
         with self._lock:
             imu = self._latest
             age_ms = (time.monotonic_ns() - self._latest_recv_ns) / 1e6
@@ -372,10 +379,15 @@ class ControlLoop:
             return
         omega = (imu.gyro_x_rad_s, imu.gyro_y_rad_s, imu.gyro_z_rad_s)
         mag_mrad = 1000.0 * math.sqrt(sum(w * w for w in omega))
-        tx, ty, tz = self._last_torque
+        cx, cy, cz = self._last_command
+        label, units = (
+            ("dipole", "A·m²")
+            if type(self._controller).output_kind == "dipole"
+            else ("torque", "N·m")
+        )
         print(
             f"[adcs] |omega|={mag_mrad:7.2f} mrad/s  "
-            f"torque=({tx:+.2e},{ty:+.2e},{tz:+.2e}) N·m  "
+            f"{label}=({cx:+.2e},{cy:+.2e},{cz:+.2e}) {units}  "
             f"input age {age_ms:6.1f} ms  samples rx {rx}",
             flush=True,
         )
@@ -473,6 +485,9 @@ def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
     controller = get_controller_class(strategy).from_config(getattr(entry, strategy))
     guidance = get_guidance_class(objective).from_config(getattr(entry, objective))
     estimator = get_estimator_class(estimator_name).from_config(getattr(entry, estimator_name))
+    # Wheel-state inputs cost a subscription and lock traffic per wheel —
+    # only strategies that consume the momentum pay for it.
+    needs_momentum = type(controller).output_kind == "torque_and_dipole"
     return ControlLoop(
         session,
         entry,
@@ -481,7 +496,7 @@ def build_loop(session: zenoh.Session, vehicle: VehicleSpec) -> ControlLoop:
         estimator,
         vehicle_name=vehicle.name,
         config_checksum=vehicle.provenance.checksum,
-        wheels=wheel_state_inputs(vehicle),
+        wheels=wheel_state_inputs(vehicle) if needs_momentum else None,
     )
 
 

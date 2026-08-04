@@ -59,6 +59,12 @@ class DipoleCommand(_message.Message):
     """Magnetorquer dipole command, body frame, A·m². Deliberately NOT a
     torque: the achievable torque is m x B and is decided by the plant's
     local field, never by the control law's request.
+
+    Field numbers 5-7 on purpose, disjoint from WheelTorqueCommand's 2-4:
+    a mis-wired topic then decodes as zeros (an absent field) instead of
+    a 25 A·m² dipole masquerading as a 25 N·m torque. The vehicle loader
+    also cross-checks the wiring, but the wire format should not be one
+    copy-paste away from a plausible lie.
     """
 
     DESCRIPTOR: _descriptor.Descriptor

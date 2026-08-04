@@ -60,6 +60,17 @@ CONTROLLERS: dict[str, str] = {
     "momentum_dump": ("flatsat.control.attitude.controllers.momentum_dump:MomentumDumpController"),
 }
 
+# What each strategy EMITS — mirrored as strings so the config loader can
+# cross-check command wiring without importing any controller (core
+# imports no domain at runtime). A registry test pins each entry to the
+# class's own output_kind, so the mirror cannot drift.
+CONTROLLER_OUTPUT_KINDS: dict[str, str] = {
+    "rate_damping": "torque",
+    "pid": "torque",
+    "bdot": "dipole",
+    "momentum_dump": "torque_and_dipole",
+}
+
 GUIDANCE: dict[str, str] = {
     "constant_rate": "flatsat.control.attitude.guidance:ConstantRateReference",
 }

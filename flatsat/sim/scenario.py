@@ -393,17 +393,21 @@ class WheelMomentumMonitor:
         with self._lock:
             self._momentum[topic] = msg.momentum_n_m_s
 
-    def body_momentum_magnitude(self) -> float:
+    def body_momentum_magnitude(self) -> float | None:
         """|sum over wheels of axis * momentum|.
 
         Returns:
-            The body-frame wheel momentum magnitude, N·m·s; wheels that
-            have not reported contribute zero.
+            The body-frame wheel momentum magnitude, N·m·s — or None
+            unless EVERY wheel has reported. A silent wheel summed as
+            zero would let a dead state chain pass a momentum criterion
+            vacuously; unknown must judge as unknown, not as success.
         """
         total = [0.0, 0.0, 0.0]
         with self._lock:
             for topic, axis in self._axes.items():
-                momentum = self._momentum.get(topic, 0.0)
+                momentum = self._momentum.get(topic)
+                if momentum is None:
+                    return None
                 for index in range(3):
                     total[index] += axis[index] * momentum
         return math.sqrt(sum(value * value for value in total))
@@ -605,17 +609,22 @@ class ScenarioRunner:
             strategy = which_impl(control, "strategy", "control")
             objective = which_impl(control, "objective", "control")
             estimator = which_impl(control, "estimator", "control")
+            controller = get_controller_class(strategy).from_config(getattr(control, strategy))
+            needs_momentum = type(controller).output_kind == "torque_and_dipole"
             loop = ControlLoop(
                 session,
                 control,
-                get_controller_class(strategy).from_config(getattr(control, strategy)),
+                controller,
                 get_guidance_class(objective).from_config(getattr(control, objective)),
                 get_estimator_class(estimator).from_config(getattr(control, estimator)),
                 vehicle_name=vehicle.name,
                 config_checksum=vehicle.provenance.checksum,
-                wheels=wheel_state_inputs(vehicle),
+                wheels=wheel_state_inputs(vehicle) if needs_momentum else None,
             )
-            momentum_monitor = WheelMomentumMonitor(session, wheel_state_inputs(vehicle))
+            if any(
+                phase.success.max_wheel_momentum_n_m_s is not None for phase in self.mission.phases
+            ):
+                momentum_monitor = WheelMomentumMonitor(session, wheel_state_inputs(vehicle))
 
             clients = [
                 ModeClient(session, app, base_topic=SCENARIO_MODE_BASE) for app in mode_entry.apps
@@ -768,14 +777,20 @@ class ScenarioRunner:
             )
         if criteria.max_wheel_momentum_n_m_s is not None:
             momentum = (
-                momentum_monitor.body_momentum_magnitude() if momentum_monitor is not None else 0.0
+                momentum_monitor.body_momentum_magnitude() if momentum_monitor is not None else None
             )
-            ok = momentum <= criteria.max_wheel_momentum_n_m_s
-            passed = passed and ok
-            details.append(
-                f"{'ok' if ok else 'FAIL'}: |wheel momentum| {momentum:.5f} N·m·s "
-                f"(bound {criteria.max_wheel_momentum_n_m_s:g})"
-            )
+            if momentum is None:
+                # Unknown is a FAILURE, not a zero: a wheel that never
+                # published state must not pass a momentum bound.
+                passed = False
+                details.append("FAIL: |wheel momentum| unknown (not every wheel reported state)")
+            else:
+                ok = momentum <= criteria.max_wheel_momentum_n_m_s
+                passed = passed and ok
+                details.append(
+                    f"{'ok' if ok else 'FAIL'}: |wheel momentum| {momentum:.5f} N·m·s "
+                    f"(bound {criteria.max_wheel_momentum_n_m_s:g})"
+                )
         if criteria.require_mode is not None:
             state = manager.state()
             actual = mode_pb2.SystemMode.Name(state.mode).removeprefix("SYSTEM_MODE_")

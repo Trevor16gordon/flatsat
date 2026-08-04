@@ -48,21 +48,26 @@ DEFAULT_MAX_POINTS = 2000
 
 # Ordered (glob pattern, message type): FIRST match wins, so specific
 # patterns sit above the generic suffix they would otherwise fall into.
-# Patterns match the full topic; instance names (imu0, mag1) ride the
-# wildcards.
+# Matching is SEGMENT-AWARE — a "*" matches exactly one path element,
+# never across "/" (plain fnmatch would let "*/mag*/sample" swallow
+# "payload/magnetic_boom/imu/sample" into the magnetometer decoder). A
+# single leading "*" segment means "any prefix"; instance names (imu0,
+# mag1, mtq_x) ride the in-segment wildcards, which is a naming
+# convention this table now depends on: magnetometers are mag*,
+# magnetorquers are mtq*.
 TOPIC_PATTERNS: list[tuple[str, type[Message]]] = [
     # Physics truth — both the bridge's default key and the scenario
     # vehicles' test-scoped ones. Must precede "*/state" and the truth
     # suffix must precede nothing: TruthState carries the orbit.
     ("sim/truth/state", sim_pb2.TruthState),
     ("*/sim/truth", sim_pb2.TruthState),
-    # Magnetometer before the generic sample rule: MagnetometerSample
-    # REUSES ImuSample's field numbers, so the fallthrough would decode
-    # into convincingly wrong gyro series.
+    # Specific sensors before the generic sample rule: MagnetometerSample
+    # and TemperatureSample both REUSE ImuSample's field 2, so the
+    # fallthrough decodes a field or a die temperature into a
+    # convincingly wrong gyro series (seen in a real flight archive:
+    # thermal_tj offering "gyro_x_rad_s" at 50 rad/s — the die in °C).
     ("*/mag*/sample", hal_pb2.MagnetometerSample),
-    # ImuSample is the 100 Hz sample that matters for plots; a
-    # TemperatureSample decoded as one yields no numeric leaves rather
-    # than wrong ones, because their field numbers do not overlap.
+    ("*/thermal*/sample", hal_pb2.TemperatureSample),
     ("*/sample", hal_pb2.ImuSample),
     # Magnetorquer rod state before the generic wheel-state rule.
     ("*/mtq*/state", hal_pb2.MagnetorquerState),
@@ -82,6 +87,33 @@ TOPIC_PATTERNS: list[tuple[str, type[Message]]] = [
 ]
 
 
+def _topic_matches(topic: str, pattern: str) -> bool:
+    """Segment-aware glob: ``*`` never crosses ``/``.
+
+    A single leading ``*`` segment matches any (possibly empty) prefix;
+    every other segment must line up one-to-one, with in-segment
+    wildcards resolved by fnmatch.
+
+    Args:
+        topic: Concrete bus key.
+        pattern: Pattern from :data:`TOPIC_PATTERNS`.
+
+    Returns:
+        True when the topic matches.
+    """
+    parts = pattern.split("/")
+    segments = topic.split("/")
+    if parts and parts[0] == "*":
+        tail = parts[1:]
+        if len(segments) < len(tail):
+            return False
+        segments = segments[len(segments) - len(tail) :]
+        parts = tail
+    if len(parts) != len(segments):
+        return False
+    return all(fnmatchcase(seg, part) for seg, part in zip(segments, parts, strict=True))
+
+
 def _message_for(topic: str) -> type[Message]:
     """Pick the message type to decode a topic with.
 
@@ -93,7 +125,7 @@ def _message_for(topic: str) -> type[Message]:
         which still yields the common header of any bus message.
     """
     for pattern, message_type in TOPIC_PATTERNS:
-        if fnmatchcase(topic, pattern):
+        if _topic_matches(topic, pattern):
             return message_type
     return hal_pb2.HeaderEnvelope
 

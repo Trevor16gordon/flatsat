@@ -76,8 +76,13 @@ message TemperatureSample {
 message WheelState {
   Header header = 1;
   double speed_rad_s = 2;      // rotor speed about the spin axis
-  double momentum_n_m_s = 3;   // stored angular momentum about the spin axis
-  double torque_n_m = 4;       // torque actually being applied about the spin axis
+  // Stored ROTOR angular momentum about the spin axis — the REACTION to
+  // what the wheel applies: +torque_n_m to the body DECREASES this.
+  // Sign is load-bearing: the momentum-dump law and mission criteria
+  // consume it, and the inverted convention once turned the dump into
+  // positive feedback (wheels spun up exponentially).
+  double momentum_n_m_s = 3;
+  double torque_n_m = 4;       // torque actually being applied TO THE BODY about the spin axis
   bool saturated = 5;          // momentum at the envelope — torque authority degraded
 }
 

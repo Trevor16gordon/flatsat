@@ -71,3 +71,210 @@ def test_loop_health_carries_provenance_and_counters() -> None:
     assert back.saturated_cycles == 3
     assert back.wakeup_lateness_us.max == pytest.approx(30.0)
     assert back.exec_time_us.count == 3
+
+
+# ------------------------------------------------ magnetic / dual output --
+
+
+def _dump_entry() -> vehicle_pb2.ControlConfig:
+    return vehicle_pb2.ControlConfig(
+        rate_hz=50.0,
+        input_topic="test/dual/in",
+        mag_input_topic="test/dual/mag",
+        output_topic="test/dual/torque",
+        dipole_output_topic="test/dual/dipole",
+        stale_after_s=0.5,
+        momentum_dump=control_options_pb2.MomentumDumpOptions(
+            kp=0.05, kd=0.005, max_torque_n_m=0.05, dump_gain=0.15, max_dipole_a_m2=25.0
+        ),
+        constant_rate=control_options_pb2.ConstantRateOptions(),
+        passthrough=control_options_pb2.PassthroughOptions(),
+    )
+
+
+def _build_dump_loop(
+    session: zenoh.Session,
+    entry: vehicle_pb2.ControlConfig,
+    wheels: list[tuple[str, tuple[float, float, float]]] | None,
+) -> ControlLoop:
+    return ControlLoop(
+        session,
+        entry,
+        get_controller_class("momentum_dump").from_config(entry.momentum_dump),
+        get_guidance_class("constant_rate").from_config(entry.constant_rate),
+        get_estimator_class("passthrough").from_config(entry.passthrough),
+        wheels=wheels,
+    )
+
+
+def test_dual_output_strategy_refuses_a_missing_dipole_topic() -> None:
+    """A dump law whose dipole silently went nowhere must not start."""
+    entry = _dump_entry()
+    entry.dipole_output_topic = ""
+    session = zenoh.open(zenoh.Config())
+    try:
+        with pytest.raises(ValueError, match="dipole_output_topic"):
+            _build_dump_loop(session, entry, wheels=None)
+    finally:
+        session.close()
+
+
+def test_dual_output_publishes_torque_and_dipole() -> None:
+    """One step of a momentum_dump loop puts BOTH commands on the bus."""
+    import time as time_module
+
+    from flatsat.msgs import adcs_pb2, hal_pb2
+
+    entry = _dump_entry()
+    wheels: list[tuple[str, tuple[float, float, float]]] = [
+        ("test/dual/wheel_x/state", (1.0, 0.0, 0.0)),
+        ("test/dual/wheel_z/state", (0.0, 0.0, 1.0)),
+    ]
+    observer = zenoh.open(zenoh.Config())
+    loop_session = zenoh.open(zenoh.Config())
+    torques: list[adcs_pb2.WheelTorqueCommand] = []
+    dipoles: list[adcs_pb2.DipoleCommand] = []
+    subs = [
+        observer.declare_subscriber(
+            entry.output_topic,
+            lambda s: torques.append(
+                adcs_pb2.WheelTorqueCommand.FromString(bytes(s.payload.to_bytes()))
+            ),
+        ),
+        observer.declare_subscriber(
+            entry.dipole_output_topic,
+            lambda s: dipoles.append(
+                adcs_pb2.DipoleCommand.FromString(bytes(s.payload.to_bytes()))
+            ),
+        ),
+    ]
+    loop = _build_dump_loop(loop_session, entry, wheels=wheels)
+    time_module.sleep(0.5)  # discovery
+    try:
+        # Inject fresh inputs directly: this test pins the STEP, not the
+        # subscriber plumbing (the daemons' side is mission-tested).
+        now = time_module.monotonic_ns()
+        imu = hal_pb2.ImuSample()
+        imu.gyro_x_rad_s = 0.1
+        mag = hal_pb2.MagnetometerSample()
+        mag.mag_y_t = 2.6e-5
+        deadline = time_module.monotonic() + 5.0
+        seq = 0
+        # Step repeatedly: the observer session may still be discovering
+        # the loop's publishers when the first commands go out.
+        while (not torques or not dipoles) and time_module.monotonic() < deadline:
+            now = time_module.monotonic_ns()
+            with loop._lock:  # noqa: SLF001 — white-box injection
+                loop._latest = imu  # noqa: SLF001
+                loop._latest_recv_ns = now  # noqa: SLF001
+                loop._latest_mag = mag  # noqa: SLF001
+                loop._latest_mag_recv_ns = now  # noqa: SLF001
+                loop._wheel_momentum["test/dual/wheel_x/state"] = (0.004, now)  # noqa: SLF001
+                loop._wheel_momentum["test/dual/wheel_z/state"] = (0.002, now)  # noqa: SLF001
+            seq += 1
+            loop._step(seq, 0.0)  # noqa: SLF001
+            time_module.sleep(0.05)
+    finally:
+        loop.close()
+        for sub in subs:
+            sub.undeclare()
+        loop_session.close()
+        observer.close()
+    assert torques, "torque command never published"
+    assert dipoles, "dipole command never published"
+    assert torques[0].torque_x_n_m < 0.0, "damping torque must oppose the spin"
+    # h=(0.004, 0, 0.002), B along y: m = k (h x B)/|B|^2 has -x and +z
+    # components... h x B = (hy*bz-hz*by, hz*bx-hx*bz, hx*by-hy*bx)
+    # = (-hz*By, 0, hx*By) -> m = k*(-hz, 0, hx)/By.
+    assert dipoles[0].dipole_x_a_m2 < 0.0
+    assert dipoles[0].dipole_z_a_m2 > 0.0
+
+
+def test_partial_wheel_silence_blanks_the_momentum() -> None:
+    """One silent wheel means NO momentum estimate, never a partial sum."""
+    import time as time_module
+
+    entry = _dump_entry()
+    wheels: list[tuple[str, tuple[float, float, float]]] = [
+        ("test/blank/wheel_x/state", (1.0, 0.0, 0.0)),
+        ("test/blank/wheel_y/state", (0.0, 1.0, 0.0)),
+    ]
+    session = zenoh.open(zenoh.Config())
+    loop = _build_dump_loop(session, entry, wheels=wheels)
+    try:
+        now = time_module.monotonic_ns()
+        with loop._lock:  # noqa: SLF001
+            loop._wheel_momentum["test/blank/wheel_x/state"] = (0.004, now)  # noqa: SLF001
+            assert loop._wheel_momentum_body() is None  # noqa: SLF001
+            loop._wheel_momentum["test/blank/wheel_y/state"] = (0.002, now)  # noqa: SLF001
+            assert loop._wheel_momentum_body() == pytest.approx((0.004, 0.002, 0.0))  # noqa: SLF001
+            # Stale is silence too: age one wheel beyond the threshold.
+            old = now - int(2e9)
+            loop._wheel_momentum["test/blank/wheel_y/state"] = (0.002, old)  # noqa: SLF001
+            assert loop._wheel_momentum_body() is None  # noqa: SLF001
+    finally:
+        loop.close()
+        session.close()
+
+
+def test_flagged_mag_sample_is_not_fresh() -> None:
+    """A validity-flagged field must reach the strategy as not-fresh."""
+    import time as time_module
+
+    from flatsat.msgs import adcs_pb2, hal_pb2
+
+    entry = vehicle_pb2.ControlConfig(
+        rate_hz=50.0,
+        input_topic="test/maggate/in",
+        mag_input_topic="test/maggate/mag",
+        output_topic="test/maggate/out",
+        stale_after_s=0.5,
+        bdot=control_options_pb2.BdotOptions(gain=1.0e7, max_dipole_a_m2=25.0, filter_tau_s=0.0),
+        constant_rate=control_options_pb2.ConstantRateOptions(),
+        passthrough=control_options_pb2.PassthroughOptions(),
+    )
+    observer = zenoh.open(zenoh.Config())
+    loop_session = zenoh.open(zenoh.Config())
+    dipoles: list[adcs_pb2.DipoleCommand] = []
+    sub = observer.declare_subscriber(
+        entry.output_topic,
+        lambda s: dipoles.append(adcs_pb2.DipoleCommand.FromString(bytes(s.payload.to_bytes()))),
+    )
+    loop = ControlLoop(
+        loop_session,
+        entry,
+        get_controller_class("bdot").from_config(entry.bdot),
+        get_guidance_class("constant_rate").from_config(entry.constant_rate),
+        get_estimator_class("passthrough").from_config(entry.passthrough),
+    )
+    time_module.sleep(0.5)
+    try:
+        imu = hal_pb2.ImuSample()
+        deadline = time_module.monotonic() + 5.0
+        seq = 0
+        # Step repeatedly with a CHANGING flagged field: a fresh-gated
+        # bdot stays quiet; without the gate the swinging field would
+        # command a huge dipole. Repetition also rides out discovery.
+        while len(dipoles) < 2 and time_module.monotonic() < deadline:
+            flagged = hal_pb2.MagnetometerSample()
+            flagged.mag_x_t = 1.0e-5 if seq % 2 == 0 else 5.0e-5
+            flagged.header.validity = int(hal_pb2.VALIDITY_FLAG_RANGE)
+            now = time_module.monotonic_ns()
+            with loop._lock:  # noqa: SLF001
+                loop._latest = imu  # noqa: SLF001
+                loop._latest_recv_ns = now  # noqa: SLF001
+                loop._latest_mag = flagged  # noqa: SLF001
+                loop._latest_mag_recv_ns = now  # noqa: SLF001
+            seq += 1
+            loop._step(seq, seq * 0.02)  # noqa: SLF001
+            time_module.sleep(0.05)
+    finally:
+        loop.close()
+        sub.undeclare()
+        loop_session.close()
+        observer.close()
+    assert len(dipoles) >= 2, "commands never published"
+    for cmd in dipoles:
+        assert (cmd.dipole_x_a_m2, cmd.dipole_y_a_m2, cmd.dipole_z_a_m2) == (0.0, 0.0, 0.0), (
+            "a flagged field must not be differentiated into a dipole"
+        )

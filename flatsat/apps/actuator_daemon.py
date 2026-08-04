@@ -14,10 +14,11 @@ torque spun the simulated vehicle back up):
   * **Stale-command zeroing.** If no fresh body-frame command has arrived
     within ``stale_zero_s``, the daemon applies ZERO. The quiet state is
     the default; only a live controller makes an actuator interesting.
-  * **Mounting projection.** The controller publishes body-frame torque;
-    the daemon projects it through this device's own mounting geometry
-    before the driver sees it. No central mixer until joint allocation is
-    actually needed.
+  * **Mounting projection.** The controller publishes a body-frame
+    command vector (torque for wheels, dipole for magnetorquers — the
+    driver's ``command_kind`` picks the parser); the daemon projects it
+    through this device's own mounting geometry before the driver sees
+    it. No central mixer until joint allocation is actually needed.
 
 Cadence uses the absolute-deadline pattern (the next wake time advances by
 exactly one period), so scheduling lateness never accumulates into drift.
@@ -68,7 +69,7 @@ class ActuatorDaemon:
         self._health = SamplePublisher(session, health_topic(entry.name), entry.name)
         self._stale_zero_ns = int(entry.stale_zero_s * 1e9)
         self._lock = threading.Lock()
-        self._torque_body = (0.0, 0.0, 0.0)
+        self._command_body = (0.0, 0.0, 0.0)
         self._recv_ns = 0
         self.commands_received = 0
         self._stop = threading.Event()
@@ -97,11 +98,11 @@ class ActuatorDaemon:
             torque = adcs_pb2.WheelTorqueCommand.FromString(payload)
             command = (torque.torque_x_n_m, torque.torque_y_n_m, torque.torque_z_n_m)
         with self._lock:
-            self._torque_body = command
+            self._command_body = command
             self._recv_ns = time.monotonic_ns()
             self.commands_received += 1
 
-    def commanded_axis_torque(self) -> tuple[float, bool]:
+    def commanded_axis_effort(self) -> tuple[float, bool]:
         """Resolve what the device should do RIGHT NOW.
 
         Returns:
@@ -111,16 +112,16 @@ class ActuatorDaemon:
             flying a dead controller's last order.
         """
         with self._lock:
-            torque_body = self._torque_body
+            command_body = self._command_body
             age_ns = time.monotonic_ns() - self._recv_ns
         if self._recv_ns == 0 or age_ns > self._stale_zero_ns:
             return 0.0, True
-        return project_body_torque(self.entry.mounting, torque_body), False
+        return project_body_torque(self.entry.mounting, command_body), False
 
     def apply_once(self) -> None:
         """Run one apply-and-publish cycle."""
-        torque, stale_zeroed = self.commanded_axis_torque()
-        apply_flags = self._driver.apply(torque)
+        effort, stale_zeroed = self.commanded_axis_effort()
+        apply_flags = self._driver.apply(effort)
         state_msg, state_flags = self._driver.state()
         flags = apply_flags | state_flags
         self._state_pub.publish(state_msg, validity=flags)

@@ -315,9 +315,50 @@ def load_vehicle(path: Path | str | None = None) -> VehicleSpec:
     which_impl(cfg.control, "strategy", "control")
     if cfg.HasField("body") and len(cfg.body.inertia_kg_m2) != 9:
         raise ValueError(f"{target}: body inertia_kg_m2 must have 9 values (3x3 row-major)")
+    _check_command_wiring(cfg, target)
     _fill_defaults(cfg)
 
     return VehicleSpec(config=cfg, provenance=prov)
+
+
+def _check_command_wiring(cfg: vehicle_pb2.VehicleConfig, source: Path) -> None:
+    """Fail loudly when a control output feeds actuators of the wrong kind.
+
+    Torque and dipole commands are different messages with disjoint field
+    numbers, so a mis-wired topic decodes as zeros rather than lies — but
+    zeros are still a silently dead actuator. The wiring is checkable at
+    load time from names alone: the strategy's output kind comes from the
+    registry's string table (no controller import), the actuator's from
+    its driver oneof.
+
+    Args:
+        cfg: Parsed vehicle config (oneofs already validated as filled).
+        source: The file, for the error message.
+
+    Raises:
+        ValueError: If a control output topic is consumed by an actuator
+            that speaks the other command kind.
+    """
+    from flatsat.core.registry import CONTROLLER_OUTPUT_KINDS
+
+    strategy = cfg.control.WhichOneof("strategy")
+    strategy_kind = CONTROLLER_OUTPUT_KINDS.get(str(strategy), "torque")
+    outputs: dict[str, str] = {}
+    if cfg.control.output_topic:
+        outputs[cfg.control.output_topic] = "dipole" if strategy_kind == "dipole" else "torque"
+    if cfg.control.dipole_output_topic:
+        outputs[cfg.control.dipole_output_topic] = "dipole"
+    for actuator in cfg.actuators:
+        driver = str(actuator.WhichOneof("options"))
+        actuator_kind = "dipole" if driver.endswith("magnetorquer") else "torque"
+        expected = outputs.get(actuator.command_topic)
+        if expected is not None and expected != actuator_kind:
+            raise ValueError(
+                f"{source}: actuator {actuator.name!r} ({driver}) consumes "
+                f"{actuator_kind} commands but its command_topic "
+                f"{actuator.command_topic!r} carries {expected} commands from the "
+                f"{strategy!r} strategy"
+            )
 
 
 # ---------------------------------------------------------------- devices --

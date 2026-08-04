@@ -148,7 +148,8 @@ class AttitudeController(ABC):
             dt_s: Nominal time since the previous step, in seconds.
 
         Returns:
-            The commanded torque and whether limits clipped it.
+            The commanded effort — torque, dipole, or both, per the
+            strategy's ``output_kind`` — and whether limits clipped it.
         """
 
     def reset(self) -> None:

@@ -1,8 +1,9 @@
 """Local plant: rigid-body physics for scenario runs, no Basilisk needed.
 
 The flight software only ever sees the sim CONTRACT — TruthState in,
-per-wheel applied torque out — so a small Euler-integrated rigid body
-can stand behind the same topics the Basilisk bridge serves. Scenario
+per-wheel applied torque and per-rod applied dipole out — so a small
+Euler-integrated rigid body can stand behind the same topics the
+Basilisk bridge serves. Scenario
 tests get the entire flight chain, end to end, in one process on the
 flight computer or in CI; Basilisk remains the higher-fidelity
 universe-fake on the ground machine.

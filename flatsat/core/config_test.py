@@ -113,3 +113,37 @@ def test_wheel_spec_loads_with_provenance() -> None:
     assert spec.max_momentum_n_m_s > 0
     assert spec.rotor_inertia_kg_m2 > 0
     assert len(prov.checksum) == 12
+
+
+def test_command_wiring_mismatch_fails_at_load(tmp_path: Path) -> None:
+    """A dipole strategy wired into a wheel's command topic must not load.
+
+    The two command messages have disjoint field numbers, so the
+    misconfiguration would fly as silent zeros — the loader is the place
+    it dies loudly instead.
+    """
+    bad = tmp_path / "bad_wiring.txtpb"
+    bad.write_text(
+        """
+name: "bad-wiring"
+body { mass_kg: 2.0 inertia_kg_m2: [0.05, 0, 0, 0, 0.05, 0, 0, 0, 0.05] }
+actuators {
+  name: "w0"
+  command_topic: "test/bad/adcs/out"
+  state_topic: "test/bad/hal/w0/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0, 0, 0] axis: [1, 0, 0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+control {
+  rate_hz: 50
+  input_topic: "test/bad/hal/imu/sample"
+  output_topic: "test/bad/adcs/out"
+  stale_after_s: 0.1
+  bdot { gain: 1e7 }
+}
+"""
+    )
+    with pytest.raises(ValueError, match="carries dipole commands"):
+        load_vehicle(bad)

@@ -138,3 +138,63 @@ def test_fault_blackout_mission_succeeds(tmp_path: Path) -> None:
     mission = load_mission(MISSIONS / "fault_blackout_test.txtpb")
     result = ScenarioRunner(mission, tmp_path).run()
     assert result.passed, result.describe()
+
+
+def test_momentum_monitor_reports_unknown_until_every_wheel_speaks() -> None:
+    """A silent wheel is UNKNOWN momentum, never zero.
+
+    Summing missing wheels as zero would let a dead state chain pass a
+    momentum criterion vacuously — the judge must refuse to judge.
+    """
+    import time
+
+    import zenoh
+
+    from flatsat.msgs import hal_pb2
+    from flatsat.sim.scenario import WheelMomentumMonitor
+
+    session = zenoh.open(zenoh.Config())
+    monitor = WheelMomentumMonitor(
+        session,
+        [("test/monitor/wx/state", (1.0, 0.0, 0.0)), ("test/monitor/wy/state", (0.0, 1.0, 0.0))],
+    )
+    pub_x = session.declare_publisher("test/monitor/wx/state")
+    pub_y = session.declare_publisher("test/monitor/wy/state")
+    try:
+        time.sleep(0.5)  # discovery
+        assert monitor.body_momentum_magnitude() is None, "no wheels reported yet"
+
+        state = hal_pb2.WheelState()
+        state.momentum_n_m_s = 0.003
+        pub_x.put(state.SerializeToString())
+        deadline = time.monotonic() + 5.0
+        while monitor.body_momentum_magnitude() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+            if monitor._momentum:  # noqa: SLF001 — one wheel in, still must be None
+                break
+        assert monitor.body_momentum_magnitude() is None, "one silent wheel must blank the sum"
+
+        state.momentum_n_m_s = 0.004
+        pub_y.put(state.SerializeToString())
+        deadline = time.monotonic() + 5.0
+        while monitor.body_momentum_magnitude() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        magnitude = monitor.body_momentum_magnitude()
+        assert magnitude == pytest.approx((0.003**2 + 0.004**2) ** 0.5, rel=1e-9)
+    finally:
+        monitor.close()
+        session.close()
+
+
+@pytest.mark.verifies("FSW-ADCS-012", "FSW-SIM-003")
+def test_momentum_dump_mission_succeeds_under_basilisk(tmp_path: Path) -> None:
+    """The combined system against the OTHER universe.
+
+    The plants share the m x B function but wire it independently; this
+    is the only automated exercise of BasiliskPlant's rod-torque path.
+    Skips wherever Basilisk is not installed (CI, the flight computer).
+    """
+    pytest.importorskip("Basilisk")
+    mission = load_mission(MISSIONS / "dump_detumble_sso.txtpb")
+    result = ScenarioRunner(mission, tmp_path, plant_kind="basilisk").run()
+    assert result.passed, result.describe()

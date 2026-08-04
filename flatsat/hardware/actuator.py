@@ -87,12 +87,15 @@ class ActuatorDriver(ABC):
         """
 
     @abstractmethod
-    def apply(self, torque_n_m: float) -> int:
+    def apply(self, effort: float) -> int:
         """Apply one effort command about the device's own axis.
 
         Args:
-            torque_n_m: Commanded torque about the device axis, after the
-                daemon's mounting projection.
+            effort: The command after the daemon's mounting projection,
+                in THIS driver's command units — a wheel takes torque
+                (N·m about its spin axis), a magnetorquer takes dipole
+                (A·m² along its rod). Implementations name the parameter
+                in their own units.
 
         Returns:
             Validity flags describing the application (0 == applied as

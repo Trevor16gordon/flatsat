@@ -83,3 +83,17 @@ def test_every_registered_modem_resolves(name: str) -> None:
 @pytest.mark.parametrize("name", sorted(FRAMERS))
 def test_every_registered_framer_resolves(name: str) -> None:
     assert callable(get_framer_class(name).from_config)
+
+
+def test_output_kind_mirror_matches_every_controller() -> None:
+    """The config loader's string table cannot drift from the classes.
+
+    CONTROLLER_OUTPUT_KINDS exists so config.py can cross-check command
+    wiring without importing controllers; this test is the tether that
+    keeps the mirror honest.
+    """
+    from flatsat.core.registry import CONTROLLER_OUTPUT_KINDS, CONTROLLERS, get_controller_class
+
+    assert set(CONTROLLER_OUTPUT_KINDS) == set(CONTROLLERS)
+    for name, declared in CONTROLLER_OUTPUT_KINDS.items():
+        assert get_controller_class(name).output_kind == declared, name

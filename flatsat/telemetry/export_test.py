@@ -197,6 +197,9 @@ def test_topic_patterns_resolve_every_kind_distinctly() -> None:
         "hal/mag0/sample": hal_pb2.MagnetometerSample,
         "test/bdt/hal/mag/sample": hal_pb2.MagnetometerSample,
         "hal/imu0/sample": hal_pb2.ImuSample,
+        # TemperatureSample shares ImuSample's field 2: unrouted, the die
+        # temperature plots as a 50 rad/s gyro rate.
+        "hal/thermal_tj/sample": hal_pb2.TemperatureSample,
         "hal/mtq_x/state": hal_pb2.MagnetorquerState,
         "hal/wheel0/state": hal_pb2.WheelState,
         "sim/wheel/wheel0/torque": sim_pb2.WheelAxisTorque,
@@ -205,6 +208,14 @@ def test_topic_patterns_resolve_every_kind_distinctly() -> None:
         "sim/mtq/mtq_x/dipole": sim_pb2.MagnetorquerDipole,
         "adcs/dipole": adcs_pb2.DipoleCommand,
         "health/imu0": hal_pb2.HeaderEnvelope,
+        # Adversarial names: matching is segment-aware, so a "mag"
+        # somewhere upstream must not capture a downstream IMU, and an
+        # unknown mid-path element must not let "*" span segments.
+        "payload/magnetic_boom/imu/sample": hal_pb2.ImuSample,
+        # Not a truth topic (no sim/truth tail): honest envelope-only,
+        # never a wildcard spanning path segments into a wrong decode.
+        "sim/magnet/extra/truth": hal_pb2.HeaderEnvelope,
+        "a/b/c/hal/mag3/sample": hal_pb2.MagnetometerSample,
     }
     for topic, expected in cases.items():
         assert _message_for(topic) is expected, f"{topic} decoded as the wrong type"
