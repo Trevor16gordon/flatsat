@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from flatsat import vehicle_pb2
 from flatsat.control.attitude.controller import AttitudeState
 from flatsat.core.config import (
     VehicleSpec,
@@ -145,16 +146,16 @@ def run_fast_loop(
             mag_spec, _ = (
                 load_magnetometer_spec(spec_path) if spec_path else load_magnetometer_spec()
             )
-    wheels: list[tuple[Vec3, WheelModel, object]] = []
-    rods: list[tuple[Vec3, MagnetorquerModel, object]] = []
+    wheels: list[tuple[Vec3, WheelModel, vehicle_pb2.MountingConfig]] = []
+    rods: list[tuple[Vec3, MagnetorquerModel, vehicle_pb2.MountingConfig]] = []
     for entry in vehicle.actuators:
-        kind = which_impl(entry, "options", entry.name)
+        actuator_kind = which_impl(entry, "options", entry.name)
         axis = (entry.mounting.axis[0], entry.mounting.axis[1], entry.mounting.axis[2])
-        if kind.endswith("reaction_wheel"):
-            spec, _prov = load_wheel_spec(getattr(entry, kind).device)
+        if actuator_kind.endswith("reaction_wheel"):
+            spec, _prov = load_wheel_spec(getattr(entry, actuator_kind).device)
             wheels.append((axis, WheelModel(spec), entry.mounting))
-        elif kind.endswith("magnetorquer"):
-            spec_m, _prov = load_magnetorquer_spec(getattr(entry, kind).device)
+        elif actuator_kind.endswith("magnetorquer"):
+            spec_m, _prov = load_magnetorquer_spec(getattr(entry, actuator_kind).device)
             rods.append((axis, MagnetorquerModel(spec_m), entry.mounting))
 
     _, inertia, _ = _body_inertia(vehicle)
@@ -262,7 +263,7 @@ def _with_mag(state: AttitudeState, measured: Vec3) -> AttitudeState:
 
 
 def _with_wheel_momentum(
-    state: AttitudeState, wheels: list[tuple[Vec3, WheelModel, object]]
+    state: AttitudeState, wheels: list[tuple[Vec3, WheelModel, vehicle_pb2.MountingConfig]]
 ) -> AttitudeState:
     """Attach the body-frame wheel momentum, as the control loop would.
 
@@ -282,7 +283,9 @@ def _with_wheel_momentum(
     return replace(state, wheel_momentum_n_m_s=(total[0], total[1], total[2]))
 
 
-def _wheel_momentum_mag(wheels: list[tuple[Vec3, WheelModel, object]]) -> float:
+def _wheel_momentum_mag(
+    wheels: list[tuple[Vec3, WheelModel, vehicle_pb2.MountingConfig]],
+) -> float:
     """|body-frame wheel momentum| across all wheels.
 
     Args:
