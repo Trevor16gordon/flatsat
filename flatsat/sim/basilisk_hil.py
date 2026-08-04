@@ -41,7 +41,7 @@ import math
 import sys
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
@@ -353,6 +353,79 @@ class WheelDisplaySink:
             return self.speed_rad_s, self.torque_n_m
 
 
+class SensorDisplaySink:
+    """Latest magnitude of a flight-published sensor, for Vizard gauges.
+
+    DISPLAY-ONLY, like :class:`WheelDisplaySink`: Vizard has no IMU or
+    magnetometer panel, but its generic storage gauges make honest
+    dashboards — this sink feeds one with the magnitude of what the
+    flight side actually measured.
+    """
+
+    def __init__(
+        self,
+        session: zenoh.Session,
+        topic: str,
+        magnitude: Callable[[bytes], float],
+    ) -> None:
+        """Subscribe to one sensor topic.
+
+        Args:
+            session: Open zenoh session.
+            topic: The sensor daemon's sample topic.
+            magnitude: Payload bytes -> the scalar to display.
+        """
+        self._lock = threading.Lock()
+        self._magnitude = magnitude
+        self.value = 0.0
+        self._sub = session.declare_subscriber(topic, self._on_sample)
+
+    def _on_sample(self, sample: zenoh.Sample) -> None:
+        """Store the newest magnitude.
+
+        Args:
+            sample: Incoming sensor sample.
+        """
+        value = self._magnitude(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self.value = value
+
+    def latest(self) -> float:
+        """The most recent magnitude (zero until the sensor publishes).
+
+        Returns:
+            The displayed scalar.
+        """
+        with self._lock:
+            return self.value
+
+
+def _imu_rate_mrad_s(payload: bytes) -> float:
+    """|gyro| of an ImuSample, in mrad/s for the gauge.
+
+    Args:
+        payload: Serialized ImuSample.
+
+    Returns:
+        The rate magnitude in mrad/s.
+    """
+    msg = hal_pb2.ImuSample.FromString(payload)
+    return 1000.0 * math.sqrt(msg.gyro_x_rad_s**2 + msg.gyro_y_rad_s**2 + msg.gyro_z_rad_s**2)
+
+
+def _mag_field_ut(payload: bytes) -> float:
+    """|B| of a MagnetometerSample, in microtesla for the gauge.
+
+    Args:
+        payload: Serialized MagnetometerSample.
+
+    Returns:
+        The field magnitude in uT.
+    """
+    msg = hal_pb2.MagnetometerSample.FromString(payload)
+    return 1e6 * math.sqrt(msg.mag_x_t**2 + msg.mag_y_t**2 + msg.mag_z_t**2)
+
+
 class _RwDisplayFeed:
     """The shim vizSupport expects: an object carrying ``rwOutMsgs``.
 
@@ -451,7 +524,31 @@ class BasiliskPlant:
         self._rw_msgs: list[Any] = []
         self._messaging: Any = None
         self._rw_write_time_ns = 0
+        # Vizard Devices gauges: (label, units, max, sink) per sensor.
+        self._gauge_display: list[tuple[str, str, float, SensorDisplaySink]] = []
+        self._gauge_structs: list[Any] = []
+        self._viz: Any = None
         if viz_live or viz_save:
+            for sensor in vehicle.sensors:
+                sensor_kind = sensor.WhichOneof("options")
+                if sensor_kind == "basilisk_imu":
+                    self._gauge_display.append(
+                        (
+                            f"{sensor.name} |rate|",
+                            "mrad/s",
+                            150.0,
+                            SensorDisplaySink(session, sensor.topic, _imu_rate_mrad_s),
+                        )
+                    )
+                elif sensor_kind == "basilisk_magnetometer":
+                    self._gauge_display.append(
+                        (
+                            f"{sensor.name} |B|",
+                            "uT",
+                            65.0,
+                            SensorDisplaySink(session, sensor.topic, _mag_field_ut),
+                        )
+                    )
             for entry in vehicle.actuators:
                 kind = which_impl(entry, "options", entry.name)
                 if not kind.endswith("reaction_wheel"):
@@ -516,14 +613,24 @@ class BasiliskPlant:
 
         if self._viz_live or self._viz_save:
             from Basilisk.architecture import messaging
+            from Basilisk.simulation import vizInterface
             from Basilisk.utilities import vizSupport
 
             self._messaging = messaging
             rw_feed = None
             if self._rw_display:
                 self._rw_msgs = [messaging.RWConfigLogMsg() for _ in self._rw_display]
-                self._refresh_rw_display()
                 rw_feed = _RwDisplayFeed(self._rw_msgs)
+            gauges = None
+            if self._gauge_display:
+                for label, units, max_value, _sink in self._gauge_display:
+                    struct = vizInterface.GenericStorage()
+                    struct.label = label
+                    struct.units = units
+                    struct.maxValue = max_value
+                    self._gauge_structs.append(struct)
+                gauges = [self._gauge_structs]
+            self._refresh_viz_display()
             viz = vizSupport.enableUnityVisualization(
                 sim,
                 "dynTask",
@@ -531,7 +638,11 @@ class BasiliskPlant:
                 liveStream=self._viz_live,
                 saveFile=self._viz_save,
                 rwEffectorList=rw_feed,
+                genericStorageList=gauges,
             )
+            # The gauge structs were COPIED into the viz module's own
+            # vector; live updates must poke that copy, not our originals.
+            self._viz = viz
             if self._viz_live:
                 viz.reqComAddress = self._viz_address
                 viz.pubComAddress = self._viz_address
@@ -559,17 +670,18 @@ class BasiliskPlant:
         )
         self._thread.start()
 
-    def _refresh_rw_display(self) -> None:
-        """Mirror the flight wheels' latest state into the Vizard messages.
+    def _refresh_viz_display(self) -> None:
+        """Mirror flight-published device truth into the Vizard messages.
 
-        Display only: Vizard's RW panels show what the flight side says
-        its wheels are doing; the plant's dynamics never read these.
+        Display only: the RW panels and Devices gauges show what the
+        flight side says its hardware is doing; the plant's dynamics
+        never read these. The write time must ADVANCE or the viz reader
+        treats the messages as unchanged and the panels freeze on their
+        first values.
         """
-        if not self._rw_msgs:
+        if not self._rw_msgs and not self._gauge_display:
             return
         messaging = self._messaging
-        # The write time must ADVANCE or the viz reader treats the message
-        # as unchanged and Vizard's panels freeze on the first values.
         self._rw_write_time_ns += 1
         for msg, (sink, axis, u_max, omega_max) in zip(
             self._rw_msgs, self._rw_display, strict=True
@@ -582,6 +694,10 @@ class BasiliskPlant:
             payload.u_max = u_max
             payload.gsHat_B = [axis[0], axis[1], axis[2]]  # C array: flat, not column
             msg.write(payload, self._rw_write_time_ns)
+        if self._viz is not None and self._gauge_display:
+            storage = self._viz.scData[0].genericStorageList
+            for index, (_label, _units, max_value, gauge_sink) in enumerate(self._gauge_display):
+                storage[index].currentValue = min(gauge_sink.latest(), max_value)
 
     def _add_earth_and_orbit(self, sc: object) -> None:
         """Give the spacecraft the SAME universe the local plant flies in.
@@ -659,7 +775,7 @@ class BasiliskPlant:
                     torque_body[index] += mtq[index]
             ext.extTorquePntB_B = [[torque_body[0]], [torque_body[1]], [torque_body[2]]]  # type: ignore[attr-defined]
 
-            self._refresh_rw_display()
+            self._refresh_viz_display()
             sim_t_s += dt_s
             sim.ConfigureStopTime(macros.sec2nano(sim_t_s))  # type: ignore[attr-defined]
             sim.ExecuteSimulation()  # type: ignore[attr-defined]
