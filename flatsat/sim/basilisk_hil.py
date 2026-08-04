@@ -421,7 +421,7 @@ def _imu_axis_mrad_s(axis: int) -> Callable[[bytes], float]:
         """
         msg = hal_pb2.ImuSample.FromString(payload)
         rates = (msg.gyro_x_rad_s, msg.gyro_y_rad_s, msg.gyro_z_rad_s)
-        return 1000.0 * abs(rates[axis])
+        return 1000.0 * abs(float(rates[axis]))
 
     return parse
 
@@ -435,7 +435,7 @@ def _imu_temperature_c(payload: bytes) -> float:
     Returns:
         The reported temperature in Celsius.
     """
-    return hal_pb2.ImuSample.FromString(payload).temperature_c
+    return float(hal_pb2.ImuSample.FromString(payload).temperature_c)
 
 
 def _imu_rate_mrad_s(payload: bytes) -> float:
