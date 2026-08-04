@@ -10,6 +10,11 @@
  * axes are a closed box with inward ticks, and the grid is faint rather
  * than absent. Engineering plots are read by tracing a value across to
  * an axis, and that needs a reference.
+ *
+ * Zoom is modal on the drag: a plain drag selects a TIME range, a
+ * ⌘-drag (ctrl elsewhere) selects a VALUE range. Double-click resets
+ * both. Time labels are drawn at 45° — horizontal elapsed-time labels
+ * collide long before the ticks stop being useful.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,21 +31,34 @@ export interface PlotChannel {
 interface Props {
   channels: PlotChannel[];
   originNs: number;
-  /** Visible window; null fits all data. */
+  /** Visible time window; null fits all data. */
   viewNs: [number, number] | null;
+  /** Visible value window; null fits the channels. */
+  viewV: [number, number] | null;
   onViewChange: (view: [number, number] | null) => void;
+  onViewVChange: (view: [number, number] | null) => void;
   /** Vertical marks: annotations and span edges. */
   marks: { timeNs: number; color: string; label: string }[];
 }
 
-const PAD = { left: 78, right: 18, top: 14, bottom: 34 };
+const PAD = { left: 78, right: 18, top: 14, bottom: 52 };
 
-export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: Props) {
+type DragAxis = 'x' | 'y';
+
+export function PlotCanvas({
+  channels,
+  originNs,
+  viewNs,
+  viewV,
+  onViewChange,
+  onViewVChange,
+  marks,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 800, h: 420 });
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
-  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  const [drag, setDrag] = useState<{ axis: DragAxis; from: number; to: number } | null>(null);
 
   // Domain over the data, then over the visible window.
   const domain = useMemo(() => {
@@ -74,6 +92,12 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
     return () => ro.disconnect();
   }, []);
 
+  const valueRange = useCallback((): [number, number] => {
+    if (viewV) return viewV;
+    if (!domain) return [0, 1];
+    return padded(domain.v0, domain.v1);
+  }, [domain, viewV]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !domain) return;
@@ -92,7 +116,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
     const face = css.getPropertyValue('--plot-face').trim() || '#ffffff';
 
     const [tl, tr] = viewNs ?? [domain.t0, domain.t1];
-    const [vl, vh] = padded(domain.v0, domain.v1);
+    const [vl, vh] = valueRange();
     const x = linear(tl, tr, PAD.left, w - PAD.right);
     const y = linear(vl, vh, h - PAD.bottom, PAD.top);
 
@@ -107,6 +131,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
     ctx.lineWidth = 1;
     for (const t of ticks(vl, vh, 6)) {
       const py = Math.round(y(t)) + 0.5;
+      if (py < PAD.top || py > h - PAD.bottom) continue;
       ctx.beginPath();
       ctx.moveTo(PAD.left, py);
       ctx.lineTo(w - PAD.right, py);
@@ -115,17 +140,24 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       ctx.textBaseline = 'middle';
       ctx.fillText(fmtValue(t), PAD.left - 8, py);
     }
-    // Time labels are ~70px wide; ask for however many actually fit.
-    const xTarget = Math.max(3, Math.floor((w - PAD.left - PAD.right) / 90));
+    // Rotated labels overlap far later than horizontal ones, so ticks
+    // can sit denser than the old 90 px budget.
+    const xTarget = Math.max(3, Math.floor((w - PAD.left - PAD.right) / 64));
     for (const t of ticks(tl, tr, xTarget)) {
       const px = Math.round(x(t)) + 0.5;
+      if (px < PAD.left || px > w - PAD.right) continue;
       ctx.beginPath();
       ctx.moveTo(px, PAD.top);
       ctx.lineTo(px, h - PAD.bottom);
       ctx.stroke();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(elapsed(t, originNs), px, h - PAD.bottom + 7);
+      // 45° labels, anchored at their tick, reading up toward it.
+      ctx.save();
+      ctx.translate(px, h - PAD.bottom + 8);
+      ctx.rotate(-Math.PI / 4);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(elapsed(t, originNs), 0, 0);
+      ctx.restore();
     }
 
     // Event marks, behind the traces so data stays legible.
@@ -143,7 +175,11 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       ctx.restore();
     }
 
-    // Traces.
+    // Traces, clipped to the face: a value zoom must crop, not overhang.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(PAD.left, PAD.top, w - PAD.left - PAD.right, h - PAD.top - PAD.bottom);
+    ctx.clip();
     ctx.lineWidth = 1.4;
     ctx.lineJoin = 'round';
     for (const ch of channels) {
@@ -184,6 +220,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
         ctx.fill();
       }
     }
+    ctx.restore();
 
     // Axis box last, so traces never overhang it.
     ctx.strokeStyle = ink;
@@ -195,14 +232,20 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       h - PAD.top - PAD.bottom - 1,
     );
 
-    // Zoom selection.
+    // Zoom selection: a vertical band for a time range, a horizontal
+    // band for a value range.
     if (drag) {
       const a = Math.min(drag.from, drag.to);
       const b = Math.max(drag.from, drag.to);
       ctx.fillStyle = 'rgba(0,114,189,0.14)';
-      ctx.fillRect(a, PAD.top, b - a, h - PAD.top - PAD.bottom);
       ctx.strokeStyle = '#0072BD';
-      ctx.strokeRect(a + 0.5, PAD.top + 0.5, b - a, h - PAD.top - PAD.bottom - 1);
+      if (drag.axis === 'x') {
+        ctx.fillRect(a, PAD.top, b - a, h - PAD.top - PAD.bottom);
+        ctx.strokeRect(a + 0.5, PAD.top + 0.5, b - a, h - PAD.top - PAD.bottom - 1);
+      } else {
+        ctx.fillRect(PAD.left, a, w - PAD.left - PAD.right, b - a);
+        ctx.strokeRect(PAD.left + 0.5, a + 0.5, w - PAD.left - PAD.right - 1, b - a);
+      }
     }
 
     // Crosshair.
@@ -217,7 +260,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
       ctx.stroke();
       ctx.restore();
     }
-  }, [channels, cursor, domain, drag, marks, originNs, size, viewNs]);
+  }, [channels, cursor, domain, drag, marks, originNs, size, valueRange, viewNs]);
 
   useEffect(() => {
     draw();
@@ -239,6 +282,12 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
     if (!domain) return 0;
     const [tl, tr] = viewNs ?? [domain.t0, domain.t1];
     return linear(tl, tr, PAD.left, size.w - PAD.right).invert(localX);
+  };
+
+  /** Canvas-relative pixel y -> value. */
+  const toValue = (localY: number): number => {
+    const [vl, vh] = valueRange();
+    return linear(vl, vh, size.h - PAD.bottom, PAD.top).invert(localY);
   };
 
   // Value of each channel at the cursor — the data-cursor readout that
@@ -266,7 +315,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
   if (!domain) {
     return (
       <div ref={wrapRef} className="plot empty">
-        <span>select one or more channels</span>
+        <span>drop channels here</span>
       </div>
     );
   }
@@ -279,8 +328,9 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const x = e.clientX - rect.left;
-          setCursor({ x, y: e.clientY - rect.top });
-          if (drag) setDrag({ ...drag, to: x });
+          const y = e.clientY - rect.top;
+          setCursor({ x, y });
+          if (drag) setDrag({ ...drag, to: drag.axis === 'x' ? x : y });
         }}
         onMouseLeave={() => {
           setCursor(null);
@@ -288,8 +338,9 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
         }}
         onMouseDown={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          setDrag({ from: x, to: x });
+          const axis: DragAxis = e.metaKey || e.ctrlKey ? 'y' : 'x';
+          const at = axis === 'x' ? e.clientX - rect.left : e.clientY - rect.top;
+          setDrag({ axis, from: at, to: at });
         }}
         onMouseUp={() => {
           if (!drag) return;
@@ -297,9 +348,18 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
           const b = Math.max(drag.from, drag.to);
           setDrag(null);
           if (b - a < 6) return; // a click, not a selection
-          onViewChange([toTime(a), toTime(b)]);
+          if (drag.axis === 'x') {
+            onViewChange([toTime(a), toTime(b)]);
+          } else {
+            // Screen y grows downward, value grows upward: the lower
+            // pixel edge is the higher value.
+            onViewVChange([toValue(b), toValue(a)]);
+          }
         }}
-        onDoubleClick={() => onViewChange(null)}
+        onDoubleClick={() => {
+          onViewChange(null);
+          onViewVChange(null);
+        }}
       />
       {readout && (
         <div className="readout">
@@ -313,7 +373,7 @@ export function PlotCanvas({ channels, originNs, viewNs, onViewChange, marks }: 
           ))}
         </div>
       )}
-      <div className="plot-hint">drag to zoom · double-click to reset</div>
+      <div className="plot-hint">drag: zoom time · ⌘drag: zoom value · double-click: reset</div>
     </div>
   );
 }

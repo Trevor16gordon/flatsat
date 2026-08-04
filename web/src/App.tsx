@@ -4,25 +4,57 @@
  * Everything reaches data through a DataSource, never through the
  * uploaded file directly — swapping to an authenticated API is meant to
  * be one constructor call in this file and nothing else.
+ *
+ * Plots are a grid of rows. Channels are DRAGGED in: onto a plot's body
+ * to add a trace, onto a plot's edge to dock a new plot on that side
+ * (top/bottom insert a row, left/right split the row). Each plot can
+ * link or unlink its time and value axes from the shared views, so
+ * panning one linked plot pans them all.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChannelList } from './components/ChannelList';
-import { PlotCanvas } from './components/PlotCanvas';
+import { PlotPanel } from './components/PlotPanel';
+import type { DropZone } from './components/PlotPanel';
 import { RunHeader } from './components/RunHeader';
 import { Timeline } from './components/Timeline';
 import type { DataSource } from './data/source';
 import type { MissionBlob, Span } from './data/types';
 import { parseBlob, UploadDataSource } from './data/uploadSource';
 import { elapsed } from './lib/format';
-import { levelColor, traceColor } from './lib/palette';
+import { levelColor } from './lib/palette';
+
+export interface PlotSpec {
+  id: string;
+  channels: string[];
+  /** Follow the shared time window (pan/zoom linked across plots). */
+  xLink: boolean;
+  /** Follow the shared value window. */
+  yLink: boolean;
+  /** Private windows, used when the matching link is off. */
+  xView: [number, number] | null;
+  yView: [number, number] | null;
+}
+
+let plotCounter = 0;
+const newPlot = (channels: string[]): PlotSpec => ({
+  id: `plot-${plotCounter++}`,
+  channels,
+  xLink: true,
+  yLink: false,
+  xView: null,
+  yView: null,
+});
 
 export default function App() {
   const [source, setSource] = useState<DataSource | null>(null);
   const [blob, setBlob] = useState<MissionBlob | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [view, setView] = useState<[number, number] | null>(null);
+  const [plots, setPlots] = useState<PlotSpec[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
+  const [focusedPlot, setFocusedPlot] = useState<string | null>(null);
+  const [sharedX, setSharedX] = useState<[number, number] | null>(null);
+  const [sharedY, setSharedY] = useState<[number, number] | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -33,8 +65,11 @@ export default function App() {
       setSource(src);
       setBlob(await src.loadRun(''));
       setError(null);
-      setSelected([]);
-      setView(null);
+      setPlots([]);
+      setRows([]);
+      setFocusedPlot(null);
+      setSharedX(null);
+      setSharedY(null);
       setSelectedSpan(null);
     } catch (err) {
       setError((err as Error).message);
@@ -60,17 +95,7 @@ export default function App() {
   }, [blob]);
 
   const originNs = extent ? extent[0] : 0;
-  const window_: [number, number] = view ?? extent ?? [0, 1];
-
-  const channels = useMemo(() => {
-    if (!blob) return [];
-    return selected
-      .map((key, i) => {
-        const series = blob.series[key];
-        return series ? { key, series, color: traceColor(i) } : null;
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
-  }, [blob, selected]);
+  const window_: [number, number] = sharedX ?? extent ?? [0, 1];
 
   const marks = useMemo(() => {
     if (!blob) return [];
@@ -81,15 +106,94 @@ export default function App() {
     }));
   }, [blob]);
 
-  const toggle = (key: string) =>
-    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const plottedKeys = useMemo(() => new Set(plots.flatMap((p) => p.channels)), [plots]);
 
-  // Clicking a span zooms the plot to it — the reason the timeline and
-  // the plot share one axis.
+  const updatePlot = (id: string, patch: Partial<PlotSpec>) =>
+    setPlots((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+
+  /** Drop `plots` entries no row references and rows with no plots. */
+  const collapse = (nextRows: string[][], nextPlots: PlotSpec[]) => {
+    const live = new Set(nextRows.flat());
+    setRows(nextRows.filter((r) => r.length > 0));
+    setPlots(nextPlots.filter((p) => live.has(p.id)));
+  };
+
+  const addChannel = (plotId: string, key: string) => {
+    setPlots((prev) =>
+      prev.map((p) =>
+        p.id === plotId && !p.channels.includes(key)
+          ? { ...p, channels: [...p.channels, key] }
+          : p,
+      ),
+    );
+    setFocusedPlot(plotId);
+  };
+
+  const removeChannel = (plotId: string, key: string) => {
+    const plot = plots.find((p) => p.id === plotId);
+    if (!plot) return;
+    const remaining = plot.channels.filter((k) => k !== key);
+    if (remaining.length > 0) {
+      updatePlot(plotId, { channels: remaining });
+      return;
+    }
+    collapse(
+      rows.map((r) => r.filter((id) => id !== plotId)),
+      plots,
+    );
+  };
+
+  /** A channel dropped on a plot: its body adds, its edges dock a new plot. */
+  const dropChannel = (plotId: string, zone: DropZone, key: string) => {
+    if (zone === 'center') {
+      addChannel(plotId, key);
+      return;
+    }
+    const plot = newPlot([key]);
+    const rowIdx = rows.findIndex((r) => r.includes(plotId));
+    if (rowIdx < 0) return;
+    const nextRows = rows.map((r) => [...r]);
+    if (zone === 'top' || zone === 'bottom') {
+      nextRows.splice(rowIdx + (zone === 'bottom' ? 1 : 0), 0, [plot.id]);
+    } else {
+      const row = nextRows[rowIdx];
+      if (!row) return;
+      const col = row.indexOf(plotId);
+      row.splice(col + (zone === 'right' ? 1 : 0), 0, plot.id);
+    }
+    setRows(nextRows);
+    setPlots((prev) => [...prev, plot]);
+    setFocusedPlot(plot.id);
+  };
+
+  /** A channel landing in the empty signals area starts the first plot. */
+  const dropIntoEmpty = (key: string) => {
+    const plot = newPlot([key]);
+    setRows((prev) => [...prev, [plot.id]]);
+    setPlots((prev) => [...prev, plot]);
+    setFocusedPlot(plot.id);
+  };
+
+  /** Clicking a channel adds it to the focused plot (drag is the main path). */
+  const clickChannel = (key: string) => {
+    const target = plots.find((p) => p.id === focusedPlot) ?? plots[plots.length - 1];
+    if (!target) {
+      dropIntoEmpty(key);
+      return;
+    }
+    if (target.channels.includes(key)) {
+      removeChannel(target.id, key);
+      return;
+    }
+    addChannel(target.id, key);
+  };
+
+  // Clicking a span zooms the shared time axis to it — the reason the
+  // timeline and the linked plots share one axis.
   const focusSpan = (span: Span) => {
     setSelectedSpan(span.span_id);
     if (span.start_ns !== null) {
-      setView([span.start_ns, span.end_ns ?? window_[1]]);
+      setSharedX([span.start_ns, span.end_ns ?? window_[1]]);
     }
   };
 
@@ -108,7 +212,9 @@ export default function App() {
       className={`app${dragOver ? ' dragover' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();
-        setDragOver(true);
+        // Only a FILE drag restyles the whole app; channel drags are
+        // handled (and highlighted) by the plots themselves.
+        if (e.dataTransfer.types.includes('Files')) setDragOver(true);
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
@@ -157,7 +263,7 @@ export default function App() {
           <RunHeader run={blob.run} fileCount={blob.files.length} />
           <div className="body">
             <aside className="sidebar">
-              <ChannelList blob={blob} selected={selected} onToggle={toggle} />
+              <ChannelList blob={blob} plotted={plottedKeys} onPick={clickChannel} />
             </aside>
             <main className="main">
               <section className="panel">
@@ -165,8 +271,8 @@ export default function App() {
                   <span>timeline</span>
                   <span className="panel-note">
                     {elapsed(window_[0], originNs)} → {elapsed(window_[1], originNs)}
-                    {view && (
-                      <button className="link" onClick={() => setView(null)}>
+                    {sharedX && (
+                      <button className="link" onClick={() => setSharedX(null)}>
                         reset zoom
                       </button>
                     )}
@@ -186,16 +292,53 @@ export default function App() {
                 <div className="panel-head">
                   <span>signals</span>
                   <span className="panel-note">
-                    {channels.length} of {Object.keys(blob.series).length} channels
+                    {plottedKeys.size} of {Object.keys(blob.series).length} channels ·{' '}
+                    {plots.length} plot{plots.length === 1 ? '' : 's'}
                   </span>
                 </div>
-                <PlotCanvas
-                  channels={channels}
-                  originNs={originNs}
-                  viewNs={view}
-                  onViewChange={setView}
-                  marks={marks}
-                />
+                {rows.length === 0 ? (
+                  <div
+                    className="plot-empty-stage"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const key = e.dataTransfer.getData('application/x-flatsat-channel');
+                      if (key) dropIntoEmpty(key);
+                    }}
+                  >
+                    <span>drag a channel here to start a plot</span>
+                  </div>
+                ) : (
+                  <div className="plot-grid">
+                    {rows.map((row, i) => (
+                      <div key={i} className="plot-row">
+                        {row.map((id) => {
+                          const plot = plots.find((p) => p.id === id);
+                          if (!plot) return null;
+                          return (
+                            <PlotPanel
+                              key={id}
+                              plot={plot}
+                              blob={blob}
+                              originNs={originNs}
+                              extent={extent}
+                              sharedX={sharedX}
+                              sharedY={sharedY}
+                              focused={focusedPlot === id}
+                              marks={marks}
+                              onFocus={() => setFocusedPlot(id)}
+                              onPatch={(patch) => updatePlot(id, patch)}
+                              onSharedX={setSharedX}
+                              onSharedY={setSharedY}
+                              onDropChannel={(zone, key) => dropChannel(id, zone, key)}
+                              onRemoveChannel={(key) => removeChannel(id, key)}
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
 
               <section className="panel">
