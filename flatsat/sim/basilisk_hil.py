@@ -2,13 +2,15 @@
 """Basilisk bridge: the universe-fake, slimmed to physics + truth topics.
 
 Runs on the GROUND host (Mac — the sim computer is never the flight
-computer). A rigid spacecraft integrates in Basilisk; every step the
-bridge publishes rigid-body TRUTH on the truth topic and folds each
-wheel's applied axis torque (from the flight-side
-``basilisk_reaction_wheel`` drivers) into the plant.
+computer). A rigid spacecraft integrates in Basilisk — optionally in
+orbit around a J2 Earth sharing ``flatsat.sim.orbit``'s constants; every
+step the bridge publishes rigid-body + environment TRUTH on the truth
+topic and folds each actuator's applied effort into the plant: wheel
+axis torque directly, magnetorquer dipole as ``m x B`` against the
+plant's own local field.
 
-The plant is built FROM THE VEHICLE FILE — body mass/inertia, one torque
-input per declared actuator mapped through ITS mounting — so the sim's
+The plant is built FROM THE VEHICLE FILE — body mass/inertia, one input
+per declared actuator mapped through ITS mounting — so the sim's
 spacecraft and the flight software's model of it cannot diverge by
 accident. Deliberate divergence (a ``truth_overrides`` block: "actual
 inertia 8% higher than believed") is the future robustness-campaign knob.
@@ -40,15 +42,16 @@ import sys
 import threading
 import time
 from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import zenoh
 
 from flatsat.core.bus import SamplePublisher
-from flatsat.core.config import VehicleSpec, load_vehicle, which_impl
+from flatsat.core.config import VehicleSpec, load_vehicle, load_wheel_spec, which_impl
 from flatsat.hardware.drivers.basilisk_magnetorquer import magnetorquer_dipole_topic
 from flatsat.hardware.drivers.basilisk_reaction_wheel import wheel_torque_topic
-from flatsat.msgs import sim_pb2
+from flatsat.msgs import hal_pb2, sim_pb2
 from flatsat.sim import orbit
 
 TRUTH_TOPIC = "sim/truth/state"
@@ -304,8 +307,73 @@ class DipoleSink:
             return self._dipole
 
 
+class WheelDisplaySink:
+    """Latest flight-published WheelState, for Vizard's RW panels only.
+
+    DISPLAY-ONLY by design: the wheels' physics live flight-side (the
+    architecture forbids modeling devices in Basilisk too), but Vizard's
+    actuator panels are worth having, so the bridge mirrors what the
+    flight side says its wheels are doing into the viz stream. Nothing
+    in the plant's dynamics reads this.
+    """
+
+    def __init__(self, session: zenoh.Session, state_topic: str) -> None:
+        """Subscribe to one wheel's state topic.
+
+        Args:
+            session: Open zenoh session.
+            state_topic: The wheel daemon's state topic from the vehicle
+                file.
+        """
+        self._lock = threading.Lock()
+        self.speed_rad_s = 0.0
+        self.torque_n_m = 0.0
+        self._sub = session.declare_subscriber(state_topic, self._on_state)
+
+    def _on_state(self, sample: zenoh.Sample) -> None:
+        """Store the newest wheel state.
+
+        Args:
+            sample: Incoming WheelState.
+        """
+        msg = hal_pb2.WheelState.FromString(bytes(sample.payload.to_bytes()))
+        with self._lock:
+            self.speed_rad_s = msg.speed_rad_s
+            self.torque_n_m = msg.torque_n_m
+
+    def latest(self) -> tuple[float, float]:
+        """The most recent (speed, torque) pair.
+
+        Returns:
+            Rotor speed in rad/s and applied torque in N·m; zeros until
+            the flight side publishes. No stale cutoff — a display can
+            honestly show the last known value.
+        """
+        with self._lock:
+            return self.speed_rad_s, self.torque_n_m
+
+
+class _RwDisplayFeed:
+    """The shim vizSupport expects: an object carrying ``rwOutMsgs``.
+
+    vizSupport subscribes Vizard to each entry of an effector's
+    ``rwOutMsgs``; this feed offers hand-written messages instead of a
+    real ReactionWheelStateEffector, which is exactly the point — the
+    panels display flight truth without duplicating wheel physics in
+    the sim.
+    """
+
+    def __init__(self, rw_out_msgs: list[object]) -> None:
+        """Wrap the standalone RWConfigLog messages.
+
+        Args:
+            rw_out_msgs: One writable message per wheel.
+        """
+        self.rwOutMsgs = rw_out_msgs
+
+
 class BasiliskPlant:
-    """Basilisk physics behind the sim topics: truth out, wheel torque in.
+    """Basilisk physics behind the sim topics: truth out, actuator effort in.
 
     Interchangeable with :class:`~flatsat.sim.plant.LocalPlant` (same
     constructor shape, same ``start``/``stop``/``rate_magnitude``), so a
@@ -377,6 +445,32 @@ class BasiliskPlant:
         self._sinks = [WheelTorqueSink(session, name) for name, _ in self.wheels]
         self._dipole_sinks = [DipoleSink(session, name) for name, _ in self.rods]
         self._field_body: Vec3 | None = None
+        # Vizard RW panels: display-only mirrors of the flight wheels'
+        # own published state; built only when a viz output exists.
+        self._rw_display: list[tuple[WheelDisplaySink, Vec3, float, float]] = []
+        self._rw_msgs: list[Any] = []
+        self._messaging: Any = None
+        self._rw_write_time_ns = 0
+        if viz_live or viz_save:
+            for entry in vehicle.actuators:
+                kind = which_impl(entry, "options", entry.name)
+                if not kind.endswith("reaction_wheel"):
+                    continue
+                spec, _prov = load_wheel_spec(getattr(entry, kind).device)
+                omega_max = (
+                    spec.max_momentum_n_m_s / spec.rotor_inertia_kg_m2
+                    if spec.rotor_inertia_kg_m2 > 0.0
+                    else 0.0
+                )
+                axis = (entry.mounting.axis[0], entry.mounting.axis[1], entry.mounting.axis[2])
+                self._rw_display.append(
+                    (
+                        WheelDisplaySink(session, entry.state_topic),
+                        axis,
+                        spec.max_torque_n_m,
+                        omega_max,
+                    )
+                )
         self._truth_pub = SamplePublisher(session, truth_topic, "sim_truth")
         self._lock = threading.Lock()
         self._omega: Vec3 = omega0
@@ -421,10 +515,22 @@ class BasiliskPlant:
         sim.AddModelToTask("dynTask", ext)
 
         if self._viz_live or self._viz_save:
+            from Basilisk.architecture import messaging
             from Basilisk.utilities import vizSupport
 
+            self._messaging = messaging
+            rw_feed = None
+            if self._rw_display:
+                self._rw_msgs = [messaging.RWConfigLogMsg() for _ in self._rw_display]
+                self._refresh_rw_display()
+                rw_feed = _RwDisplayFeed(self._rw_msgs)
             viz = vizSupport.enableUnityVisualization(
-                sim, "dynTask", sc, liveStream=self._viz_live, saveFile=self._viz_save
+                sim,
+                "dynTask",
+                sc,
+                liveStream=self._viz_live,
+                saveFile=self._viz_save,
+                rwEffectorList=rw_feed,
             )
             if self._viz_live:
                 viz.reqComAddress = self._viz_address
@@ -452,6 +558,30 @@ class BasiliskPlant:
             target=self._run, args=(sim, sc, ext, macros, dt_s), daemon=True
         )
         self._thread.start()
+
+    def _refresh_rw_display(self) -> None:
+        """Mirror the flight wheels' latest state into the Vizard messages.
+
+        Display only: Vizard's RW panels show what the flight side says
+        its wheels are doing; the plant's dynamics never read these.
+        """
+        if not self._rw_msgs:
+            return
+        messaging = self._messaging
+        # The write time must ADVANCE or the viz reader treats the message
+        # as unchanged and Vizard's panels freeze on the first values.
+        self._rw_write_time_ns += 1
+        for msg, (sink, axis, u_max, omega_max) in zip(
+            self._rw_msgs, self._rw_display, strict=True
+        ):
+            payload = messaging.RWConfigLogMsgPayload()
+            speed, torque = sink.latest()
+            payload.Omega = speed
+            payload.Omega_max = omega_max
+            payload.u_current = torque
+            payload.u_max = u_max
+            payload.gsHat_B = [axis[0], axis[1], axis[2]]  # C array: flat, not column
+            msg.write(payload, self._rw_write_time_ns)
 
     def _add_earth_and_orbit(self, sc: object) -> None:
         """Give the spacecraft the SAME universe the local plant flies in.
@@ -529,6 +659,7 @@ class BasiliskPlant:
                     torque_body[index] += mtq[index]
             ext.extTorquePntB_B = [[torque_body[0]], [torque_body[1]], [torque_body[2]]]  # type: ignore[attr-defined]
 
+            self._refresh_rw_display()
             sim_t_s += dt_s
             sim.ConfigureStopTime(macros.sec2nano(sim_t_s))  # type: ignore[attr-defined]
             sim.ExecuteSimulation()  # type: ignore[attr-defined]
