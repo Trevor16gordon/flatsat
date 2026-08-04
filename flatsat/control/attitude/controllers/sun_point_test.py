@@ -70,7 +70,11 @@ def test_dump_dipole_matches_the_momentum_dump_law() -> None:
     expected = -0.15 * 0.01 / 2.0e-5
     clipped = max(-1.0, expected)
     assert output.dipole_a_m2 == pytest.approx((0.0, clipped, 0.0))
-    assert output.saturated  # the unclipped value is far past 1 A·m²
+    # The rail is the DIPOLE's, and the report must say so: a dump at
+    # its ceiling is routine, a clipped wheel torque is not.
+    assert output.dipole_saturated
+    assert not output.torque_saturated
+    assert output.saturated
 
 
 def test_stale_field_or_missing_momentum_means_zero_dipole() -> None:

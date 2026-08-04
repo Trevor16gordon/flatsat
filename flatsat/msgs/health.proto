@@ -45,11 +45,18 @@ message LoopHealth {
   // Window counters.
   uint64 window_cycles = 9;
   uint64 stale_cycles = 10;      // ran on an input older than the threshold
-  uint64 saturated_cycles = 11;  // command clipped by the actuator envelope
+  uint64 saturated_cycles = 11;  // ANY command clipped (union of the two below)
 
   // Timing distributions, microseconds.
   Percentiles wakeup_lateness_us = 12;
   Percentiles exec_time_us = 13;
+
+  // Saturation split by channel: a railed rod is momentum management
+  // running at its ceiling (normal for hours); a railed wheel is
+  // attitude authority lost (a fault precursor). One number hid that
+  // distinction on the combined vehicles.
+  uint64 saturated_torque_cycles = 14;
+  uint64 saturated_dipole_cycles = 15;
 }
 
 // Health of a sensor daemon over one reporting window.

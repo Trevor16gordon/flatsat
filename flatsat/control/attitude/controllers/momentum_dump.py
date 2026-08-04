@@ -140,11 +140,11 @@ class MomentumDumpController(AttitudeController):
         )
         limit = self.max_dipole_a_m2
         clipped = tuple(max(-limit, min(limit, value)) for value in unclipped)
-        saturated = damping.saturated or any(abs(value) > limit for value in unclipped)
         return ControlOutput(
             torque_n_m=damping.torque_n_m,
             dipole_a_m2=(clipped[0], clipped[1], clipped[2]),
-            saturated=saturated,
+            torque_saturated=damping.torque_saturated,
+            dipole_saturated=any(abs(value) > limit for value in unclipped),
         )
 
     def reset(self) -> None:

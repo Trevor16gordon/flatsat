@@ -52,6 +52,8 @@ def test_loop_health_carries_provenance_and_counters() -> None:
         exec_time_us=[5.0, 6.0, 7.0],
         stale_cycles=12,
         saturated_cycles=3,
+        saturated_torque_cycles=1,
+        saturated_dipole_cycles=3,
     )
     msg = report.to_proto(loop, loop.scheduling, loop.cpu_affinity)
     loop.close()
@@ -69,6 +71,10 @@ def test_loop_health_carries_provenance_and_counters() -> None:
     assert back.window_cycles == 6000
     assert back.stale_cycles == 12
     assert back.saturated_cycles == 3
+    # The split survives too: a railed rod (normal for hours) must never
+    # masquerade as a railed wheel (attitude authority lost).
+    assert back.saturated_torque_cycles == 1
+    assert back.saturated_dipole_cycles == 3
     assert back.wakeup_lateness_us.max == pytest.approx(30.0)
     assert back.exec_time_us.count == 3
 

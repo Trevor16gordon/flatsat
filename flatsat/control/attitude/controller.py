@@ -110,12 +110,19 @@ class ControlOutput:
             strategy — a magnetorquer law never speaks torque.
         dipole_a_m2: Commanded body dipole (x, y, z); meaningful only
             when the strategy declares ``output_kind == "dipole"``.
-        saturated: True when a limit clipped the command.
+        torque_saturated: True when the torque envelope clipped.
+        dipole_saturated: True when the dipole envelope clipped.
     """
 
     torque_n_m: Vec3 = (0.0, 0.0, 0.0)
     dipole_a_m2: Vec3 = (0.0, 0.0, 0.0)
-    saturated: bool = False
+    torque_saturated: bool = False
+    dipole_saturated: bool = False
+
+    @property
+    def saturated(self) -> bool:
+        """True when ANY limit clipped the command (either channel)."""
+        return self.torque_saturated or self.dipole_saturated
 
 
 class AttitudeController(ABC):
@@ -193,4 +200,6 @@ def clip_torque(torque: Vec3, limits: ControlLimits) -> ControlOutput:
     limit = limits.max_torque_n_m
     clipped = tuple(max(-limit, min(limit, value)) for value in torque)
     saturated = any(abs(value) > limit for value in torque)
-    return ControlOutput(torque_n_m=(clipped[0], clipped[1], clipped[2]), saturated=saturated)
+    return ControlOutput(
+        torque_n_m=(clipped[0], clipped[1], clipped[2]), torque_saturated=saturated
+    )

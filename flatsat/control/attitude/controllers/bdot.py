@@ -122,7 +122,9 @@ class BdotController(AttitudeController):
         unclipped = [-self.gain * value for value in deriv]
         clipped = [max(-limit, min(limit, value)) for value in unclipped]
         saturated = any(abs(value) > limit for value in unclipped)
-        return ControlOutput(dipole_a_m2=(clipped[0], clipped[1], clipped[2]), saturated=saturated)
+        return ControlOutput(
+            dipole_a_m2=(clipped[0], clipped[1], clipped[2]), dipole_saturated=saturated
+        )
 
     def reset(self) -> None:
         """Forget the field history behind the derivative and its filter."""

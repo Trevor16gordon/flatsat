@@ -84,6 +84,8 @@ class LoopHealth(_message.Message):
     SATURATED_CYCLES_FIELD_NUMBER: _builtins.int
     WAKEUP_LATENESS_US_FIELD_NUMBER: _builtins.int
     EXEC_TIME_US_FIELD_NUMBER: _builtins.int
+    SATURATED_TORQUE_CYCLES_FIELD_NUMBER: _builtins.int
+    SATURATED_DIPOLE_CYCLES_FIELD_NUMBER: _builtins.int
     vehicle: _builtins.str
     """Composition provenance: what was flying, configured by what."""
     config_checksum: _builtins.str
@@ -101,7 +103,14 @@ class LoopHealth(_message.Message):
     stale_cycles: _builtins.int
     """ran on an input older than the threshold"""
     saturated_cycles: _builtins.int
-    """command clipped by the actuator envelope"""
+    """ANY command clipped (union of the two below)"""
+    saturated_torque_cycles: _builtins.int
+    """Saturation split by channel: a railed rod is momentum management
+    running at its ceiling (normal for hours); a railed wheel is
+    attitude authority lost (a fault precursor). One number hid that
+    distinction on the combined vehicles.
+    """
+    saturated_dipole_cycles: _builtins.int
     @_builtins.property
     def header(self) -> _hal_pb2.Header: ...
     @_builtins.property
@@ -126,10 +135,12 @@ class LoopHealth(_message.Message):
         saturated_cycles: _builtins.int = ...,
         wakeup_lateness_us: Global___Percentiles | None = ...,
         exec_time_us: Global___Percentiles | None = ...,
+        saturated_torque_cycles: _builtins.int = ...,
+        saturated_dipole_cycles: _builtins.int = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["exec_time_us", b"exec_time_us", "header", b"header", "wakeup_lateness_us", b"wakeup_lateness_us"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["config_checksum", b"config_checksum", "cpu_affinity", b"cpu_affinity", "exec_time_us", b"exec_time_us", "header", b"header", "objective", b"objective", "rate_hz", b"rate_hz", "saturated_cycles", b"saturated_cycles", "scheduling", b"scheduling", "stale_cycles", b"stale_cycles", "strategy", b"strategy", "vehicle", b"vehicle", "wakeup_lateness_us", b"wakeup_lateness_us", "window_cycles", b"window_cycles"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["config_checksum", b"config_checksum", "cpu_affinity", b"cpu_affinity", "exec_time_us", b"exec_time_us", "header", b"header", "objective", b"objective", "rate_hz", b"rate_hz", "saturated_cycles", b"saturated_cycles", "saturated_dipole_cycles", b"saturated_dipole_cycles", "saturated_torque_cycles", b"saturated_torque_cycles", "scheduling", b"scheduling", "stale_cycles", b"stale_cycles", "strategy", b"strategy", "vehicle", b"vehicle", "wakeup_lateness_us", b"wakeup_lateness_us", "window_cycles", b"window_cycles"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 

@@ -60,7 +60,11 @@ class LoopReport:
         wakeup_lateness_us: Per-cycle wakeup lateness samples.
         exec_time_us: Per-cycle control-step execution time samples.
         stale_cycles: Cycles whose input was older than the threshold.
-        saturated_cycles: Cycles whose command hit the actuator limit.
+        saturated_cycles: Cycles whose command hit ANY actuator limit.
+        saturated_torque_cycles: Cycles the torque envelope clipped —
+            attitude authority lost, the alarming kind.
+        saturated_dipole_cycles: Cycles the dipole envelope clipped —
+            a dump running at its rail, normal for hours at a time.
         conditions: Configuration/hygiene strings echoed with every report.
     """
 
@@ -69,6 +73,8 @@ class LoopReport:
     exec_time_us: list[float] = field(default_factory=list)
     stale_cycles: int = 0
     saturated_cycles: int = 0
+    saturated_torque_cycles: int = 0
+    saturated_dipole_cycles: int = 0
     conditions: list[str] = field(default_factory=list)
 
     def to_proto(self, loop: ControlLoop, environment: str, affinity: str) -> health_pb2.LoopHealth:
@@ -94,6 +100,8 @@ class LoopReport:
         msg.window_cycles = self.cycles
         msg.stale_cycles = self.stale_cycles
         msg.saturated_cycles = self.saturated_cycles
+        msg.saturated_torque_cycles = self.saturated_torque_cycles
+        msg.saturated_dipole_cycles = self.saturated_dipole_cycles
         msg.wakeup_lateness_us.CopyFrom(percentiles(self.wakeup_lateness_us))
         msg.exec_time_us.CopyFrom(percentiles(self.exec_time_us))
         return msg
@@ -105,7 +113,8 @@ class LoopReport:
             print(f"  {cond}")
         print(
             f"  cycles        : {self.cycles}  (stale {self.stale_cycles}, "
-            f"saturated {self.saturated_cycles})"
+            f"saturated {self.saturated_cycles}: "
+            f"torque {self.saturated_torque_cycles}, dipole {self.saturated_dipole_cycles})"
         )
         for label, data in (
             ("wakeup lateness", np.asarray(self.wakeup_lateness_us)),
@@ -304,7 +313,7 @@ class ControlLoop:
             time.sleep(0.01)
         return False
 
-    def _step(self, seq: int, t_s: float) -> tuple[bool, bool]:
+    def _step(self, seq: int, t_s: float) -> tuple[bool, bool, bool]:
         """Run one control step and publish the command.
 
         Args:
@@ -312,7 +321,7 @@ class ControlLoop:
             t_s: Seconds since the loop started (for time-varying guidance).
 
         Returns:
-            Tuple of (input was stale, command was saturated).
+            Tuple of (input was stale, torque clipped, dipole clipped).
         """
         with self._lock:
             imu = self._latest
@@ -378,7 +387,7 @@ class ControlLoop:
         if kind == "dipole":
             self._last_command = output.dipole_a_m2
             self._publish_dipole(self._pub, output.dipole_a_m2, seq, header_validity)
-            return stale, output.saturated
+            return stale, output.torque_saturated, output.dipole_saturated
 
         self._last_command = output.torque_n_m
         cmd = adcs_pb2.WheelTorqueCommand()
@@ -391,7 +400,7 @@ class ControlLoop:
         self._pub.put(cmd.SerializeToString())
         if kind == "torque_and_dipole" and self._dipole_pub is not None:
             self._publish_dipole(self._dipole_pub, output.dipole_a_m2, seq, header_validity)
-        return stale, output.saturated
+        return stale, output.torque_saturated, output.dipole_saturated
 
     def _publish_dipole(
         self,
@@ -484,11 +493,13 @@ class ControlLoop:
             report.wakeup_lateness_us.append((woke - next_wake) / 1000.0)
 
             seq += 1
-            stale, saturated = self._step(seq, (woke - start) / 1e9)
+            stale, torque_clipped, dipole_clipped = self._step(seq, (woke - start) / 1e9)
             report.exec_time_us.append((time.monotonic_ns() - woke) / 1000.0)
             report.cycles += 1
             report.stale_cycles += int(stale)
-            report.saturated_cycles += int(saturated)
+            report.saturated_cycles += int(torque_clipped or dipole_clipped)
+            report.saturated_torque_cycles += int(torque_clipped)
+            report.saturated_dipole_cycles += int(dipole_clipped)
             next_wake += period_ns
 
             if next_status is not None and status_ns is not None and woke >= next_status:

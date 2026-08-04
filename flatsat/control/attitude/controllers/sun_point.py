@@ -164,7 +164,8 @@ class SunPointController(AttitudeController):
             # The damping law clips internally, so its own saturation
             # must ride through — the outer clip sees an at-limit value
             # as unclipped.
-            saturated=damping.saturated or clipped.saturated or dipole_saturated,
+            torque_saturated=damping.torque_saturated or clipped.torque_saturated,
+            dipole_saturated=dipole_saturated,
         )
 
     def reset(self) -> None:
