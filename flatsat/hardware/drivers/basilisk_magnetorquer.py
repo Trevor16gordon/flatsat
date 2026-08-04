@@ -19,7 +19,7 @@ from typing import ClassVar
 
 import zenoh
 
-from flatsat.core.bus import HalMessage, SamplePublisher
+from flatsat.core.bus import HalMessage, SamplePublisher, bus_config
 from flatsat.core.config import Provenance, describe_magnetorquer_spec, load_magnetorquer_spec
 from flatsat.hardware.actuator import ActuatorDriver
 from flatsat.hardware.drivers import driver_options_pb2
@@ -64,7 +64,7 @@ class BasiliskMagnetorquerDriver(ActuatorDriver):
         self._model = model
         self._provenance = provenance
         self._owns_session = session is None
-        self._session = session if session is not None else zenoh.open(zenoh.Config())
+        self._session = session if session is not None else zenoh.open(bus_config())
         self._feedback = SamplePublisher(self._session, magnetorquer_dipole_topic(name), name)
 
     @classmethod

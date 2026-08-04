@@ -26,7 +26,7 @@ from pathlib import Path
 import zenoh
 
 from flatsat import vehicle_pb2
-from flatsat.core.bus import SamplePublisher
+from flatsat.core.bus import SamplePublisher, bus_config
 from flatsat.core.config import load_vehicle, which_impl
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_driver_class
@@ -156,7 +156,7 @@ def main() -> int:
     parser.add_argument("--vehicle", type=Path, default=None, help="vehicle composition file")
     args = parser.parse_args()
 
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     try:
         daemon = build_daemon(args.sensor, session, args.vehicle)
     except (KeyError, FileNotFoundError) as exc:

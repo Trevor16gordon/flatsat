@@ -139,6 +139,12 @@ def render_service(
         f"ExecStart={profile['PYTHON']} {' '.join(exec_args)}",
         f"WorkingDirectory={profile['WORKDIR']}",
         "Environment=PYTHONUNBUFFERED=1",
+        # Fleet bus configuration (FLATSAT_ZENOH_CONNECT and friends):
+        # one optional file points every daemon on this machine at a
+        # zenoh router instead of multicast scouting — the fix for
+        # per-process "interface roulette" under VPNs. Absent file =
+        # LAN defaults; "-" makes it optional.
+        "EnvironmentFile=-/etc/flatsat/bus.env",
         "Restart=on-failure",
         "RestartSec=1",
     ]

@@ -37,7 +37,7 @@ from flatsat.comms.link import (
     ContactSchedule,
     Link,
 )
-from flatsat.core.bus import SamplePublisher
+from flatsat.core.bus import SamplePublisher, bus_config
 from flatsat.core.config import VehicleSpec, load_vehicle, which_impl
 from flatsat.core.health import health_topic
 from flatsat.core.registry import get_framer_class, get_modem_class
@@ -220,7 +220,7 @@ def main() -> int:
         return 2
 
     endpoint = "ground" if args.ground else "flight"
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     link = build_link(vehicle, endpoint)
     service = LinkService(
         link,

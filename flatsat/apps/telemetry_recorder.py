@@ -22,7 +22,7 @@ from pathlib import Path
 
 import zenoh
 
-from flatsat.core.bus import SamplePublisher
+from flatsat.core.bus import SamplePublisher, bus_config
 from flatsat.core.config import load_vehicle
 from flatsat.core.health import health_topic
 from flatsat.mode.client import ModeClient
@@ -105,7 +105,7 @@ def main() -> int:
     args = parser.parse_args()
 
     vehicle = load_vehicle(args.vehicle)
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     header = mission_log.build_session_header(
         run_id=args.run_id or mission_log.default_run_id("rec"),
         source_kind=mission_log_pb2.SourceKind.Value(f"SOURCE_KIND_{args.source_kind.upper()}"),

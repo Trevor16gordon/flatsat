@@ -16,12 +16,46 @@ The contract, per message:
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from typing import Protocol
 
 import zenoh
 
 from flatsat.msgs import hal_pb2
+
+# Router endpoints for machines where multicast scouting cannot work —
+# a laptop on a VPN (the default route hides the LAN), two Tailscale
+# nodes in different networks, a datacenter. Comma-separated zenoh
+# endpoints, e.g. "tcp/100.65.0.120:7447".
+ENDPOINTS_ENV = "FLATSAT_ZENOH_CONNECT"
+
+
+def bus_config() -> zenoh.Config:
+    """Session config honoring the fleet's router endpoints, if any.
+
+    With ``FLATSAT_ZENOH_CONNECT`` unset this is a default config —
+    multicast peer scouting, the LAN behavior. With endpoints set the
+    session runs in CLIENT mode against them: a zenoh PEER does not
+    route third-party traffic, so two peers joined through a common
+    router still cannot talk — a router routes for its CLIENTS. That
+    property is the whole reason a zenohd exists in this system.
+
+    Every production ``zenoh.open`` call goes through here, so pointing
+    an entire machine at a router is one environment variable
+    (systemd units read it from /etc/flatsat/bus.env).
+
+    Returns:
+        The config to pass to ``zenoh.open``.
+    """
+    config: zenoh.Config = zenoh.Config()
+    raw = os.environ.get(ENDPOINTS_ENV, "").strip()
+    if raw:
+        endpoints = [item.strip() for item in raw.split(",") if item.strip()]
+        config.insert_json5("mode", '"client"')
+        config.insert_json5("connect/endpoints", json.dumps(endpoints))
+    return config
 
 
 class HalMessage(Protocol):

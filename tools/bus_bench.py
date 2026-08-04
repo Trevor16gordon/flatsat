@@ -37,6 +37,8 @@ from pathlib import Path
 import numpy as np
 import zenoh
 
+from flatsat.core.bus import bus_config
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))  # allow `python tools/bus_bench.py` from anywhere
@@ -77,7 +79,7 @@ def run_echo(fifo: int | None) -> int:
         0 on clean (KeyboardInterrupt) exit.
     """
     policy = try_fifo(fifo)
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     pub = session.declare_publisher(PONG_KEY)
 
     def bounce(sample: zenoh.Sample) -> None:
@@ -113,7 +115,7 @@ def run_ping(count: int, rate_hz: float, warmup: int, fifo: int | None) -> int:
         0 on success; 4 if more than 1% of measured pongs went missing.
     """
     policy = try_fifo(fifo)
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     rtts_ns: list[int] = []
     lock = threading.Lock()
 

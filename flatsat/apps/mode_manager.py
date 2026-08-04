@@ -21,6 +21,7 @@ from types import FrameType
 
 import zenoh
 
+from flatsat.core.bus import bus_config
 from flatsat.core.config import load_vehicle
 from flatsat.mode.manager import ModeManager
 
@@ -36,7 +37,7 @@ def main() -> int:
     args = parser.parse_args()
 
     vehicle = load_vehicle(args.vehicle)
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     manager = ModeManager(vehicle.mode, session)
     for line in (*vehicle.describe(), *manager.describe()):
         print(f"[mode] {line}", flush=True)

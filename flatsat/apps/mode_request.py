@@ -20,6 +20,7 @@ import time
 
 import zenoh
 
+from flatsat.core.bus import bus_config
 from flatsat.mode.manager import MODE_TOPIC, request_topic
 from flatsat.msgs import mode_pb2
 
@@ -128,7 +129,7 @@ def main() -> int:
     parser.add_argument("--status", action="store_true", help="only report the current mode")
     args = parser.parse_args()
 
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     time.sleep(0.5)  # let scouting find the manager before querying
     try:
         if args.status or args.mode is None:

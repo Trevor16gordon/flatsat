@@ -34,7 +34,7 @@ from flatsat.comms.uplink import (
     MANIFEST_TOPIC,
     UplinkReceiver,
 )
-from flatsat.core.bus import SamplePublisher
+from flatsat.core.bus import SamplePublisher, bus_config
 from flatsat.core.health import health_topic
 from flatsat.mode.client import ModeClient
 from flatsat.msgs import mode_pb2, uplink_pb2
@@ -203,7 +203,7 @@ def main() -> int:
     root = Path(args.staging_dir).expanduser()
     receiver = UplinkReceiver(root / "staging")
     slots = SlotManager(root / "slots")
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     mode_client = ModeClient(session, "uplink")
     service = UplinkService(receiver, slots, session, mode_client=mode_client)
     print(f"[uplink] staging {receiver.staging_dir}", flush=True)

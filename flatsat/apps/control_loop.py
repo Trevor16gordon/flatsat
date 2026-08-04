@@ -40,7 +40,7 @@ from flatsat import vehicle_pb2
 from flatsat.control.attitude.controller import AttitudeController
 from flatsat.control.attitude.estimators.estimator import StateEstimator
 from flatsat.control.attitude.guidance import ReferenceSource
-from flatsat.core.bus import SamplePublisher
+from flatsat.core.bus import SamplePublisher, bus_config
 from flatsat.core.config import VehicleSpec, load_vehicle, which_impl
 from flatsat.core.health import health_topic, percentiles
 from flatsat.core.registry import get_controller_class, get_estimator_class, get_guidance_class
@@ -619,7 +619,7 @@ def main() -> int:
                 )
             )
 
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     try:
         loop = build_loop(session, vehicle)
     except KeyError as exc:

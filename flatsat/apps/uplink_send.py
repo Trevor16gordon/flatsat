@@ -28,6 +28,7 @@ from pathlib import Path
 import zenoh
 
 from flatsat.comms.uplink import CHUNK_TOPIC, CONTROL_TOPIC, MANIFEST_TOPIC, chunk_artifact
+from flatsat.core.bus import bus_config
 from flatsat.msgs import uplink_pb2
 
 _KINDS = {
@@ -133,7 +134,7 @@ def main() -> int:
     rollback.add_argument("--reason", default="ground rollback")
 
     args = parser.parse_args()
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     time.sleep(0.5)  # let scouting find the flight side before publishing
     try:
         if args.verb == "send":

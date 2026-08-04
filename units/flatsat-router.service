@@ -1,0 +1,38 @@
+# HAND-MAINTAINED (not generated): the zenoh router for machines whose
+# multicast scouting cannot be trusted — Tailscale/VPN hosts, remote HIL.
+#
+# Why a router at all: zenoh PEERS do not route third-party traffic, so
+# two processes that each found the router as a peer still could not
+# talk through it. CLIENTS are routed. flatsat daemons switch to client
+# mode automatically when FLATSAT_ZENOH_CONNECT is set (see
+# flatsat/core/bus.py), which is what /etc/flatsat/bus.env is for.
+#
+# One-time install on the flight computer (Debian/Ubuntu):
+#   echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" \
+#     | sudo tee /etc/apt/sources.list.d/zenoh.list
+#   sudo apt update && sudo apt install zenoh
+#   sudo cp units/flatsat-router.service /etc/systemd/system/
+#   sudo mkdir -p /etc/flatsat
+#   echo "FLATSAT_ZENOH_CONNECT=tcp/127.0.0.1:7447" | sudo tee /etc/flatsat/bus.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now flatsat-router
+#   sudo systemctl restart 'flatsat-*'
+#
+# The ground machine then reaches the same router over Tailscale:
+#   export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447
+#
+# The listen endpoint binds every interface, so LAN and Tailscale peers
+# both reach it; the version pin is whatever apt installed — zenohd and
+# the eclipse-zenoh python wheel must share a protocol major version.
+
+[Unit]
+Description=zenoh router for the flatsat bus
+Before=flatsat.target
+PartOf=flatsat.target
+
+[Service]
+ExecStart=/usr/bin/zenohd --listen tcp/0.0.0.0:7447
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

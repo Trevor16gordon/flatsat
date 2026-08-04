@@ -132,16 +132,22 @@ def open_session(connect: str | None) -> zenoh.Session:
     """Open a zenoh session, optionally with an explicit peer endpoint.
 
     Args:
-        connect: Endpoint like ``tcp/jetson.local:7447``, or None to rely on
-            multicast discovery on the LAN.
+        connect: Endpoint like ``tcp/jetson.local:7447`` for a DIRECT
+            peer link (bridge traffic is first-party, so peer mode
+            suffices), or None to fall back to the fleet default —
+            ``FLATSAT_ZENOH_CONNECT`` router endpoints if set, multicast
+            discovery otherwise.
 
     Returns:
         The open session.
     """
-    config = zenoh.Config()
     if connect:
+        config = zenoh.Config()
         config.insert_json5("connect/endpoints", f'["{connect}"]')
-    return zenoh.open(config)
+        return zenoh.open(config)
+    from flatsat.core.bus import bus_config
+
+    return zenoh.open(bus_config())
 
 
 def plant_from_vehicle(

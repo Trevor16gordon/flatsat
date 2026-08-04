@@ -23,7 +23,7 @@ import time
 
 import zenoh
 
-from flatsat.core.bus import HalMessage
+from flatsat.core.bus import HalMessage, bus_config
 from flatsat.core.config import Provenance, describe_imu_spec, load_imu_spec
 from flatsat.hardware import devices_pb2
 from flatsat.hardware.drivers import driver_options_pb2
@@ -63,7 +63,7 @@ class BasiliskImuDriver(SensorDriver):
         self._stale_after_ns = int(stale_after_s * 1e9)
         self._rng = random.Random(seed) if seed is not None else None
         self._owns_session = session is None
-        self._session = session if session is not None else zenoh.open(zenoh.Config())
+        self._session = session if session is not None else zenoh.open(bus_config())
         self._lock = threading.Lock()
         self._truth: tuple[float, float, float] | None = None
         self._in_eclipse = False

@@ -19,6 +19,7 @@ from pathlib import Path
 import zenoh
 
 from flatsat.control.health.arbiter import Fdir
+from flatsat.core.bus import bus_config
 from flatsat.core.config import load_vehicle
 
 
@@ -37,7 +38,7 @@ def main() -> int:
         print("vehicle declares no fdir rules; nothing to watch", file=sys.stderr)
         return 2
 
-    session = zenoh.open(zenoh.Config())
+    session = zenoh.open(bus_config())
     fdir = Fdir(vehicle.fdir, session)
     for line in (*vehicle.describe(), *fdir.describe()):
         print(f"[fdir] {line}", flush=True)

@@ -198,6 +198,27 @@ Tier-1 artifact — an installed release can self-test on the flight computer.
 Tests must use test-only topic names: a test subscribing to a production key
 silently reads a live daemon's — or a running HIL sim's — traffic.
 
+## The bus off the LAN: one router, one variable
+
+Multicast scouting is the LAN default and it is fragile off the LAN: a
+VPN's utun device captures the default route and each PROCESS
+independently wins or loses the interface lottery at startup (one wheel
+daemon reachable, its twin not — observed in the field). The durable fix
+is a zenoh router and client mode, because zenoh peers do not route
+third-party traffic but a router routes for its clients.
+
+Every production `zenoh.open` goes through `flatsat.core.bus.bus_config`,
+which reads **`FLATSAT_ZENOH_CONNECT`** (comma-separated endpoints).
+Unset: multicast, exactly as before. Set: client mode against those
+endpoints. Generated systemd units read `/etc/flatsat/bus.env`, so
+pointing the whole flight computer at its local router is one file; the
+ground machine exports the same variable with the flight computer's
+Tailscale address and the entire HIL loop runs router-brokered — same
+network path at the bench, in the next room, or from another country.
+`units/flatsat-router.service` documents the one-time zenohd install.
+The bridge's explicit `--connect` flag keeps its direct peer-link
+meaning and wins over the environment.
+
 ## Languages
 
 Python first; C++ only when measurement demands it (the port trigger is a

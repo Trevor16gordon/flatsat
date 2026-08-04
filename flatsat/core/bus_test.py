@@ -10,6 +10,7 @@ These run two zenoh peer sessions inside one process — enough to prove the
 bus mechanics and the serialization seam without orchestration.
 """
 
+import json
 import time
 from collections.abc import Callable, Iterator
 
@@ -117,3 +118,26 @@ def test_late_joiner_learns_mode_via_query(
     assert state.mode == mode_pb2.SYSTEM_MODE_SAFE
     assert state.mode_seq == 7
     queryable.undeclare()
+
+
+def test_bus_config_defaults_to_multicast_scouting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No endpoints configured: the LAN default, untouched."""
+    from flatsat.core.bus import ENDPOINTS_ENV, bus_config
+
+    monkeypatch.delenv(ENDPOINTS_ENV, raising=False)
+    cfg = bus_config()
+    assert json.loads(cfg.get_json("mode")) is None
+    assert json.loads(cfg.get_json("connect/endpoints")) == []
+
+
+def test_bus_config_endpoints_select_client_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Router endpoints demand CLIENT mode — peers are not routed."""
+    from flatsat.core.bus import ENDPOINTS_ENV, bus_config
+
+    monkeypatch.setenv(ENDPOINTS_ENV, "tcp/100.65.0.120:7447, tcp/127.0.0.1:7447")
+    cfg = bus_config()
+    assert json.loads(cfg.get_json("mode")) == "client"
+    assert json.loads(cfg.get_json("connect/endpoints")) == [
+        "tcp/100.65.0.120:7447",
+        "tcp/127.0.0.1:7447",
+    ]

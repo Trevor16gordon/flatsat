@@ -39,6 +39,7 @@ from flatsat.apps.actuator_daemon import ActuatorDaemon
 from flatsat.apps.control_loop import ControlLoop, wheel_state_inputs
 from flatsat.apps.sensor_daemon import SensorDaemon
 from flatsat.control.health.arbiter import Fdir
+from flatsat.core.bus import bus_config
 from flatsat.core.config import VehicleSpec, load_textproto, load_vehicle, which_impl
 from flatsat.core.registry import (
     get_actuator_class,
@@ -547,7 +548,7 @@ class ScenarioRunner:
         mode_entry.CopyFrom(vehicle.mode)
         mode_entry.clean_shutdown_marker = str(marker)
 
-        session = zenoh.open(zenoh.Config())
+        session = zenoh.open(bus_config())
         recorder = self._start_recorder(session, vehicle)
         threads: list[threading.Thread] = []
         sensor_daemons: list[SensorDaemon] = []
