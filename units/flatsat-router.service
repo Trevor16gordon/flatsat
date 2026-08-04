@@ -7,7 +7,9 @@
 # mode automatically when FLATSAT_ZENOH_CONNECT is set (see
 # flatsat/core/bus.py), which is what /etc/flatsat/bus.env is for.
 #
-# One-time install on the flight computer (Debian/Ubuntu):
+# CANONICAL INSTALL: tools/jetson-setup.sh stage N4 (idempotent, part
+# of reproducible board bring-up). The manual steps below are the
+# same thing spelled out:
 #   echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" \
 #     | sudo tee /etc/apt/sources.list.d/zenoh.list
 #   sudo apt update && sudo apt install zenoh

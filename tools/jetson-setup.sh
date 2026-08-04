@@ -221,6 +221,39 @@ do_ "N2b gate: verify_torch_cuda.py (CUDA build, GPU compute, gnuradio coexists)
 # TensorRT: python3-libnvinfer already ships with JP6.2.1 (apt) — reachable
 # from this venv via system site-packages; onnxruntime comes later per §3.
 
+# ------------------------------------------------------- N4: zenoh router --
+
+log "N4: zenoh router (multicast-free bus; ARCHITECTURE.md 'The bus off the LAN')"
+# Why: zenoh multicast scouting is per-process dice under VPNs/Tailscale
+# (one wheel daemon reachable, its twin not — seen in the field). Every
+# flatsat daemon switches to CLIENT mode against this router the moment
+# /etc/flatsat/bus.env exists; absent file = LAN multicast, unchanged.
+ZENOH_LIST="/etc/apt/sources.list.d/zenoh.list"
+if [[ -f "$ZENOH_LIST" ]]; then
+  skip "zenoh apt repo already configured"
+else
+  do_ "add eclipse zenoh apt repo"
+  echo "deb [trusted=yes] https://download.eclipse.org/zenoh/debian-repo/ /" \
+    | sudo tee "$ZENOH_LIST" >/dev/null
+  sudo apt-get update
+  APT_UPDATED=1
+fi
+apt_install zenoh
+# Protocol-parity note: zenohd and the venv's eclipse-zenoh wheel must
+# share a protocol major. Print both so a mismatch is visible at setup.
+PY_ZENOH_V="$("$ML_VENV/bin/pip" show eclipse-zenoh 2>/dev/null | awk '/^Version:/{print $2}' || true)"
+echo "  note: python eclipse-zenoh=${PY_ZENOH_V:-unknown}; $(zenohd --version 2>/dev/null | head -1 || echo 'zenohd version unknown')"
+if [[ -f /etc/flatsat/bus.env ]]; then
+  skip "/etc/flatsat/bus.env exists"
+else
+  do_ "write /etc/flatsat/bus.env (daemons become clients of the local router)"
+  sudo mkdir -p /etc/flatsat
+  echo "FLATSAT_ZENOH_CONNECT=tcp/127.0.0.1:7447" | sudo tee /etc/flatsat/bus.env >/dev/null
+fi
+do_ "install units (generated + hand-maintained flatsat-router) and enable the router"
+sudo bash "$SCRIPT_DIR/install-units.sh"
+sudo systemctl enable --now flatsat-router
+
 # --------------------------------------------------- N3: PREEMPT_RT kernel --
 
 log "N3: PREEMPT_RT kernel (NVIDIA OTA debs) + RT test tools"
