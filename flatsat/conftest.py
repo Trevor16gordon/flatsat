@@ -39,9 +39,7 @@ def _multicast_healthy() -> bool:
     received: list[int] = []
     a = zenoh.open(zenoh.Config())
     b = zenoh.open(zenoh.Config())
-    sub = a.declare_subscriber(
-        "test/conftest/mcast_probe", lambda _sample: received.append(1)
-    )
+    sub = a.declare_subscriber("test/conftest/mcast_probe", lambda _sample: received.append(1))
     pub = b.declare_publisher("test/conftest/mcast_probe")
     deadline = time.monotonic() + 3.0
     while not received and time.monotonic() < deadline:
