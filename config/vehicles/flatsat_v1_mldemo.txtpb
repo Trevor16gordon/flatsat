@@ -1,0 +1,242 @@
+# proto-file: flatsat/vehicle.proto
+# proto-message: flatsat.v1.VehicleConfig
+#
+# VEHICLE COMPOSITION — what this spacecraft IS.
+#
+# Implementations are selected by filling exactly one options block; the
+# block's field name is the registry key (flatsat/core/registry.py), so
+# a different spacecraft is a different file of this shape — not
+# different code. Deployment concerns (RT priority, cores, memory) live
+# in deployment.toml; board topology in tools/host-profiles/.
+#
+# ONE vehicle file serves bench and HIL — only the Mac's presence
+# differs. With no bridge running this is the correct quiet state: imu0
+# publishes STALE-flagged samples on cadence, commands self-flag, the
+# wheel zeroes.
+
+name: "flatsat-v1-mldemo"
+description: "Flat-sat: 3-wheel + 3-rod ADCS, mag + sun + star tracker, nadir pointing with magnetic momentum dump"
+
+# Physical model — integration truth, read by flight software AND by the
+# sim bridge to build its plant, so the two cannot disagree by accident.
+body {
+  mass_kg: 10.0
+  inertia_kg_m2: [0.9, 0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.6]  # 3x3 row-major
+}
+
+sensors {
+  name: "imu0"
+  topic: "hal/imu0/sample"
+  rate_hz: 100
+  basilisk_imu {  # swap the block for a hardware driver's; nothing else changes
+    spec: "config/devices/imu0.txtpb"  # device characteristics, shared corruption model
+    truth_topic: "sim/truth/state"     # where the bridge publishes physics truth
+    stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "mag0"
+  topic: "hal/mag0/sample"
+  rate_hz: 50
+  basilisk_magnetometer {
+    spec: "config/devices/mag0.txtpb"
+    truth_topic: "sim/truth/state"
+    stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "css0"
+  topic: "hal/css0/sample"
+  rate_hz: 10
+  basilisk_sun_sensor {
+    spec: "config/devices/css0.txtpb"
+    truth_topic: "sim/truth/state"
+    stale_after_s: 0.5
+  }
+}
+
+sensors {
+  name: "st0"
+  topic: "hal/st0/sample"
+  rate_hz: 5
+  basilisk_star_tracker {
+    spec: "config/devices/st0.txtpb"
+    truth_topic: "sim/truth/state"
+    stale_after_s: 1.0
+  }
+}
+
+sensors {
+  name: "thermal_tj"
+  topic: "hal/thermal_tj/sample"
+  rate_hz: 1
+  jetson_thermal { zone: "tj-thermal" }
+}
+
+actuators {
+  name: "wheel0"
+  command_topic: "adcs/wheel_torque"   # body-frame torque from the control loop
+  state_topic: "hal/wheel0/state"
+  rate_hz: 100
+  stale_zero_s: 0.1                    # zero the wheel when commands stop
+  mounting {                           # integration truth: where it points
+    position_m: [0.0, 0.0, 0.0]
+    axis: [1.0, 0.0, 0.0]              # spin axis in the body frame
+  }
+  basilisk_reaction_wheel {            # sim_reaction_wheel = local-only alternative
+    device: "config/devices/wheel0.txtpb"
+  }
+}
+
+actuators {
+  name: "wheel1"
+  command_topic: "adcs/wheel_torque"
+  state_topic: "hal/wheel1/state"
+  rate_hz: 100
+  stale_zero_s: 0.1
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+actuators {
+  name: "wheel2"
+  command_topic: "adcs/wheel_torque"
+  state_topic: "hal/wheel2/state"
+  rate_hz: 100
+  stale_zero_s: 0.1
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_reaction_wheel { device: "config/devices/wheel0.txtpb" }
+}
+
+# Magnetorquer rods: momentum management, not primary attitude control.
+# The wheels absorb a tumble; the rods hand that stored momentum to the
+# field (m x B), which is the only way down without thrusters. Real-scale
+# device (mtq0, 1.2 A·m²): a full dump takes tens of minutes, honestly.
+actuators {
+  name: "mtq_x"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_x/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [1.0, 0.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
+actuators {
+  name: "mtq_y"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_y/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 1.0, 0.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
+actuators {
+  name: "mtq_z"
+  command_topic: "adcs/dipole"
+  state_topic: "hal/mtq_z/state"
+  rate_hz: 50
+  stale_zero_s: 0.2
+  mounting { position_m: [0.0, 0.0, 0.0] axis: [0.0, 0.0, 1.0] }
+  basilisk_magnetorquer { device: "config/devices/mtq0.txtpb" }
+}
+
+control {
+  rate_hz: 100
+  input_topic: "hal/imu0/sample"
+  mag_input_topic: "hal/mag0/sample"
+  sun_input_topic: "hal/css0/sample"
+  star_input_topic: "hal/st0/sample"
+  output_topic: "adcs/wheel_torque"
+  dipole_output_topic: "adcs/dipole"
+  stale_after_s: 0.05
+  ml_policy {                          # the Tier-2 demo: a LEARNED detumble law,
+                                       # uplinked as an artifact and consumed here.
+    artifact: "ml_detumble"            # slot name; activate/rollback move the pointer
+                                       # (adoption is restart-shaped: restart flatsat-adcs)
+    kp: 0.02                           # fallback PD — flies whenever NO version is
+    kd: 0.005                          # active; a learned law degrades to a classical
+                                       # one, never to nothing
+    max_torque_n_m: 0.05               # reaction-wheel envelope; commands clip to it
+  }
+  constant_rate {                      # rate reference for the damping term
+    target_rates_rad_s: [0.0, 0.0, 0.0]
+  }
+  star_attitude {                      # tracker MRP when it has stars (eclipse-proof);
+    orbit: "config/orbits/starlink_leo.txtpb"  # TRIAD fallback when blinded, rates last
+  }
+}
+
+mode {  # mission state: who must ack transitions
+  apps: [
+    "imu0", "mag0", "css0", "st0", "thermal_tj",
+    "wheel0", "wheel1", "wheel2",
+    "mtq_x", "mtq_y", "mtq_z",
+    "adcs", "recorder", "fdir"
+  ]
+  ack_timeout_s: 2.0
+  min_dwell_s: 1.0                     # anti-flap: away-from-safety only
+}
+
+fdir {
+  # Thresholds from the 2026-07-28 HIL stall census: 39 stale episodes,
+  # median barely over the 0.5 s staleness threshold, 2.2% of the window
+  # — sub-second stalls are NORMAL on this link. Only a SUSTAINED stale
+  # ratio (a dead bridge, a wedged link) is a fault worth safing over.
+  rules {
+    name: "imu_stale"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/imu0/sample"
+      flag_mask: 8         # VALIDITY_FLAG_STALE
+      window_s: 10.0
+      max_ratio: 0.5
+    }
+  }
+  rules {
+    name: "imu_silent"     # daemon DEATH, distinct from degraded
+    min_trip_s: 1.0
+    silence { topic: "hal/imu0/sample" timeout_s: 2.0 }
+  }
+  rules {
+    name: "wheel0_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel0/state"
+      flag_mask: 16        # VALIDITY_FLAG_SATURATED
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
+  rules {
+    name: "wheel1_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel1/state"
+      flag_mask: 16
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
+  rules {
+    name: "wheel2_saturated"
+    min_trip_s: 2.0
+    flag_ratio {
+      topic: "hal/wheel2/state"
+      flag_mask: 16
+      window_s: 10.0
+      max_ratio: 0.8
+    }
+  }
+}
+
+telemetry {  # the recorder: what gets archived, and where
+  topics: ["hal/**", "adcs/**", "health/**", "sys/**", "mission/**"]
+  output_dir: "~/flatsat-telemetry"
+  max_file_bytes: 67108864             # 64 MiB per file
+  rotate_every_s: 900                  # or every 15 min, whichever first
+  max_total_bytes: 4294967296          # 4 GiB cap — oldest pruned beyond
+}

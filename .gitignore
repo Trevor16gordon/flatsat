@@ -12,3 +12,4 @@ venv/
 # editor / os
 *.swp
 .DS_Store
+build/

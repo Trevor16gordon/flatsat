@@ -53,6 +53,22 @@ message MomentumDumpOptions {
   optional double max_dipole_a_m2 = 5;  // rod envelope; absent = 1.0
 }
 
+// ml_policy: a learned control law — a small MLP flying the same
+// contract as every classical law. The network is a Tier-2 ARTIFACT
+// (uplinked, sha256-verified, activated by ground command); this
+// strategy is its consumer. At startup it reads the active slot
+// pointer; when no version is active it flies the fallback PD gains
+// below — a learned law degrades to a classical one, never to nothing.
+// Adoption is restart-shaped by design: slots move pointers, they never
+// hot-patch a running loop.
+message MlPolicyOptions {
+  optional string artifact = 1;        // required; slot name, e.g. "ml_detumble"
+  optional string slots_dir = 2;       // absent = ~/flatsat-uplink/slots (uplink service default)
+  optional double kp = 3;              // required; fallback PD N·m / (rad/s)
+  optional double kd = 4;              // required; fallback PD N·m / (rad/s²)
+  optional double max_torque_n_m = 5;  // actuator envelope; absent = 1.0
+}
+
 // constant_rate: fixed body-rate target; all zeros (or empty) = detumble.
 message ConstantRateOptions {
   repeated double target_rates_rad_s = 1;  // 3 values, or empty for detumble

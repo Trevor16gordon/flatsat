@@ -23,12 +23,17 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
 from flatsat import vehicle_pb2
-from flatsat.control.attitude.controller import AttitudeState
+from flatsat.control.attitude.controller import (
+    AttitudeReference,
+    AttitudeState,
+    ControlOutput,
+)
 from flatsat.core.config import (
     VehicleSpec,
     load_magnetorquer_spec,
@@ -105,6 +110,7 @@ def run_fast_loop(
     epoch_solar_angle_rad: float = 0.0,
     dt_s: float | None = None,
     seed: int = 7,
+    step_tap: Callable[[AttitudeState, AttitudeReference, ControlOutput], None] | None = None,
 ) -> FastLoopResult:
     """Fly one vehicle's control laws against the physics, as fast as possible.
 
@@ -123,6 +129,10 @@ def run_fast_loop(
             less CPU at the cost of integration accuracy — fine for a
             two-hour momentum dump, wrong for a fast tumble.
         seed: RNG seed for the sensor corruption models.
+        step_tap: Called once per control step with the estimated state,
+            the reference, and the controller's output — the tap a
+            training-data or analysis harvest hooks into. None costs
+            nothing on the fast path.
 
     Returns:
         The sampled trajectory.
@@ -259,7 +269,10 @@ def run_fast_loop(
         if wheels:
             state = _with_wheel_momentum(state, wheels)
 
-        output = controller.update(state, guidance.reference_at(t), dt)
+        reference = guidance.reference_at(t)
+        output = controller.update(state, reference, dt)
+        if step_tap is not None:
+            step_tap(state, reference, output)
 
         # Actuation through the same mounting projections and envelopes.
         torque = [0.0, 0.0, 0.0]

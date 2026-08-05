@@ -1,0 +1,34 @@
+# HAND-MAINTAINED (not generated): the C1 uplink service — stages what
+# arrives, activates only what is commanded, refuses activation in SAFE.
+#
+# Not part of the per-vehicle generated set because the uplink path is
+# infrastructure like the router, not a device the vehicle declares:
+# every vehicle on this flight computer shares one artifact store at
+# ~/flatsat-uplink (staging/ for verified arrivals, slots/ for the
+# active/previous pointers consumers read at startup).
+#
+# Consumers adopt on restart, never mid-run: after `uplink_send
+# activate`, restart the consuming service (e.g. flatsat-adcs for an
+# ml_policy artifact) and its startup journal names the version and
+# sha256 now in authority.
+#
+# Install: sudo bash tools/install-units.sh  (hand-maintained units in
+# units/ install alongside the generated set).
+
+[Unit]
+Description=flatsat artifact uplink (stage / activate / rollback)
+After=network-online.target
+PartOf=flatsat.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/trevor/flatsat
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/flatsat/bus.env
+ExecStart=/home/trevor/venvs/flatsat-ml/bin/python -m flatsat.apps.uplink_service
+Restart=on-failure
+RestartSec=2
+User=trevor
+
+[Install]
+WantedBy=flatsat.target

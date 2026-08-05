@@ -235,6 +235,71 @@ class MomentumDumpOptions(_message.Message):
 Global___MomentumDumpOptions: _TypeAlias = MomentumDumpOptions  # noqa: Y015
 
 @_typing.final
+class MlPolicyOptions(_message.Message):
+    """ml_policy: a learned control law — a small MLP flying the same
+    contract as every classical law. The network is a Tier-2 ARTIFACT
+    (uplinked, sha256-verified, activated by ground command); this
+    strategy is its consumer. At startup it reads the active slot
+    pointer; when no version is active it flies the fallback PD gains
+    below — a learned law degrades to a classical one, never to nothing.
+    Adoption is restart-shaped by design: slots move pointers, they never
+    hot-patch a running loop.
+    """
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    ARTIFACT_FIELD_NUMBER: _builtins.int
+    SLOTS_DIR_FIELD_NUMBER: _builtins.int
+    KP_FIELD_NUMBER: _builtins.int
+    KD_FIELD_NUMBER: _builtins.int
+    MAX_TORQUE_N_M_FIELD_NUMBER: _builtins.int
+    artifact: _builtins.str
+    """required; slot name, e.g. "ml_detumble" """
+    slots_dir: _builtins.str
+    """absent = ~/flatsat-uplink/slots (uplink service default)"""
+    kp: _builtins.float
+    """required; fallback PD N·m / (rad/s)"""
+    kd: _builtins.float
+    """required; fallback PD N·m / (rad/s²)"""
+    max_torque_n_m: _builtins.float
+    """actuator envelope; absent = 1.0"""
+    def __init__(
+        self,
+        *,
+        artifact: _builtins.str | None = ...,
+        slots_dir: _builtins.str | None = ...,
+        kp: _builtins.float | None = ...,
+        kd: _builtins.float | None = ...,
+        max_torque_n_m: _builtins.float | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_artifact", b"_artifact", "_kd", b"_kd", "_kp", b"_kp", "_max_torque_n_m", b"_max_torque_n_m", "_slots_dir", b"_slots_dir", "artifact", b"artifact", "kd", b"kd", "kp", b"kp", "max_torque_n_m", b"max_torque_n_m", "slots_dir", b"slots_dir"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_artifact", b"_artifact", "_kd", b"_kd", "_kp", b"_kp", "_max_torque_n_m", b"_max_torque_n_m", "_slots_dir", b"_slots_dir", "artifact", b"artifact", "kd", b"kd", "kp", b"kp", "max_torque_n_m", b"max_torque_n_m", "slots_dir", b"slots_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__artifact: _TypeAlias = _typing.Literal["artifact"]  # noqa: Y015
+    _WhichOneofArgType__artifact: _TypeAlias = _typing.Literal["_artifact", b"_artifact"]  # noqa: Y015
+    _WhichOneofReturnType__kd: _TypeAlias = _typing.Literal["kd"]  # noqa: Y015
+    _WhichOneofArgType__kd: _TypeAlias = _typing.Literal["_kd", b"_kd"]  # noqa: Y015
+    _WhichOneofReturnType__kp: _TypeAlias = _typing.Literal["kp"]  # noqa: Y015
+    _WhichOneofArgType__kp: _TypeAlias = _typing.Literal["_kp", b"_kp"]  # noqa: Y015
+    _WhichOneofReturnType__max_torque_n_m: _TypeAlias = _typing.Literal["max_torque_n_m"]  # noqa: Y015
+    _WhichOneofArgType__max_torque_n_m: _TypeAlias = _typing.Literal["_max_torque_n_m", b"_max_torque_n_m"]  # noqa: Y015
+    _WhichOneofReturnType__slots_dir: _TypeAlias = _typing.Literal["slots_dir"]  # noqa: Y015
+    _WhichOneofArgType__slots_dir: _TypeAlias = _typing.Literal["_slots_dir", b"_slots_dir"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__artifact) -> _WhichOneofReturnType__artifact | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kd) -> _WhichOneofReturnType__kd | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__kp) -> _WhichOneofReturnType__kp | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__max_torque_n_m) -> _WhichOneofReturnType__max_torque_n_m | None: ...
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__slots_dir) -> _WhichOneofReturnType__slots_dir | None: ...
+
+Global___MlPolicyOptions: _TypeAlias = MlPolicyOptions  # noqa: Y015
+
+@_typing.final
 class ConstantRateOptions(_message.Message):
     """constant_rate: fixed body-rate target; all zeros (or empty) = detumble."""
 

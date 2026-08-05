@@ -64,6 +64,7 @@ CONTROLLERS: dict[str, str] = {
     "momentum_dump": ("flatsat.control.attitude.controllers.momentum_dump:MomentumDumpController"),
     "sun_point": "flatsat.control.attitude.controllers.sun_point:SunPointController",
     "nadir_point": "flatsat.control.attitude.controllers.nadir_point:NadirPointController",
+    "ml_policy": "flatsat.control.attitude.controllers.ml_policy:MlPolicyController",
 }
 
 # What each strategy EMITS — mirrored as strings so the config loader can
@@ -77,6 +78,7 @@ CONTROLLER_OUTPUT_KINDS: dict[str, str] = {
     "momentum_dump": "torque_and_dipole",
     "sun_point": "torque_and_dipole",
     "nadir_point": "torque_and_dipole",
+    "ml_policy": "torque",
 }
 
 GUIDANCE: dict[str, str] = {

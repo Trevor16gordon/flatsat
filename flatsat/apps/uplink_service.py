@@ -100,6 +100,7 @@ class UplinkService:
         staged = self._receiver.on_chunk(chunk)
         if staged is not None:
             self.last_event = f"staged {staged}"
+            print(f"[uplink] staged {staged}", flush=True)
 
     def _on_control(self, sample: zenoh.Sample) -> None:
         """Apply an activation or rollback command (subscriber thread).
@@ -137,6 +138,9 @@ class UplinkService:
         except ActivationRefused as exc:
             outcome = f"REFUSED: {exc}"
         self.last_event = outcome
+        # The operator watching the journal must see every verdict — a
+        # silent refusal reads as a dead service during a live pass.
+        print(f"[uplink] {outcome}", flush=True)
         return outcome
 
     def _current_mode(self) -> mode_pb2.SystemMode.ValueType | None:

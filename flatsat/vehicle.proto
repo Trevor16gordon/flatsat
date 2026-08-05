@@ -93,6 +93,7 @@ message ControlConfig {
     MomentumDumpOptions momentum_dump = 13;
     SunPointOptions sun_point = 14;
     NadirPointOptions nadir_point = 15;
+    MlPolicyOptions ml_policy = 16;
   }
   oneof objective {  // absent = constant_rate (detumble)
     ConstantRateOptions constant_rate = 20;
