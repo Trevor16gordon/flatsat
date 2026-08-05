@@ -63,6 +63,14 @@ class LiveRun:
         self._active: tuple[str, ...] = ()
         self._refused: int | None = None
         self.prefix = prefix
+        # Per-source flight-clock anchor: offset = first arrival wall
+        # time minus the sample's flight-clock stamp. Samples then plot
+        # at ONBOARD time — a pass delivers 30 s of history into its
+        # true place on the axis instead of compressing it into the
+        # window. Crude clock correlation (anchor bias = first sample's
+        # link latency); the real thing is a ground-system problem this
+        # repo has deliberately not solved yet.
+        self._clock_anchor: dict[str, int] = {}
 
     # ------------------------------------------------------------ intake --
 
@@ -78,6 +86,23 @@ class LiveRun:
         if len(entry["t_ns"]) < MAX_POINTS_PER_SERIES:
             entry["t_ns"].append(t_ns)
             entry["v"].append(value)
+
+    def _wall(self, header: object) -> int:
+        """Map a flight-clock header stamp to ground wall time.
+
+        Args:
+            header: Any message Header (source + sample_time_ns).
+
+        Returns:
+            Wall-clock nanoseconds for plotting.
+        """
+        source = header.source or "unknown"  # type: ignore[attr-defined]
+        stamp = int(header.sample_time_ns)  # type: ignore[attr-defined]
+        offset = self._clock_anchor.get(source)
+        if offset is None:
+            offset = time.time_ns() - stamp
+            self._clock_anchor[source] = offset
+        return stamp + offset
 
     def _annotate(self, t_ns: int, level: str, message: str) -> None:
         """Add one timeline event.
@@ -194,13 +219,14 @@ class LiveRun:
         """
         msg = hal_pb2.ImuSample.FromString(payload)
         now = time.time_ns()
+        t_ns = self._wall(msg.header)
         omega = math.sqrt(msg.gyro_x_rad_s**2 + msg.gyro_y_rad_s**2 + msg.gyro_z_rad_s**2)
         with self.lock:
             self._track_pass(now)
-            self._point("downlink/imu.omega_mrad_s", now, omega * 1000.0)
-            self._point("downlink/imu.gyro_x_mrad_s", now, msg.gyro_x_rad_s * 1000.0)
-            self._point("downlink/imu.gyro_y_mrad_s", now, msg.gyro_y_rad_s * 1000.0)
-            self._point("downlink/imu.gyro_z_mrad_s", now, msg.gyro_z_rad_s * 1000.0)
+            self._point("downlink/imu.omega_mrad_s", t_ns, omega * 1000.0)
+            self._point("downlink/imu.gyro_x_mrad_s", t_ns, msg.gyro_x_rad_s * 1000.0)
+            self._point("downlink/imu.gyro_y_mrad_s", t_ns, msg.gyro_y_rad_s * 1000.0)
+            self._point("downlink/imu.gyro_z_mrad_s", t_ns, msg.gyro_z_rad_s * 1000.0)
 
     def on_wheel(self, wheel: str, payload: bytes) -> None:
         """Ingest one downlinked (sampled) wheel state.
@@ -211,10 +237,11 @@ class LiveRun:
         """
         msg = hal_pb2.WheelState.FromString(payload)
         now = time.time_ns()
+        t_ns = self._wall(msg.header)
         with self.lock:
             self._track_pass(now)
-            self._point(f"downlink/{wheel}.speed_rad_s", now, msg.speed_rad_s)
-            self._point(f"downlink/{wheel}.momentum_n_m_s", now, msg.momentum_n_m_s)
+            self._point(f"downlink/{wheel}.speed_rad_s", t_ns, msg.speed_rad_s)
+            self._point(f"downlink/{wheel}.momentum_n_m_s", t_ns, msg.momentum_n_m_s)
 
     # ----------------------------------------------------------- serving --
 
