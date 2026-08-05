@@ -76,7 +76,7 @@ then immediately (epoch sync):
 Watch (second terminal):
 
 ```bash
-ssh -t trevor@100.65.0.120 "journalctl -u flatsat-adcs -f"
+ssh -t trevor@100.65.0.120 "journalctl -u flatsat-adcs -u flatsat-uplink -u flatsat-fdir -u flatsat-mode -f"
 ```
 
 Talk track: journal says `ml_policy … NO ACTIVE VERSION — fallback PD` —
