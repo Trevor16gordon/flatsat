@@ -106,9 +106,12 @@ then show that recovery does NOT happen by itself:
 
 ```bash
 ~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request --status
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request RECOVERY --ground --reason "demo: bridge restored"
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request NOMINAL --ground --reason "checkout complete"
+~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request RECOVERY --ground --reason "demo: bridge restored" --topic-prefix ground
+~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request NOMINAL --ground --reason "checkout complete" --topic-prefix ground
 ```
+
+Each request queues at the ground station and crosses at the next
+contact window (≤30 s) — watch the transition land in the journal.
 
 Talk track: after anything unexpected the system rests in its safest
 configuration; only deliberate human action makes it interesting again.
@@ -122,10 +125,12 @@ command above), run the activate from 2d — the uplink journal answers
 ### 2d. Uplink, activate, fly the learned controller
 
 ```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send send ml_detumble 2026-08-05a build/ml_detumble/2026-08-05a.json --kind model
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send activate ml_detumble 2026-08-05a --ground
+~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground send ml_detumble 2026-08-05a build/ml_detumble/2026-08-05a.json --kind model
+~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground activate ml_detumble 2026-08-05a --ground
 ssh trevor@100.65.0.120 "sudo systemctl restart flatsat-adcs"
 ```
+
+(Each crosses at the next pass — terminal E narrates the window.)
 
 Journal now reads:
 `controller: ml_policy artifact='ml_detumble' version=2026-08-05a hidden=32 trained_on=fastloop-48ic+… sha256=56974ca8ec34…`
@@ -141,7 +146,7 @@ or move quickly inside the stale window):
 ### 2e. Rollback, live
 
 ```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send rollback ml_detumble
+~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground rollback ml_detumble
 ssh trevor@100.65.0.120 "sudo systemctl restart flatsat-adcs"
 ```
 
@@ -177,7 +182,9 @@ earn authority through measurement; deployment is the LAST step.
 
 ## 4. RF stretch goal (go/no-go at morning rehearsal)
 
-Default demo path sends the artifact over the router (rehearsed, solid).
+Default demo path sends the artifact through the bench link — real
+framing, queues, and contact windows over a loopback channel (rehearsed
+end to end).
 The RF hop (Pluto loopback through the 30 dB pads, as in the proven
 file-uplink) is garnish — attempt ONLY if:
 
