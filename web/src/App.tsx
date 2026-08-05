@@ -21,6 +21,7 @@ import { RunHeader } from './components/RunHeader';
 import { Timeline } from './components/Timeline';
 import type { DataSource } from './data/source';
 import type { MissionBlob, Span } from './data/types';
+import { ApiDataSource } from './data/apiSource';
 import { parseBlob, UploadDataSource } from './data/uploadSource';
 import { elapsed } from './lib/format';
 import { levelColor } from './lib/palette';
@@ -58,6 +59,40 @@ export default function App() {
   const [sharedY, setSharedY] = useState<[number, number] | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  // Live mode: ?api=http://localhost:8600 points the viewer at a
+  // ground-bridge server and polls it — the blob grows as passes land.
+  // Plot layout survives refreshes because it references channels by
+  // name, never by blob identity.
+  useEffect(() => {
+    const api = new URLSearchParams(window.location.search).get('api');
+    if (!api) return;
+    const src = new ApiDataSource(api);
+    setSource(src);
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const runs = await src.listRuns();
+        const first = runs[0];
+        if (!first || cancelled) return;
+        const fresh = await src.loadRun(first.run_id);
+        if (!cancelled) {
+          setBlob(fresh);
+          setError(null);
+        }
+      } catch {
+        // Transient poll failures stay quiet; a dead bridge just means
+        // the view stops growing, exactly like a quiet link.
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ingest = useCallback(async (file: File) => {
     try {

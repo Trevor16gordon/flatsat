@@ -143,6 +143,21 @@ B: back to `NO ACTIVE VERSION — fallback PD`.
 (If rollback says `REFUSED: no previous version`, the fallback line
 after restart is the same story — only one version was ever active.)
 
+## Live web console (mission control's screen)
+
+Bridge on the Mac (needs FLATSAT_ZENOH_CONNECT exported):
+```bash
+cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py
+```
+Then open the viewer at:
+```
+http://localhost:5173/?api=http://localhost:8600
+```
+Everything it shows CROSSED THE RADIO: contact passes as spans, mode /
+FDIR / uplink state as channels, transitions and staging as events.
+It updates every 3 s; plots you dock survive the refresh. Terminal
+alternative: `tools/ground_console.py` (same data, one line per event).
+
 ## Sim segment (viewer)
 
 Load `~/hil-trace/campaign_pd_vs_ml.json` → timeline spans → drag
