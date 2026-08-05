@@ -164,9 +164,23 @@ class ModeManager:
             The machine's decision, for in-process callers and tests.
         """
         with self._lock:
+            before = mode_pb2.SystemMode.Name(self._machine.mode)
             decision = self._machine.decide(request, time.monotonic_ns())
             if decision.accepted:
                 self._broadcast_locked()
+                # The transition IS the story — an operator watching the
+                # journal must see it happen, not discover it by query.
+                print(
+                    f"[mode] {before} -> {mode_pb2.SystemMode.Name(self._machine.mode)} "
+                    f"seq={self._machine.mode_seq} ({request.source}: {request.reason})",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[mode] refused {mode_pb2.SystemMode.Name(request.requested)} "
+                    f"from {request.source}: {decision.reason}",
+                    flush=True,
+                )
         return decision
 
     def _on_ack(self, sample: zenoh.Sample) -> None:

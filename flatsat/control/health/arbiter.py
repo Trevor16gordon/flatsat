@@ -124,6 +124,8 @@ class Fdir:
             self._request_pub.put(request.SerializeToString())
             self.safe_requests += 1
             self._last_request_ns = now
+            # A safing escalation must be visible where operators look.
+            print(f"[fdir] tripped: {request.reason} — requesting SAFE", flush=True)
         return tripped
 
     def publish_health(self) -> health_pb2.FdirHealth:
