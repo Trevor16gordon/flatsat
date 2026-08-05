@@ -25,16 +25,29 @@ journalctl -u flatsat-adcs -u flatsat-uplink -u flatsat-fdir -u flatsat-mode -f 
 
 **D (Jetson — sudo):** just be logged in.
 
-**E (Jetson — the space link).** Both ends of the store-and-forward
-link on one desk (PLAN §6 two-bus rule): ground tools talk to the
-`ground/` namespace, and this is the ONLY bridge to the flight bus —
-allowlisted, framed, queued, and gated by a 10 s contact window every
-30 s. Log in and run:
+**E (Jetson — flight side of the space link).** Ground tools talk to
+the `ground/` namespace; the link pair is the ONLY bridge to the
+flight bus — allowlisted, framed (CCSDS), queued, gated by a 10 s
+contact window every 30 s, and carried over REAL RF: 915 MHz GMSK
+between the two Plutos through the 30 dB pads. Log in and run:
+```bash
+cd ~/flatsat && ~/venvs/flatsat-ml/bin/python -m flatsat.apps.link_service --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb
+```
+
+**F (Mac — ground station, second Mac terminal).** Owns the ground
+radio (`usb:0.3.5`, the Pluto on the Mac):
+```bash
+cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 PYTHONPATH=$PWD ~/venvs/gr-ground/bin/python -m flatsat.apps.link_service --ground --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb
+```
+
+FALLBACK (no radios, same story minus RF): skip E and F above, run the
+loopback harness on the Jetson instead — every other command is
+identical:
 ```bash
 cd ~/flatsat && ~/venvs/flatsat-ml/bin/python tools/bench_link.py --vehicle config/vehicles/flatsat_v1_mldemo.txtpb
 ```
 (If `flatsat-link.service` ever gets installed by a units reinstall,
-turn it off — the harness owns both ends: `sudo systemctl disable --now flatsat-link`.)
+turn it off: `sudo systemctl disable --now flatsat-link`.)
 
 **Vizard:** Direct Communication → `tcp://localhost:5556` → Start Visualization.
 

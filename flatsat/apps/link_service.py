@@ -292,7 +292,17 @@ def main() -> int:
         )
     for line in (*vehicle.describe(), *link.describe()):
         print(f"[link] {line}", flush=True)
-    print(f"[link] endpoint={endpoint} downlink {list(vehicle.comms.downlink_topics)}", flush=True)
+    if args.ground:
+        print(
+            f"[link] endpoint=ground uplink {list(vehicle.comms.uplink_topics)} "
+            f"(subscribed under '{args.republish_prefix}/')",
+            flush=True,
+        )
+    else:
+        print(
+            f"[link] endpoint=flight downlink {list(vehicle.comms.downlink_topics)}",
+            flush=True,
+        )
 
     mode_client = ModeClient(session, "link")
     try:

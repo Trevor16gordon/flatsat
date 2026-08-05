@@ -180,11 +180,15 @@ earn authority through measurement; deployment is the LAST step.
 
 ---
 
-## 4. RF stretch goal (go/no-go at morning rehearsal)
+## 4. RF (no longer a stretch goal — proven 2026-08-05 evening)
 
-Default demo path sends the artifact through the bench link — real
-framing, queues, and contact windows over a loopback channel (rehearsed
-end to end).
+The demo's default link is the TWO-RADIO RF path: Mac Pluto
+(`pluto-ground`, usb:0.3.5) ↔ Jetson Pluto, 915 MHz GMSK, CCSDS,
+30 dB pads. Both directions verified: artifact staged over RF,
+health telemetry downlinked to the ground namespace. The loopback
+bench harness remains the rehearsed FALLBACK — swapping to it changes
+only which link processes run (cheatsheet terminal E/F), zero ground
+commands.
 The RF hop (Pluto loopback through the 30 dB pads, as in the proven
 file-uplink) is garnish — attempt ONLY if:
 
