@@ -30,6 +30,10 @@ systemctl is-active flatsat-adcs flatsat-uplink flatsat-router
 journalctl -u flatsat-adcs -n 5 | grep ml_policy   # expect: NO ACTIVE VERSION — fallback PD
 ```
 
+> The demo vehicle now declares a comms block, so a units regen also
+> emits `flatsat-link.service` — do NOT enable it; `tools/bench_link.py`
+> runs both link ends itself (in-process loopback has no peer).
+>
 > `units/generated` is now dirty in the Jetson checkout (demo vehicle).
 > That is intentional for tomorrow; **do not commit it**. Restore after
 > the demo (§6).
@@ -58,6 +62,15 @@ tcp://localhost:5556
 3. **Start Visualization** — it waits for the bridge.
 
 ---
+
+## 1b. The space link (two-bus rule, PLAN §6)
+
+All ground commanding and the artifact uplink cross a real
+store-and-forward link: ground tools publish into the `ground/`
+namespace, `tools/bench_link.py` (running on the Jetson) carries the
+directional allowlists across a loopback channel in CCSDS frames
+during a 10 s contact window every 30 s. Commands WAIT for the pass —
+narrate it, don't apologize for it. Commands: docs/demo-cheatsheet.md.
 
 ## 2. Thread 1 — live HIL (the spine)
 
