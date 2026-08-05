@@ -2,8 +2,18 @@
 
 Narrative, talk tracks, and break-glass table: `docs/demo-runbook-2026-08-06.md`.
 
-Four terminals. A and C are on the Mac at `~/flatsat`. B and D are ssh
+Six terminals. A, C, F on the Mac at `~/flatsat`; B, D, E are ssh
 sessions on the Jetson (`ssh trevor@100.65.0.120`), logged in once.
+Plus the browser (live console) and Vizard.
+
+## 0 — Pre-demo reset (terminal D, once)
+
+Clear stale test artifacts from the uplink store (old ml_policy@v1/v2
+from July testing would clutter the ACTIVE line on stage) and confirm
+the services:
+```bash
+rm -rf ~/flatsat-uplink/staging/ml_policy@* ~/flatsat-uplink/slots/ml_policy* && sudo systemctl restart flatsat-uplink && systemctl is-active flatsat-router flatsat-uplink flatsat-adcs
+```
 
 ## Setup (once)
 
@@ -49,19 +59,23 @@ cd ~/flatsat && ~/venvs/flatsat-ml/bin/python tools/bench_link.py --vehicle conf
 (If `flatsat-link.service` ever gets installed by a units reinstall,
 turn it off: `sudo systemctl disable --now flatsat-link`.)
 
-**Vizard:** Direct Communication → `tcp://localhost:5556` → Start Visualization.
-
 ## 1 — Release, detumble on fallback PD
 
 D:
 ```bash
 sudo systemctl restart flatsat.target
 ```
-A (immediately after):
+A (immediately after — clock sync):
 ```bash
 ~/venvs/flatsat-ground/bin/python -m flatsat.sim.basilisk_hil --orbit config/orbits/starlink_leo.txtpb --omega0 0.05,-0.04,0.03 --viz
 ```
+**Then Vizard** (the bridge BINDS the socket; Vizard connects to it, so
+the sim must already be running): Direct Communication →
+`tcp://localhost:5556` → Start Visualization.
+
 B shows: `controller: ml_policy … NO ACTIVE VERSION — fallback PD`, |omega| 70 → <5 mrad/s.
+Live console: drag `downlink/imu.omega_mrad_s` onto a plot — the
+detumble curve draws itself, one point per downlinked sample.
 
 ## 2 — Blackout → safing (WATCH B — it prints ONCE, ~10 s after the kill)
 
@@ -145,18 +159,28 @@ after restart is the same story — only one version was ever active.)
 
 ## Live web console (mission control's screen)
 
-Bridge on the Mac (needs FLATSAT_ZENOH_CONNECT exported):
+Viewer dev server (if not already running):
+```bash
+npm --prefix ~/flatsat/web run dev
+```
+Bridge on the Mac (third Mac terminal):
 ```bash
 cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py
 ```
-Then open the viewer at:
+Then open:
 ```
 http://localhost:5173/?api=http://localhost:8600
 ```
-Everything it shows CROSSED THE RADIO: contact passes as spans, mode /
-FDIR / uplink state as channels, transitions and staging as events.
-It updates every 3 s; plots you dock survive the refresh. Terminal
-alternative: `tools/ground_console.py` (same data, one line per event).
+Everything it shows CROSSED THE RADIO: the `● LIVE · downlink Ns ago`
+badge is the age of the newest downlinked sample (green = pass just
+landed, amber = between passes, red = link quiet); contact passes are
+timeline spans; imu/wheel/mode/fdir/uplink are draggable channels;
+transitions and staging land in the events lane. Updates every 3 s;
+docked plots survive. Terminal alternative: `tools/ground_console.py`.
+
+Demo moments to point at: `omega_mrad_s` falling during detumble;
+`staged:` then `ACTIVE: ml_detumble@2026-08-05a` appearing in events
+after step 5 — each having crossed the radio on a pass.
 
 ## Sim segment (viewer)
 

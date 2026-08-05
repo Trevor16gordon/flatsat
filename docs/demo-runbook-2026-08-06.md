@@ -50,16 +50,19 @@ export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447
 
 ---
 
-## 1. Vizard connection (before anything moves)
+## 1. Vizard connection (AFTER the bridge is up)
 
-1. Open Vizard → **Direct Communication**
-2. Socket:
+The bridge binds `tcp://localhost:5556`; Vizard is the CLIENT — start
+the sim first, then connect:
+
+1. Start the flight stack + bridge (§2a)
+2. Open Vizard → **Direct Communication** → socket:
 
 ```
 tcp://localhost:5556
 ```
 
-3. **Start Visualization** — it waits for the bridge.
+3. **Start Visualization**
 
 ---
 
