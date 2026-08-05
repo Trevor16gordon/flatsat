@@ -59,6 +59,8 @@ export default function App() {
   const [sharedY, setSharedY] = useState<[number, number] | null>(null);
   const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [live, setLive] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Live mode: ?api=http://localhost:8600 points the viewer at a
   // ground-bridge server and polls it — the blob grows as passes land.
@@ -79,6 +81,7 @@ export default function App() {
         if (!cancelled) {
           setBlob(fresh);
           setError(null);
+          setLive(true);
         }
       } catch {
         // Transient poll failures stay quiet; a dead bridge just means
@@ -87,9 +90,11 @@ export default function App() {
     };
     void poll();
     const timer = setInterval(() => void poll(), 3000);
+    const tick = setInterval(() => setNowMs(Date.now()), 1000);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      clearInterval(tick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -276,6 +281,23 @@ export default function App() {
           />
         </label>
         <div className="source-label">{source?.label ?? 'no source'}</div>
+        {live && blob && (() => {
+          // Freshest downlinked sample = the last thing that CROSSED the
+          // link. Age is honest liveness: it grows between passes and
+          // snaps back when one lands.
+          let lastNs = 0;
+          for (const s of Object.values(blob.topics)) {
+            if (s.last_ns > lastNs) lastNs = s.last_ns;
+          }
+          const ageS = Math.max(0, (nowMs - lastNs / 1e6) / 1000);
+          const state = ageS < 15 ? 'fresh' : ageS < 45 ? 'waiting' : 'stale';
+          return (
+            <div className={`live-badge live-${state}`} title="age of the newest downlinked sample">
+              <span className="live-dot" />
+              LIVE · downlink {ageS < 1 ? 'now' : `${Math.floor(ageS)}s ago`}
+            </div>
+          );
+        })()}
         <div className="readonly" title="commanding is not enabled in this build">
           read-only
         </div>

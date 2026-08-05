@@ -88,6 +88,11 @@ message CommsConfig {
   // allowlist that differs by direction is what keeps a republished
   // arrival on one side from echoing straight back across the link.
   repeated string uplink_topics = 5;
+  // Telemetry downlinked by SAMPLE, not by message: the flight side
+  // keeps only the LATEST message on each of these topics and queues
+  // it every period_s. A 100 Hz sensor stream does not belong on a
+  // space link; its newest value once a second does.
+  repeated SampledTopicConfig sampled_downlink = 6;
 
   oneof modem {
     LoopbackModemOptions loopback = 10;
@@ -97,4 +102,9 @@ message CommsConfig {
   oneof framer {
     CcsdsFramerOptions ccsds = 20;
   }
+}
+
+message SampledTopicConfig {
+  string topic = 1;
+  double period_s = 2;
 }

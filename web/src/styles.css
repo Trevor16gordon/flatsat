@@ -359,3 +359,33 @@ body {
   width: 100%;
   accent-color: #ffd75e;
 }
+
+
+/* Live mode: the downlink heartbeat. Green while a pass just landed,
+   amber while waiting out the gap, red when the link has gone quiet. */
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+.live-badge .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+.live-fresh { color: #7bc96f; border-color: #2e4a2b; }
+.live-fresh .live-dot { background: #7bc96f; }
+.live-waiting { color: #d9b45b; border-color: #4a3f22; }
+.live-waiting .live-dot { background: #d9b45b; }
+.live-stale { color: #d96b6b; border-color: #4a2727; }
+.live-stale .live-dot { background: #d96b6b; animation: none; }
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}

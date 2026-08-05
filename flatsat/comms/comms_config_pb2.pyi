@@ -255,6 +255,7 @@ class CommsConfig(_message.Message):
     QUEUE_LIMIT_FIELD_NUMBER: _builtins.int
     CONTACT_FIELD_NUMBER: _builtins.int
     UPLINK_TOPICS_FIELD_NUMBER: _builtins.int
+    SAMPLED_DOWNLINK_FIELD_NUMBER: _builtins.int
     LOOPBACK_FIELD_NUMBER: _builtins.int
     PLUTO_GMSK_FIELD_NUMBER: _builtins.int
     KISS_FIELD_NUMBER: _builtins.int
@@ -282,6 +283,14 @@ class CommsConfig(_message.Message):
         """
 
     @_builtins.property
+    def sampled_downlink(self) -> _containers.RepeatedCompositeFieldContainer[Global___SampledTopicConfig]:
+        """Telemetry downlinked by SAMPLE, not by message: the flight side
+        keeps only the LATEST message on each of these topics and queues
+        it every period_s. A 100 Hz sensor stream does not belong on a
+        space link; its newest value once a second does.
+        """
+
+    @_builtins.property
     def loopback(self) -> Global___LoopbackModemOptions: ...
     @_builtins.property
     def pluto_gmsk(self) -> Global___PlutoGmskModemOptions: ...
@@ -297,6 +306,7 @@ class CommsConfig(_message.Message):
         queue_limit: _builtins.int | None = ...,
         contact: Global___ContactScheduleConfig | None = ...,
         uplink_topics: _abc.Iterable[_builtins.str] | None = ...,
+        sampled_downlink: _abc.Iterable[Global___SampledTopicConfig] | None = ...,
         loopback: Global___LoopbackModemOptions | None = ...,
         pluto_gmsk: Global___PlutoGmskModemOptions | None = ...,
         kiss: Global___KissModemOptions | None = ...,
@@ -304,7 +314,7 @@ class CommsConfig(_message.Message):
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes", "uplink_topics", b"uplink_topics"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "sampled_downlink", b"sampled_downlink", "segment_bytes", b"segment_bytes", "uplink_topics", b"uplink_topics"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType__queue_limit: _TypeAlias = _typing.Literal["queue_limit"]  # noqa: Y015
     _WhichOneofArgType__queue_limit: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit"]  # noqa: Y015
@@ -324,3 +334,25 @@ class CommsConfig(_message.Message):
     def WhichOneof(self, oneof_group: _WhichOneofArgType_modem) -> _WhichOneofReturnType_modem | None: ...
 
 Global___CommsConfig: _TypeAlias = CommsConfig  # noqa: Y015
+
+@_typing.final
+class SampledTopicConfig(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    TOPIC_FIELD_NUMBER: _builtins.int
+    PERIOD_S_FIELD_NUMBER: _builtins.int
+    topic: _builtins.str
+    period_s: _builtins.float
+    def __init__(
+        self,
+        *,
+        topic: _builtins.str = ...,
+        period_s: _builtins.float = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["period_s", b"period_s", "topic", b"topic"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___SampledTopicConfig: _TypeAlias = SampledTopicConfig  # noqa: Y015

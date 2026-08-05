@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import threading
 import time
@@ -34,7 +35,7 @@ import zenoh
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flatsat.core.bus import bus_config  # noqa: E402
-from flatsat.msgs import health_pb2, mode_pb2, uplink_pb2  # noqa: E402
+from flatsat.msgs import hal_pb2, health_pb2, mode_pb2, uplink_pb2  # noqa: E402
 
 MAX_POINTS_PER_SERIES = 100_000  # a long demo day at these rates is far below this
 
@@ -184,6 +185,36 @@ class LiveRun:
             if self._refused is not None and msg.refused_activations > self._refused:
                 self._annotate(now, "error", "activation REFUSED by the flight side")
             self._refused = msg.refused_activations
+
+    def on_imu(self, payload: bytes) -> None:
+        """Ingest one downlinked (sampled) IMU reading.
+
+        Args:
+            payload: Serialized ImuSample.
+        """
+        msg = hal_pb2.ImuSample.FromString(payload)
+        now = time.time_ns()
+        omega = math.sqrt(msg.gyro_x_rad_s**2 + msg.gyro_y_rad_s**2 + msg.gyro_z_rad_s**2)
+        with self.lock:
+            self._track_pass(now)
+            self._point("downlink/imu.omega_mrad_s", now, omega * 1000.0)
+            self._point("downlink/imu.gyro_x_mrad_s", now, msg.gyro_x_rad_s * 1000.0)
+            self._point("downlink/imu.gyro_y_mrad_s", now, msg.gyro_y_rad_s * 1000.0)
+            self._point("downlink/imu.gyro_z_mrad_s", now, msg.gyro_z_rad_s * 1000.0)
+
+    def on_wheel(self, wheel: str, payload: bytes) -> None:
+        """Ingest one downlinked (sampled) wheel state.
+
+        Args:
+            wheel: Wheel name, e.g. "wheel0".
+            payload: Serialized WheelState.
+        """
+        msg = hal_pb2.WheelState.FromString(payload)
+        now = time.time_ns()
+        with self.lock:
+            self._track_pass(now)
+            self._point(f"downlink/{wheel}.speed_rad_s", now, msg.speed_rad_s)
+            self._point(f"downlink/{wheel}.momentum_n_m_s", now, msg.momentum_n_m_s)
 
     # ----------------------------------------------------------- serving --
 
@@ -358,7 +389,18 @@ def main() -> int:
             f"{args.prefix}/health/uplink",
             lambda smp: run.on_uplink(bytes(smp.payload.to_bytes())),
         ),
+        session.declare_subscriber(
+            f"{args.prefix}/hal/imu0/sample",
+            lambda smp: run.on_imu(bytes(smp.payload.to_bytes())),
+        ),
     ]
+    for wheel in ("wheel0", "wheel1", "wheel2"):
+        subs.append(
+            session.declare_subscriber(
+                f"{args.prefix}/hal/{wheel}/state",
+                lambda smp, w=wheel: run.on_wheel(w, bytes(smp.payload.to_bytes())),
+            )
+        )
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(run))
     print(
         f"[bridge] serving live run {run.run_id} on http://localhost:{args.port} "

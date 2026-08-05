@@ -84,6 +84,7 @@ class LinkService:
         downlink_topics: list[str],
         republish_prefix: str = "",
         app_name: str = "link",
+        sampled_topics: list[tuple[str, float]] | None = None,
     ) -> None:
         """Wire the link to the bus.
 
@@ -96,6 +97,10 @@ class LinkService:
                 republishing — the ground mirror sets this so flight and
                 ground traffic stay distinguishable on one desk.
             app_name: Name used for health telemetry.
+            sampled_topics: (topic, period_s) pairs downlinked by
+                SAMPLE: only the latest message is kept, queued once
+                per period — how a 100 Hz stream crosses a space link
+                without owning it.
         """
         self._link = link
         self._session = session
@@ -107,6 +112,50 @@ class LinkService:
             session.declare_subscriber(topic, self._make_handler(topic))
             for topic in downlink_topics
         ]
+        self._sample_lock = threading.Lock()
+        self._latest: dict[str, bytes] = {}
+        self._sample_period_ns: dict[str, int] = {}
+        self._sample_due_ns: dict[str, int] = {}
+        for topic, period_s in sampled_topics or []:
+            self._sample_period_ns[topic] = int(period_s * 1e9)
+            self._sample_due_ns[topic] = 0
+            self._subs.append(session.declare_subscriber(topic, self._make_sampler(topic)))
+
+    def _make_sampler(self, topic: str) -> object:
+        """Build the subscriber callback that keeps only the latest.
+
+        Args:
+            topic: The subscribed key expression.
+
+        Returns:
+            The callback.
+        """
+
+        def on_message(sample: zenoh.Sample) -> None:
+            """Remember the newest message; never queue directly.
+
+            Args:
+                sample: The bus message.
+            """
+            with self._sample_lock:
+                self._latest[str(sample.key_expr)] = bytes(sample.payload.to_bytes())
+
+        return on_message
+
+    def _pump_samples(self, now_ns: int) -> None:
+        """Queue the latest sample of each sampled topic when due.
+
+        Args:
+            now_ns: Monotonic nanoseconds.
+        """
+        for topic, period_ns in self._sample_period_ns.items():
+            if now_ns < self._sample_due_ns[topic]:
+                continue
+            with self._sample_lock:
+                payload = self._latest.get(topic)
+            if payload is not None:
+                self._link.enqueue(topic, payload)
+                self._sample_due_ns[topic] = now_ns + period_ns
 
     def _make_handler(self, topic: str) -> object:
         """Build the subscriber callback that queues one topic.
@@ -139,6 +188,7 @@ class LinkService:
             Messages republished from the air this cycle.
         """
         now = time.monotonic_ns()
+        self._pump_samples(now)
         delivered = self._link.poll(now)
         for topic, payload in delivered:
             self._session.put(f"{self._prefix}/{topic}" if self._prefix else topic, payload)
@@ -289,6 +339,9 @@ def main() -> int:
             link,
             session,
             downlink_topics=list(vehicle.comms.downlink_topics),
+            sampled_topics=[
+                (entry.topic, entry.period_s) for entry in vehicle.comms.sampled_downlink
+            ],
         )
     for line in (*vehicle.describe(), *link.describe()):
         print(f"[link] {line}", flush=True)
