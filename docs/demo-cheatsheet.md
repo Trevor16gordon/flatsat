@@ -5,7 +5,7 @@ Narrative, talk tracks, break-glass table: `docs/demo-runbook-2026-08-06.md`.
 **Three terminals + the browser + Vizard.**
 - **A** — Mac, `~/flatsat`: the Basilisk bridge (the universe)
 - **B** — Jetson ssh: the flight journal (the spacecraft's own voice)
-- **D** — Jetson ssh: sudo actions (restarts)
+- **C** — Jetson ssh: sudo actions (restarts)
 - **Browser** — mission control: telemetry, passes, commanding, audit
 - **Vizard** — the 3D vehicle
 
@@ -14,7 +14,7 @@ backgrounded from the setup block and stays out of sight. Commanding
 happens in the browser; the CLI equivalents live in the appendix as
 fallbacks.
 
-## 0 — Pre-demo reset (terminal D, once)
+## 0 — Pre-demo reset (terminal C, once)
 
 Clear stale test artifacts and confirm services:
 ```bash
@@ -23,7 +23,7 @@ rm -rf ~/flatsat-uplink/staging/ml_policy@* ~/flatsat-uplink/slots/ml_policy* &&
 
 ## Setup (once)
 
-**Terminal D (Jetson)** — start the flight side of the space link,
+**Terminal C (Jetson)** — start the flight side of the space link,
 backgrounded (survives the terminal):
 ```bash
 cd ~/flatsat && setsid ~/venvs/flatsat-ml/bin/python -m flatsat.apps.link_service --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_flight.log 2>&1 < /dev/null &
@@ -52,7 +52,7 @@ journalctl -u flatsat-adcs -u flatsat-uplink -u flatsat-fdir -u flatsat-mode -f 
 
 ## 1 — Release, detumble on fallback PD
 
-D:
+C:
 ```bash
 sudo systemctl restart flatsat.target
 ```
@@ -92,10 +92,10 @@ is not swappable`. (The refusal is the system declining power — say so.)
 MODE row: reason `bridge restored` → **→ RECOVERY**. Wait for the pass
 (B: `SAFE -> RECOVERY`). Then reason `checkout complete` → **→ NOMINAL**.
 
-## 5 — Activate for real (browser), adopt by restart (D)
+## 5 — Activate for real (browser), adopt by restart (C)
 
 DEPLOY: select `ml_detumble@2026-08-05a` → **activate** → confirm.
-Wait for `[uplink] activated …` in B, then D:
+Wait for `[uplink] activated …` in B, then C:
 ```bash
 sudo systemctl restart flatsat-adcs
 ```
@@ -104,7 +104,7 @@ sha256=56974ca8ec34`. Browser events: `ACTIVE: ml_detumble@2026-08-05a`.
 
 ## 6 — Fresh tumble, network flying
 
-D:
+C:
 ```bash
 sudo systemctl restart flatsat.target
 ```
@@ -118,7 +118,7 @@ mrad/s; PD floor was 2–4).
 
 ## 7 — Rollback (browser)
 
-DEPLOY → **rollback** → wait for the pass → D:
+DEPLOY → **rollback** → wait for the pass → C:
 ```bash
 sudo systemctl restart flatsat-adcs
 ```
