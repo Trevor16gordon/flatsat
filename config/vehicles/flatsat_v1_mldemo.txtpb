@@ -176,7 +176,7 @@ comms {  # the space link, bench-shaped: loopback channel, real everything else.
   # passes and sent framed (CCSDS + CRC) during contact windows.
   # tools/bench_link.py runs both ends on this box; the flatsat-link
   # unit must stay OFF while it does (in-process loopback has no peer).
-  downlink_topics: ["sys/mode", "health/mode", "health/fdir"]
+  downlink_topics: ["sys/mode", "health/mode", "health/fdir", "health/uplink"]
   uplink_topics: [
     "uplink/artifact/manifest",
     "uplink/artifact/chunk",
