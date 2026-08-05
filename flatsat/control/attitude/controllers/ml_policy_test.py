@@ -195,9 +195,7 @@ class TestFromConfig:
 
         staged = tmp_path / "staged.bin"
         staged.write_bytes(_identity_artifact())
-        SlotManager(tmp_path).activate(
-            "ml_detumble", "v1", staged, ground_authority=True
-        )
+        SlotManager(tmp_path).activate("ml_detumble", "v1", staged, ground_authority=True)
         controller = MlPolicyController.from_config(self._options(tmp_path))
         assert controller.weights is not None
         assert controller.version == "v1"
@@ -209,8 +207,6 @@ class TestFromConfig:
 
         staged = tmp_path / "staged.bin"
         staged.write_bytes(b'{"format": "flatsat-mlp-v1", "w0": [], "b0": []}')
-        SlotManager(tmp_path).activate(
-            "ml_detumble", "v-bad", staged, ground_authority=True
-        )
+        SlotManager(tmp_path).activate("ml_detumble", "v-bad", staged, ground_authority=True)
         with pytest.raises((ValueError, KeyError)):
             MlPolicyController.from_config(self._options(tmp_path))

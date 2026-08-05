@@ -175,9 +175,7 @@ def main() -> int:
         finals: dict[str, float] = {}
         results: dict[str, FastLoopResult] = {}
         for label, vehicle in vehicles.items():
-            result = run_fast_loop(
-                vehicle, WINDOW_S, omega0, dt_s=0.02, seed=args.seed
-            )
+            result = run_fast_loop(vehicle, WINDOW_S, omega0, dt_s=0.02, seed=args.seed)
             results[label] = result
             finals[label] = result.final_omega_mag_rad_s * 1000
             topic = f"sim/ic{int(magnitude):03d}mrad/{label}"
