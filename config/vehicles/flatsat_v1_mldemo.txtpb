@@ -170,6 +170,25 @@ control {
   }
 }
 
+comms {  # the space link, bench-shaped: loopback channel, real everything else.
+  # Two-bus rule (PLAN §6): ground tools live in the ground/ namespace;
+  # these allowlists are the ONLY traffic that crosses, queued between
+  # passes and sent framed (CCSDS + CRC) during contact windows.
+  # tools/bench_link.py runs both ends on this box; the flatsat-link
+  # unit must stay OFF while it does (in-process loopback has no peer).
+  downlink_topics: ["sys/mode", "health/mode", "health/fdir"]
+  uplink_topics: [
+    "uplink/artifact/manifest",
+    "uplink/artifact/chunk",
+    "uplink/artifact/control",
+    "sys/mode/request"
+  ]
+  segment_bytes: 512
+  contact { period_s: 30 duration_s: 10 }   # a 10 s pass every 30 s
+  loopback { channel: "bench/air" seed: 42 }
+  ccsds {}
+}
+
 mode {  # mission state: who must ack transitions
   apps: [
     "imu0", "mag0", "css0", "st0", "thermal_tj",

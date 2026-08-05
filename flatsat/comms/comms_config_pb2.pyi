@@ -243,6 +243,7 @@ class CommsConfig(_message.Message):
     SEGMENT_BYTES_FIELD_NUMBER: _builtins.int
     QUEUE_LIMIT_FIELD_NUMBER: _builtins.int
     CONTACT_FIELD_NUMBER: _builtins.int
+    UPLINK_TOPICS_FIELD_NUMBER: _builtins.int
     LOOPBACK_FIELD_NUMBER: _builtins.int
     PLUTO_GMSK_FIELD_NUMBER: _builtins.int
     KISS_FIELD_NUMBER: _builtins.int
@@ -262,6 +263,14 @@ class CommsConfig(_message.Message):
         """absent = always in contact"""
 
     @_builtins.property
+    def uplink_topics(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]:
+        """Topics the GROUND side queues for uplink (commands, artifact
+        chunks). Directional on purpose: the link is asymmetric, and an
+        allowlist that differs by direction is what keeps a republished
+        arrival on one side from echoing straight back across the link.
+        """
+
+    @_builtins.property
     def loopback(self) -> Global___LoopbackModemOptions: ...
     @_builtins.property
     def pluto_gmsk(self) -> Global___PlutoGmskModemOptions: ...
@@ -276,6 +285,7 @@ class CommsConfig(_message.Message):
         segment_bytes: _builtins.int | None = ...,
         queue_limit: _builtins.int | None = ...,
         contact: Global___ContactScheduleConfig | None = ...,
+        uplink_topics: _abc.Iterable[_builtins.str] | None = ...,
         loopback: Global___LoopbackModemOptions | None = ...,
         pluto_gmsk: Global___PlutoGmskModemOptions | None = ...,
         kiss: Global___KissModemOptions | None = ...,
@@ -283,7 +293,7 @@ class CommsConfig(_message.Message):
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit", "_segment_bytes", b"_segment_bytes", "ccsds", b"ccsds", "contact", b"contact", "downlink_topics", b"downlink_topics", "framer", b"framer", "kiss", b"kiss", "loopback", b"loopback", "modem", b"modem", "pluto_gmsk", b"pluto_gmsk", "queue_limit", b"queue_limit", "segment_bytes", b"segment_bytes", "uplink_topics", b"uplink_topics"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     _WhichOneofReturnType__queue_limit: _TypeAlias = _typing.Literal["queue_limit"]  # noqa: Y015
     _WhichOneofArgType__queue_limit: _TypeAlias = _typing.Literal["_queue_limit", b"_queue_limit"]  # noqa: Y015

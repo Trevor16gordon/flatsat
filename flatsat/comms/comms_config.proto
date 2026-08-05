@@ -79,6 +79,11 @@ message CommsConfig {
   optional uint32 segment_bytes = 2;   // payload bytes per segment; absent = 512
   optional uint32 queue_limit = 3;     // stored messages between passes; absent = 10000
   ContactScheduleConfig contact = 4;   // absent = always in contact
+  // Topics the GROUND side queues for uplink (commands, artifact
+  // chunks). Directional on purpose: the link is asymmetric, and an
+  // allowlist that differs by direction is what keeps a republished
+  // arrival on one side from echoing straight back across the link.
+  repeated string uplink_topics = 5;
 
   oneof modem {
     LoopbackModemOptions loopback = 10;

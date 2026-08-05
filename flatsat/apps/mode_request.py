@@ -127,11 +127,38 @@ def main() -> int:
         help="carry ground authority (required to leave safety: SAFE->RECOVERY->NOMINAL)",
     )
     parser.add_argument("--status", action="store_true", help="only report the current mode")
+    parser.add_argument(
+        "--topic-prefix",
+        default="",
+        help=(
+            "publish the request into a ground namespace (e.g. 'ground') instead of "
+            "directly onto the flight bus — it then crosses via the link service at "
+            "the next contact window. Fire-and-queue: confirmation comes back as "
+            "downlinked telemetry, not a reply."
+        ),
+    )
     args = parser.parse_args()
 
     session = zenoh.open(bus_config())
     time.sleep(0.5)  # let scouting find the manager before querying
     try:
+        if args.topic_prefix and args.mode is not None and not args.status:
+            requested = mode_pb2.SystemMode.Value(f"SYSTEM_MODE_{args.mode.upper()}")
+            request = mode_pb2.ModeRequest(
+                source="ground",
+                requested=requested,
+                reason=args.reason,
+                ground_authority=args.ground,
+            )
+            topic = f"{args.topic_prefix}/{request_topic(MODE_TOPIC)}"
+            session.declare_publisher(topic).put(request.SerializeToString())
+            time.sleep(0.5)  # let the publication drain before closing
+            print(
+                f"request {args.mode.upper()} queued at the ground station ({topic}); "
+                "it crosses at the next contact window — confirm via the flight journal "
+                "or downlinked ground/sys/mode telemetry"
+            )
+            return 0
         if args.status or args.mode is None:
             state = current_state(session, MODE_TOPIC)
             if state is None:
