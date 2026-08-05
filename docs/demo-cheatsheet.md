@@ -24,16 +24,16 @@ rm -rf ~/flatsat-uplink/staging/ml_policy@* ~/flatsat-uplink/slots/ml_policy* &&
 ## Setup (once)
 
 **Terminal C (Jetson)** — start the flight side of the space link,
-backgrounded (survives the terminal):
+backgrounded. IDEMPOTENT: kills any prior instance first — duplicate
+link services double-deliver every sample and scribble the plots:
 ```bash
-cd ~/flatsat && setsid ~/venvs/flatsat-ml/bin/python -m flatsat.apps.link_service --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_flight.log 2>&1 < /dev/null &
+pkill -f "apps[.]link_service"; sleep 1; cd ~/flatsat && setsid ~/venvs/flatsat-ml/bin/python -m flatsat.apps.link_service --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_flight.log 2>&1 < /dev/null &
 ```
 
-**Any Mac terminal** — ground station stack, backgrounded: ground side
-of the link (owns the Mac's radio at usb:0.3.5), the bridge, and the
-viewer dev server:
+**Any Mac terminal** — ground station stack, backgrounded (also
+idempotent — kills prior instances first):
 ```bash
-cd ~/flatsat && export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 && PYTHONPATH=$PWD nohup ~/venvs/gr-ground/bin/python -m flatsat.apps.link_service --ground --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_ground.log 2>&1 & nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 & (curl -s -o /dev/null http://localhost:5173 || nohup npm --prefix web run dev > /tmp/viewer.log 2>&1 &) ; sleep 3 && echo "ground station up"
+pkill -f "link_service --ground"; pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 && PYTHONPATH=$PWD nohup ~/venvs/gr-ground/bin/python -m flatsat.apps.link_service --ground --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_ground.log 2>&1 & nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 & (curl -s -o /dev/null http://localhost:5173 || nohup npm --prefix web run dev > /tmp/viewer.log 2>&1 &) ; sleep 3 && echo "ground station up"
 ```
 
 **Browser** — mission control:
@@ -52,13 +52,16 @@ journalctl -u flatsat-adcs -u flatsat-uplink -u flatsat-fdir -u flatsat-mode -f 
 
 ## 1 — Release, detumble on fallback PD
 
-C:
-```bash
-sudo systemctl restart flatsat.target
-```
-A (immediately after — clock sync):
+A — bridge FIRST (truth is flowing before the stack wakes, so FDIR
+never sees a stale window and the vehicle comes up NOMINAL; the
+detumble demo vehicle has no onboard-orbit dependency, so this order
+is safe here — nadir-pointing runs pair the restarts the other way):
 ```bash
 ~/venvs/flatsat-ground/bin/python -m flatsat.sim.basilisk_hil --orbit config/orbits/starlink_leo.txtpb --omega0 0.05,-0.04,0.03 --viz
+```
+C — then release the vehicle:
+```bash
+sudo systemctl restart flatsat.target
 ```
 **Then Vizard** (the bridge binds the socket; Vizard is the client):
 Direct Communication → `tcp://localhost:5556` → Start Visualization.

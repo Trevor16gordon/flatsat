@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import bisect
 import json
 import math
 import sys
@@ -88,9 +89,21 @@ class LiveRun:
             value: Sample value.
         """
         entry = self.series.setdefault(channel, {"t_ns": [], "v": []})
-        if len(entry["t_ns"]) < MAX_POINTS_PER_SERIES:
-            entry["t_ns"].append(t_ns)
+        times = entry["t_ns"]
+        if len(times) >= MAX_POINTS_PER_SERIES:
+            return
+        # Arrival order is not sample order on a store-and-forward link
+        # (and RF paths can duplicate): insert by timestamp, drop exact
+        # repeats, so a plot line never doubles back over itself.
+        if not times or t_ns > times[-1]:
+            times.append(t_ns)
             entry["v"].append(value)
+            return
+        index = bisect.bisect_left(times, t_ns)
+        if index < len(times) and times[index] == t_ns:
+            return
+        times.insert(index, t_ns)
+        entry["v"].insert(index, value)
 
     def _wall(self, header: object) -> int:
         """Map a flight-clock header stamp to ground wall time.
