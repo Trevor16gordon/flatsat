@@ -133,6 +133,7 @@ class PlutoGmskModemOptions(_message.Message):
     SAMPLES_PER_SYMBOL_FIELD_NUMBER: _builtins.int
     TX_ATTENUATION_DB_FIELD_NUMBER: _builtins.int
     TRANSMIT_ACK_FIELD_NUMBER: _builtins.int
+    GROUND_URI_FIELD_NUMBER: _builtins.int
     uri: _builtins.str
     """e.g. "ip:192.168.2.1" """
     center_freq_hz: _builtins.float
@@ -145,6 +146,11 @@ class PlutoGmskModemOptions(_message.Message):
     """absent = 60 (near-minimum power)"""
     transmit_ack: _builtins.bool
     """MUST be true to enable TX. Cabled + 30 dB pads only."""
+    ground_uri: _builtins.str
+    """Two-radio desks: the GROUND endpoint's radio, when it is a
+    different device than the flight endpoint's (e.g. two Plutos on
+    one host after the identity fix). Absent = both endpoints use uri.
+    """
     def __init__(
         self,
         *,
@@ -155,17 +161,22 @@ class PlutoGmskModemOptions(_message.Message):
         samples_per_symbol: _builtins.int | None = ...,
         tx_attenuation_db: _builtins.int | None = ...,
         transmit_ack: _builtins.bool = ...,
+        ground_uri: _builtins.str | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["_offset_hz", b"_offset_hz", "_samples_per_symbol", b"_samples_per_symbol", "_tx_attenuation_db", b"_tx_attenuation_db", "offset_hz", b"offset_hz", "samples_per_symbol", b"samples_per_symbol", "tx_attenuation_db", b"tx_attenuation_db"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_ground_uri", b"_ground_uri", "_offset_hz", b"_offset_hz", "_samples_per_symbol", b"_samples_per_symbol", "_tx_attenuation_db", b"_tx_attenuation_db", "ground_uri", b"ground_uri", "offset_hz", b"offset_hz", "samples_per_symbol", b"samples_per_symbol", "tx_attenuation_db", b"tx_attenuation_db"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_offset_hz", b"_offset_hz", "_samples_per_symbol", b"_samples_per_symbol", "_tx_attenuation_db", b"_tx_attenuation_db", "center_freq_hz", b"center_freq_hz", "offset_hz", b"offset_hz", "sample_rate_hz", b"sample_rate_hz", "samples_per_symbol", b"samples_per_symbol", "transmit_ack", b"transmit_ack", "tx_attenuation_db", b"tx_attenuation_db", "uri", b"uri"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_ground_uri", b"_ground_uri", "_offset_hz", b"_offset_hz", "_samples_per_symbol", b"_samples_per_symbol", "_tx_attenuation_db", b"_tx_attenuation_db", "center_freq_hz", b"center_freq_hz", "ground_uri", b"ground_uri", "offset_hz", b"offset_hz", "sample_rate_hz", b"sample_rate_hz", "samples_per_symbol", b"samples_per_symbol", "transmit_ack", b"transmit_ack", "tx_attenuation_db", b"tx_attenuation_db", "uri", b"uri"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__ground_uri: _TypeAlias = _typing.Literal["ground_uri"]  # noqa: Y015
+    _WhichOneofArgType__ground_uri: _TypeAlias = _typing.Literal["_ground_uri", b"_ground_uri"]  # noqa: Y015
     _WhichOneofReturnType__offset_hz: _TypeAlias = _typing.Literal["offset_hz"]  # noqa: Y015
     _WhichOneofArgType__offset_hz: _TypeAlias = _typing.Literal["_offset_hz", b"_offset_hz"]  # noqa: Y015
     _WhichOneofReturnType__samples_per_symbol: _TypeAlias = _typing.Literal["samples_per_symbol"]  # noqa: Y015
     _WhichOneofArgType__samples_per_symbol: _TypeAlias = _typing.Literal["_samples_per_symbol", b"_samples_per_symbol"]  # noqa: Y015
     _WhichOneofReturnType__tx_attenuation_db: _TypeAlias = _typing.Literal["tx_attenuation_db"]  # noqa: Y015
     _WhichOneofArgType__tx_attenuation_db: _TypeAlias = _typing.Literal["_tx_attenuation_db", b"_tx_attenuation_db"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__ground_uri) -> _WhichOneofReturnType__ground_uri | None: ...
     @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType__offset_hz) -> _WhichOneofReturnType__offset_hz | None: ...
     @_typing.overload

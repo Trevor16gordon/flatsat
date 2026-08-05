@@ -40,54 +40,13 @@ import zenoh
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from flatsat.apps.link_service import LinkService, build_link  # noqa: E402
+from flatsat.apps.link_service import (  # noqa: E402
+    GroundLinkService,
+    LinkService,
+    build_link,
+)
 from flatsat.core.bus import bus_config  # noqa: E402
 from flatsat.core.config import load_vehicle  # noqa: E402
-
-
-class GroundLinkService(LinkService):
-    """Ground mirror that strips its namespace before transmission.
-
-    The topic name rides the link verbatim, so the ground side must
-    queue `uplink/artifact/chunk`, not `ground/uplink/artifact/chunk` —
-    otherwise the flight side would republish a ground-namespace key
-    onto the flight bus and no flight consumer would hear it.
-    """
-
-    def __init__(self, *args: object, strip_prefix: str = "", **kwargs: object) -> None:
-        """Wire the mirror.
-
-        Args:
-            *args: Passed through to :class:`LinkService`.
-            strip_prefix: Namespace to remove from subscribed keys
-                before they are queued for transmission.
-            **kwargs: Passed through to :class:`LinkService`.
-        """
-        self._strip = f"{strip_prefix}/" if strip_prefix else ""
-        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
-
-    def _make_handler(self, topic: str) -> object:
-        """Build a queueing callback that strips the ground namespace.
-
-        Args:
-            topic: The subscribed key expression.
-
-        Returns:
-            The callback.
-        """
-        del topic
-
-        def on_message(sample: zenoh.Sample) -> None:
-            """Queue one ground-bus message under its flight-native name.
-
-            Args:
-                sample: The bus message; payload carried verbatim.
-            """
-            key = str(sample.key_expr)
-            key = key.removeprefix(self._strip)
-            self._link.enqueue(key, bytes(sample.payload.to_bytes()))
-
-        return on_message
 
 
 def main() -> int:

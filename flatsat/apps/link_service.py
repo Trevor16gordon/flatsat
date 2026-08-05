@@ -194,8 +194,60 @@ class LinkService:
             sub.undeclare()
 
 
+class GroundLinkService(LinkService):
+    """Ground mirror that strips its namespace before transmission.
+
+    The topic name rides the link verbatim, so the ground side must
+    queue ``uplink/artifact/chunk``, not ``ground/uplink/artifact/chunk``
+    — otherwise the flight side would republish a ground-namespace key
+    onto the flight bus and no flight consumer would hear it.
+    """
+
+    def __init__(self, *args: object, strip_prefix: str = "", **kwargs: object) -> None:
+        """Wire the mirror.
+
+        Args:
+            *args: Passed through to :class:`LinkService`.
+            strip_prefix: Namespace to remove from subscribed keys
+                before they are queued for transmission.
+            **kwargs: Passed through to :class:`LinkService`.
+        """
+        self._strip = f"{strip_prefix}/" if strip_prefix else ""
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+
+    def _make_handler(self, topic: str) -> object:
+        """Build a queueing callback that strips the ground namespace.
+
+        Args:
+            topic: The subscribed key expression.
+
+        Returns:
+            The callback.
+        """
+        del topic
+
+        def on_message(sample: zenoh.Sample) -> None:
+            """Queue one ground-bus message under its flight-native name.
+
+            Args:
+                sample: The bus message; payload carried verbatim.
+            """
+            key = str(sample.key_expr)
+            key = key.removeprefix(self._strip)
+            self._link.enqueue(key, bytes(sample.payload.to_bytes()))
+
+        return on_message
+
+
 def main() -> int:
     """Run the link service from the command line.
+
+    The role decides the direction: flight subscribes the DOWNLINK
+    allowlist and republishes uplink arrivals flight-native; ground
+    subscribes the UPLINK allowlist inside its namespace (stripping it
+    before transmission) and republishes downlink arrivals under the
+    namespace. Directional allowlists are what keep a republished
+    arrival from echoing straight back across the link.
 
     Returns:
         0 on clean exit; 2 when the vehicle declares no link.
@@ -209,8 +261,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--republish-prefix",
-        default="",
-        help="prefix received topics before republishing (ground mirror)",
+        default="ground",
+        help="ground namespace prefix (ground mirror only)",
     )
     args = parser.parse_args()
 
@@ -222,12 +274,22 @@ def main() -> int:
     endpoint = "ground" if args.ground else "flight"
     session = zenoh.open(bus_config())
     link = build_link(vehicle, endpoint)
-    service = LinkService(
-        link,
-        session,
-        downlink_topics=list(vehicle.comms.downlink_topics),
-        republish_prefix=args.republish_prefix,
-    )
+    if args.ground:
+        prefix = args.republish_prefix
+        service: LinkService = GroundLinkService(
+            link,
+            session,
+            downlink_topics=[f"{prefix}/{topic}" for topic in vehicle.comms.uplink_topics],
+            republish_prefix=prefix,
+            app_name="ground_link",
+            strip_prefix=prefix,
+        )
+    else:
+        service = LinkService(
+            link,
+            session,
+            downlink_topics=list(vehicle.comms.downlink_topics),
+        )
     for line in (*vehicle.describe(), *link.describe()):
         print(f"[link] {line}", flush=True)
     print(f"[link] endpoint={endpoint} downlink {list(vehicle.comms.downlink_topics)}", flush=True)

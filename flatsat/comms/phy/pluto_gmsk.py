@@ -263,9 +263,15 @@ class PlutoGmskModem(Modem):
             raise ValueError(
                 f"modem {name!r}: pluto_gmsk requires uri, center_freq_hz, sample_rate_hz"
             )
+        # The endpoint name selects the radio on a two-radio desk: the
+        # link composer passes "flight" or "ground", and ground gets its
+        # own device when the config names one.
+        uri = options.uri
+        if name == "ground" and options.HasField("ground_uri"):
+            uri = options.ground_uri
         return cls(
             name=name,
-            uri=options.uri,
+            uri=uri,
             center_freq_hz=options.center_freq_hz,
             sample_rate_hz=options.sample_rate_hz,
             offset_hz=options.offset_hz if options.HasField("offset_hz") else DEFAULT_OFFSET_HZ,

@@ -51,6 +51,10 @@ message PlutoGmskModemOptions {
   optional uint32 samples_per_symbol = 5;  // absent = 8
   optional int32 tx_attenuation_db = 6;    // absent = 60 (near-minimum power)
   bool transmit_ack = 7;            // MUST be true to enable TX. Cabled + 30 dB pads only.
+  // Two-radio desks: the GROUND endpoint's radio, when it is a
+  // different device than the flight endpoint's (e.g. two Plutos on
+  // one host after the identity fix). Absent = both endpoints use uri.
+  optional string ground_uri = 8;
 }
 
 // -------------------------------------------------------------- framing --

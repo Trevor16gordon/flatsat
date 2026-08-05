@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n flatsat/comms/comms_config.proto\x12\nflatsat.v1\"\x9b\x01\n\x14LoopbackModemOptions\x12\x0f\n\x07\x63hannel\x18\x01 \x01(\t\x12\x17\n\nframe_loss\x18\x02 \x01(\x01H\x00\x88\x01\x01\x12\x1b\n\x0e\x62it_error_rate\x18\x03 \x01(\x01H\x01\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\rH\x02\x88\x01\x01\x42\r\n\x0b_frame_lossB\x11\n\x0f_bit_error_rateB\x07\n\x05_seed\"A\n\x10KissModemOptions\x12\x0c\n\x04host\x18\x01 \x01(\t\x12\x0c\n\x04port\x18\x02 \x01(\r\x12\x11\n\tkiss_port\x18\x03 \x01(\r\"\xfe\x01\n\x15PlutoGmskModemOptions\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\x16\n\x0e\x63\x65nter_freq_hz\x18\x02 \x01(\x01\x12\x16\n\x0esample_rate_hz\x18\x03 \x01(\x01\x12\x16\n\toffset_hz\x18\x04 \x01(\x01H\x00\x88\x01\x01\x12\x1f\n\x12samples_per_symbol\x18\x05 \x01(\rH\x01\x88\x01\x01\x12\x1e\n\x11tx_attenuation_db\x18\x06 \x01(\x05H\x02\x88\x01\x01\x12\x14\n\x0ctransmit_ack\x18\x07 \x01(\x08\x42\x0c\n\n_offset_hzB\x15\n\x13_samples_per_symbolB\x14\n\x12_tx_attenuation_db\"J\n\x12\x43\x63sdsFramerOptions\x12\x1e\n\x11max_payload_bytes\x18\x01 \x01(\rH\x00\x88\x01\x01\x42\x14\n\x12_max_payload_bytes\"=\n\x15\x43ontactScheduleConfig\x12\x10\n\x08period_s\x18\x01 \x01(\x01\x12\x12\n\nduration_s\x18\x02 \x01(\x01\"\xaa\x03\n\x0b\x43ommsConfig\x12\x17\n\x0f\x64ownlink_topics\x18\x01 \x03(\t\x12\x1a\n\rsegment_bytes\x18\x02 \x01(\rH\x02\x88\x01\x01\x12\x18\n\x0bqueue_limit\x18\x03 \x01(\rH\x03\x88\x01\x01\x12\x32\n\x07\x63ontact\x18\x04 \x01(\x0b\x32!.flatsat.v1.ContactScheduleConfig\x12\x15\n\ruplink_topics\x18\x05 \x03(\t\x12\x34\n\x08loopback\x18\n \x01(\x0b\x32 .flatsat.v1.LoopbackModemOptionsH\x00\x12\x37\n\npluto_gmsk\x18\x0b \x01(\x0b\x32!.flatsat.v1.PlutoGmskModemOptionsH\x00\x12,\n\x04kiss\x18\x0c \x01(\x0b\x32\x1c.flatsat.v1.KissModemOptionsH\x00\x12/\n\x05\x63\x63sds\x18\x14 \x01(\x0b\x32\x1e.flatsat.v1.CcsdsFramerOptionsH\x01\x42\x07\n\x05modemB\x08\n\x06\x66ramerB\x10\n\x0e_segment_bytesB\x0e\n\x0c_queue_limitb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n flatsat/comms/comms_config.proto\x12\nflatsat.v1\"\x9b\x01\n\x14LoopbackModemOptions\x12\x0f\n\x07\x63hannel\x18\x01 \x01(\t\x12\x17\n\nframe_loss\x18\x02 \x01(\x01H\x00\x88\x01\x01\x12\x1b\n\x0e\x62it_error_rate\x18\x03 \x01(\x01H\x01\x88\x01\x01\x12\x11\n\x04seed\x18\x04 \x01(\rH\x02\x88\x01\x01\x42\r\n\x0b_frame_lossB\x11\n\x0f_bit_error_rateB\x07\n\x05_seed\"A\n\x10KissModemOptions\x12\x0c\n\x04host\x18\x01 \x01(\t\x12\x0c\n\x04port\x18\x02 \x01(\r\x12\x11\n\tkiss_port\x18\x03 \x01(\r\"\xa6\x02\n\x15PlutoGmskModemOptions\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\x16\n\x0e\x63\x65nter_freq_hz\x18\x02 \x01(\x01\x12\x16\n\x0esample_rate_hz\x18\x03 \x01(\x01\x12\x16\n\toffset_hz\x18\x04 \x01(\x01H\x00\x88\x01\x01\x12\x1f\n\x12samples_per_symbol\x18\x05 \x01(\rH\x01\x88\x01\x01\x12\x1e\n\x11tx_attenuation_db\x18\x06 \x01(\x05H\x02\x88\x01\x01\x12\x14\n\x0ctransmit_ack\x18\x07 \x01(\x08\x12\x17\n\nground_uri\x18\x08 \x01(\tH\x03\x88\x01\x01\x42\x0c\n\n_offset_hzB\x15\n\x13_samples_per_symbolB\x14\n\x12_tx_attenuation_dbB\r\n\x0b_ground_uri\"J\n\x12\x43\x63sdsFramerOptions\x12\x1e\n\x11max_payload_bytes\x18\x01 \x01(\rH\x00\x88\x01\x01\x42\x14\n\x12_max_payload_bytes\"=\n\x15\x43ontactScheduleConfig\x12\x10\n\x08period_s\x18\x01 \x01(\x01\x12\x12\n\nduration_s\x18\x02 \x01(\x01\"\xaa\x03\n\x0b\x43ommsConfig\x12\x17\n\x0f\x64ownlink_topics\x18\x01 \x03(\t\x12\x1a\n\rsegment_bytes\x18\x02 \x01(\rH\x02\x88\x01\x01\x12\x18\n\x0bqueue_limit\x18\x03 \x01(\rH\x03\x88\x01\x01\x12\x32\n\x07\x63ontact\x18\x04 \x01(\x0b\x32!.flatsat.v1.ContactScheduleConfig\x12\x15\n\ruplink_topics\x18\x05 \x03(\t\x12\x34\n\x08loopback\x18\n \x01(\x0b\x32 .flatsat.v1.LoopbackModemOptionsH\x00\x12\x37\n\npluto_gmsk\x18\x0b \x01(\x0b\x32!.flatsat.v1.PlutoGmskModemOptionsH\x00\x12,\n\x04kiss\x18\x0c \x01(\x0b\x32\x1c.flatsat.v1.KissModemOptionsH\x00\x12/\n\x05\x63\x63sds\x18\x14 \x01(\x0b\x32\x1e.flatsat.v1.CcsdsFramerOptionsH\x01\x42\x07\n\x05modemB\x08\n\x06\x66ramerB\x10\n\x0e_segment_bytesB\x0e\n\x0c_queue_limitb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,11 +36,11 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_KISSMODEMOPTIONS']._serialized_start=206
   _globals['_KISSMODEMOPTIONS']._serialized_end=271
   _globals['_PLUTOGMSKMODEMOPTIONS']._serialized_start=274
-  _globals['_PLUTOGMSKMODEMOPTIONS']._serialized_end=528
-  _globals['_CCSDSFRAMEROPTIONS']._serialized_start=530
-  _globals['_CCSDSFRAMEROPTIONS']._serialized_end=604
-  _globals['_CONTACTSCHEDULECONFIG']._serialized_start=606
-  _globals['_CONTACTSCHEDULECONFIG']._serialized_end=667
-  _globals['_COMMSCONFIG']._serialized_start=670
-  _globals['_COMMSCONFIG']._serialized_end=1096
+  _globals['_PLUTOGMSKMODEMOPTIONS']._serialized_end=568
+  _globals['_CCSDSFRAMEROPTIONS']._serialized_start=570
+  _globals['_CCSDSFRAMEROPTIONS']._serialized_end=644
+  _globals['_CONTACTSCHEDULECONFIG']._serialized_start=646
+  _globals['_CONTACTSCHEDULECONFIG']._serialized_end=707
+  _globals['_COMMSCONFIG']._serialized_start=710
+  _globals['_COMMSCONFIG']._serialized_end=1136
 # @@protoc_insertion_point(module_scope)
