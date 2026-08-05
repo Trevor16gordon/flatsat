@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChannelList } from './components/ChannelList';
+import { CommandPanel } from './components/CommandPanel';
 import { OrbitPanel } from './components/OrbitPanel';
 import { PlotPanel } from './components/PlotPanel';
 import type { DropZone } from './components/PlotPanel';
@@ -60,6 +61,8 @@ export default function App() {
   const [selectedSpan, setSelectedSpan] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [live, setLive] = useState(false);
+  const [apiBase, setApiBase] = useState<string | null>(null);
+  const [canCommand, setCanCommand] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Live mode: ?api=http://localhost:8600 points the viewer at a
@@ -71,6 +74,11 @@ export default function App() {
     if (!api) return;
     const src = new ApiDataSource(api);
     setSource(src);
+    setApiBase(api.replace(/\/$/, ''));
+    void fetch(`${api.replace(/\/$/, '')}/api/capabilities`, { credentials: 'include' })
+      .then((r) => r.json())
+      .then((caps: { canCommand?: boolean }) => setCanCommand(Boolean(caps.canCommand)))
+      .catch(() => setCanCommand(false));
     let cancelled = false;
     const poll = async () => {
       try {
@@ -400,6 +408,8 @@ export default function App() {
                   </div>
                 )}
               </section>
+
+              {canCommand && apiBase && <CommandPanel apiBase={apiBase} blob={blob} />}
 
               <section className="panel">
                 <div className="panel-head">

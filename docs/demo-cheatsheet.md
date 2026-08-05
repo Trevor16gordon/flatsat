@@ -182,6 +182,14 @@ Demo moments to point at: `omega_mrad_s` falling during detumble;
 `staged:` then `ACTIVE: ml_detumble@2026-08-05a` appearing in events
 after step 5 — each having crossed the radio on a pass.
 
+**COMMANDING panel** (bottom of the live view): every C-terminal verb
+is also a button — mode requests (reason field + RECOVERY / NOMINAL /
+SAFE), artifact upload / activate (sha-confirm dialog) / rollback, and
+a ground-side "clear view" for demo resets. Buttons POST to the ground
+station and cross at the next pass, identical to the CLI; every click
+lands in the events lane as a mission-control audit entry. The CLI
+commands in §3-§7 remain valid — use whichever reads better on stage.
+
 ## Sim segment (viewer)
 
 Load `~/hil-trace/campaign_pd_vs_ml.json` → timeline spans → drag

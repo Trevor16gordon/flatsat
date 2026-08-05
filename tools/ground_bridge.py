@@ -21,11 +21,13 @@ Run on the ground machine with FLATSAT_ZENOH_CONNECT set:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import sys
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -34,7 +36,10 @@ import zenoh
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from flatsat.apps.uplink_send import send_artifact  # noqa: E402
+from flatsat.comms.uplink import CONTROL_TOPIC  # noqa: E402
 from flatsat.core.bus import bus_config  # noqa: E402
+from flatsat.mode.manager import MODE_TOPIC, request_topic  # noqa: E402
 from flatsat.msgs import hal_pb2, health_pb2, mode_pb2, uplink_pb2  # noqa: E402
 
 MAX_POINTS_PER_SERIES = 100_000  # a long demo day at these rates is far below this
@@ -243,6 +248,46 @@ class LiveRun:
             self._point(f"downlink/{wheel}.speed_rad_s", t_ns, msg.speed_rad_s)
             self._point(f"downlink/{wheel}.momentum_n_m_s", t_ns, msg.momentum_n_m_s)
 
+    def audit(self, message: str, level: str = "info") -> None:
+        """Record one issued command in the console's own trail.
+
+        Args:
+            message: What mission control did.
+            level: "info" or "error".
+        """
+        now = time.time_ns()
+        with self.lock:
+            self.annotations.append(
+                {
+                    "time_ns": now,
+                    "span_id": "",
+                    "level": level,
+                    "source": "mission-control",
+                    "message": message,
+                }
+            )
+
+    def reset(self) -> None:
+        """Start a fresh live run: console housekeeping, ground-only.
+
+        Clears nothing on the spacecraft — only this console's record
+        of what it has heard. The next pass repaints current state.
+        """
+        with self.lock:
+            self.run_id = f"ground-live-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+            self.started_wall_ns = time.time_ns()
+            self.series = {}
+            self.annotations = []
+            self.spans = []
+            self._pass_open_ns = None
+            self._pass_count = 0
+            self._last_rx_ns = None
+            self._mode = None
+            self._staged = ()
+            self._active = ()
+            self._refused = None
+            self._clock_anchor = {}
+
     # ----------------------------------------------------------- serving --
 
     def summary(self) -> dict[str, object]:
@@ -339,11 +384,121 @@ class LiveRun:
             }
 
 
-def make_handler(run: LiveRun) -> type[BaseHTTPRequestHandler]:
+class CommandStation:
+    """Publishes mission-control commands into the ground namespace.
+
+    Everything here rides the same path as the CLI tools: ground
+    namespace -> ground link service -> contact window -> RF -> flight
+    bus. The browser never talks to the spacecraft; it talks to the
+    ground station, which waits for a pass like everybody else.
+    """
+
+    _KINDS = {
+        "config": uplink_pb2.ARTIFACT_KIND_CONFIG,
+        "component": uplink_pb2.ARTIFACT_KIND_COMPONENT,
+        "model": uplink_pb2.ARTIFACT_KIND_MODEL,
+    }
+
+    def __init__(self, session: zenoh.Session, prefix: str) -> None:
+        """Bind to the bus session and ground namespace.
+
+        Args:
+            session: Open zenoh session (shared with the subscribers).
+            prefix: Ground namespace prefix.
+        """
+        self._session = session
+        self._prefix = prefix
+
+    def mode(self, mode_name: str, reason: str, ground: bool) -> str:
+        """Queue one mode request for the next pass.
+
+        Args:
+            mode_name: Bare mode name (NOMINAL, SAFE, RECOVERY, INIT).
+            reason: Operator-entered reason, recorded in the transition.
+            ground: Whether the request carries ground authority.
+
+        Returns:
+            Human-readable confirmation.
+
+        Raises:
+            ValueError: On an unknown mode name.
+        """
+        requested = mode_pb2.SystemMode.Value(f"SYSTEM_MODE_{mode_name.upper()}")
+        request = mode_pb2.ModeRequest(
+            source="mission-control",
+            requested=requested,
+            reason=reason or "mission control",
+            ground_authority=ground,
+        )
+        topic = f"{self._prefix}/{request_topic(MODE_TOPIC)}"
+        self._session.put(topic, request.SerializeToString())
+        return f"mode request {mode_name.upper()} queued for next pass"
+
+    def artifact(self, action: str, name: str, version: str, ground: bool) -> str:
+        """Queue an activate or rollback command.
+
+        Args:
+            action: "activate" or "rollback".
+            name: Artifact slot name.
+            version: Version to activate (ignored for rollback).
+            ground: Ground authority flag (activation requires it).
+
+        Returns:
+            Human-readable confirmation.
+
+        Raises:
+            ValueError: On an unknown action.
+        """
+        actions = {
+            "activate": uplink_pb2.ArtifactControl.ACTION_ACTIVATE,
+            "rollback": uplink_pb2.ArtifactControl.ACTION_ROLLBACK,
+        }
+        if action not in actions:
+            raise ValueError(f"unknown action {action!r}")
+        control = uplink_pb2.ArtifactControl(
+            action=actions[action],
+            name=name,
+            version=version,
+            ground_authority=ground,
+        )
+        self._session.put(f"{self._prefix}/{CONTROL_TOPIC}", control.SerializeToString())
+        target = f"{name}@{version}" if action == "activate" else name
+        return f"{action} {target} queued for next pass"
+
+    def upload(self, name: str, version: str, kind: str, payload: bytes) -> str:
+        """Chunk and queue one artifact for uplink.
+
+        Args:
+            name: Artifact name.
+            version: Version tag.
+            kind: "model", "config" or "component".
+            payload: The artifact bytes.
+
+        Returns:
+            Human-readable confirmation.
+
+        Raises:
+            ValueError: On an unknown kind.
+        """
+        if kind not in self._KINDS:
+            raise ValueError(f"unknown kind {kind!r}")
+        chunks = send_artifact(
+            self._session,
+            name,
+            version,
+            payload,
+            self._KINDS[kind],
+            topic_prefix=self._prefix,
+        )
+        return f"{name}@{version}: {len(payload)} B in {chunks} chunk(s) queued for next pass"
+
+
+def make_handler(run: LiveRun, station: CommandStation) -> type[BaseHTTPRequestHandler]:
     """Build the request handler bound to one live run.
 
     Args:
         run: The run being served.
+        station: Command publisher for the POST routes.
 
     Returns:
         Handler class for ThreadingHTTPServer.
@@ -370,7 +525,9 @@ def make_handler(run: LiveRun) -> type[BaseHTTPRequestHandler]:
             """Route one request."""
             url = urlparse(self.path)
             parts = [p for p in url.path.split("/") if p]
-            if parts == ["api", "runs"]:
+            if parts == ["api", "capabilities"]:
+                self._send({"canBrowseRuns": True, "canCommand": True})
+            elif parts == ["api", "runs"]:
                 self._send([run.summary()])
             elif parts[:2] == ["api", "runs"] and len(parts) == 3:
                 self._send(run.blob())
@@ -382,6 +539,62 @@ def make_handler(run: LiveRun) -> type[BaseHTTPRequestHandler]:
                 self._send(series if series is not None else {}, 200 if series else 404)
             else:
                 self._send({"error": "not found"}, 404)
+
+        def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
+            """Answer the CORS preflight for POST routes."""
+            origin = self.headers.get("Origin", "*")
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Vary", "Origin")
+            self.end_headers()
+
+        def do_POST(self) -> None:  # noqa: N802 - http.server API
+            """Route one command."""
+            url = urlparse(self.path)
+            parts = [p for p in url.path.split("/") if p]
+            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                self._send({"ok": False, "detail": "malformed JSON"}, 400)
+                return
+            try:
+                if parts == ["api", "command", "mode"]:
+                    detail = station.mode(
+                        str(body.get("mode", "")),
+                        str(body.get("reason", "")),
+                        bool(body.get("ground", True)),
+                    )
+                elif parts == ["api", "command", "artifact"]:
+                    detail = station.artifact(
+                        str(body.get("action", "")),
+                        str(body.get("name", "")),
+                        str(body.get("version", "")),
+                        bool(body.get("ground", True)),
+                    )
+                elif parts == ["api", "command", "upload"]:
+                    payload = base64.b64decode(str(body.get("content_b64", "")))
+                    detail = station.upload(
+                        str(body.get("name", "")),
+                        str(body.get("version", "")),
+                        str(body.get("kind", "model")),
+                        payload,
+                    )
+                elif parts == ["api", "console", "clear"]:
+                    run.reset()
+                    detail = "console view cleared (ground-side only)"
+                else:
+                    self._send({"ok": False, "detail": "not found"}, 404)
+                    return
+            except (ValueError, KeyError) as exc:
+                self._send({"ok": False, "detail": str(exc)}, 400)
+                return
+            run.audit(f"CMD: {detail}")
+            print(f"[bridge] CMD: {detail}", flush=True)
+            self._send({"ok": True, "detail": detail})
 
         def log_message(self, fmt: str, *args: object) -> None:
             """Silence per-request logging."""
@@ -421,14 +634,33 @@ def main() -> int:
             lambda smp: run.on_imu(bytes(smp.payload.to_bytes())),
         ),
     ]
+
+    def wheel_handler(wheel: str) -> Callable[[zenoh.Sample], None]:
+        """Bind one wheel's name into its subscriber callback.
+
+        Args:
+            wheel: Wheel name.
+
+        Returns:
+            The callback.
+        """
+
+        def on_message(smp: zenoh.Sample) -> None:
+            """Ingest one wheel state sample.
+
+            Args:
+                smp: The bus message.
+            """
+            run.on_wheel(wheel, bytes(smp.payload.to_bytes()))
+
+        return on_message
+
     for wheel in ("wheel0", "wheel1", "wheel2"):
         subs.append(
-            session.declare_subscriber(
-                f"{args.prefix}/hal/{wheel}/state",
-                lambda smp, w=wheel: run.on_wheel(w, bytes(smp.payload.to_bytes())),
-            )
+            session.declare_subscriber(f"{args.prefix}/hal/{wheel}/state", wheel_handler(wheel))
         )
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(run))
+    station = CommandStation(session, args.prefix)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(run, station))
     print(
         f"[bridge] serving live run {run.run_id} on http://localhost:{args.port} "
         f"— open the viewer with ?api=http://localhost:{args.port}",
