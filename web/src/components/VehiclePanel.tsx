@@ -42,6 +42,8 @@ export interface VehicleInfo {
 interface Props {
   vehicle: VehicleInfo;
   blob: MissionBlob;
+  /** Render the 3D scene. Off by default — the code stays, the pane hides. */
+  showScene?: boolean;
 }
 
 function last(blob: MissionBlob, channel: string): number | undefined {
@@ -64,7 +66,7 @@ function mrpToQuaternion(sx: number, sy: number, sz: number): THREE.Quaternion {
 const EARTH_R = 1.0; // scene units
 const ORBIT_R = 1.55; // exaggerated altitude so the geometry reads
 
-export function VehiclePanel({ vehicle, blob }: Props) {
+export function VehiclePanel({ vehicle, blob, showScene = false }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const blobRef = useRef(blob);
   blobRef.current = blob;
@@ -73,6 +75,7 @@ export function VehiclePanel({ vehicle, blob }: Props) {
   selectedRef.current = selected;
 
   useEffect(() => {
+    if (!showScene) return;
     const mount = mountRef.current;
     if (!mount) return;
     const width = mount.clientWidth || 380;
@@ -326,7 +329,7 @@ export function VehiclePanel({ vehicle, blob }: Props) {
       mount.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicle]);
+  }, [vehicle, showScene]);
 
   const starValid = last(blob, 'downlink/att.star_valid');
   const rows = [
@@ -349,7 +352,7 @@ export function VehiclePanel({ vehicle, blob }: Props) {
         </span>
       </div>
       <div className="veh-row">
-        <div className="veh-3d" ref={mountRef} />
+        {showScene && <div className="veh-3d" ref={mountRef} />}
         <div className="veh-table">
           {rows.map((r) => (
             <div

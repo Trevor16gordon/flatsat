@@ -482,3 +482,12 @@ body {
 .veh-clickable { cursor: pointer; }
 .veh-clickable:hover { background: #16202c; }
 .veh-selected { background: #182a40; outline: 1px solid #2c4a6e; border-radius: 3px; }
+
+
+/* Timeline + vehicle composition side by side. */
+.timeline-row { display: flex; gap: 10px; align-items: stretch; }
+.timeline-cell { flex: 1 1 55%; min-width: 0; }
+.vehicle-cell { flex: 1 1 45%; min-width: 340px; display: flex; }
+.vehicle-cell .vehicle-panel { flex: 1; margin-top: 0; }
+.vehicle-cell .veh-table { max-height: 300px; overflow-y: auto; }
+@media (max-width: 1100px) { .timeline-row { flex-direction: column; } }

@@ -353,27 +353,34 @@ export default function App() {
               <ChannelList blob={blob} plotted={plottedKeys} onPick={clickChannel} />
             </aside>
             <main className="main">
-              <section className="panel">
-                <div className="panel-head">
-                  <span>timeline</span>
-                  <span className="panel-note">
-                    {elapsed(window_[0], originNs)} → {elapsed(window_[1], originNs)}
-                    {sharedX && (
-                      <button className="link" onClick={() => setSharedX(null)}>
-                        reset zoom
-                      </button>
-                    )}
-                  </span>
-                </div>
-                <Timeline
-                  spans={blob.spans}
-                  annotations={blob.annotations}
-                  originNs={originNs}
-                  window={window_}
-                  onSelectSpan={focusSpan}
-                  selectedSpanId={selectedSpan}
-                />
-              </section>
+              <div className="timeline-row">
+                <section className="panel timeline-cell">
+                  <div className="panel-head">
+                    <span>timeline</span>
+                    <span className="panel-note">
+                      {elapsed(window_[0], originNs)} → {elapsed(window_[1], originNs)}
+                      {sharedX && (
+                        <button className="link" onClick={() => setSharedX(null)}>
+                          reset zoom
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  <Timeline
+                    spans={blob.spans}
+                    annotations={blob.annotations}
+                    originNs={originNs}
+                    window={window_}
+                    onSelectSpan={focusSpan}
+                    selectedSpanId={selectedSpan}
+                  />
+                </section>
+                {vehicleInfo && (
+                  <div className="vehicle-cell">
+                    <VehiclePanel vehicle={vehicleInfo} blob={blob} />
+                  </div>
+                )}
+              </div>
 
               <OrbitPanel blob={blob} originNs={originNs} window={window_} />
 
@@ -429,8 +436,6 @@ export default function App() {
                   </div>
                 )}
               </section>
-
-              {vehicleInfo && <VehiclePanel vehicle={vehicleInfo} blob={blob} />}
 
               {canCommand && apiBase && <CommandPanel apiBase={apiBase} blob={blob} />}
 
