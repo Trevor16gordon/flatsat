@@ -1,19 +1,23 @@
 /**
  * The vehicle, as configured and as flying.
  *
- * Left: a live 3D render built from the SAME vehicle file the flight
- * software runs — wheel and rod glyphs sit on their configured mounting
- * axes, and the body is oriented by the star tracker attitude that
- * crossed the radio (MRP → rotation). Wheels visually spin at their
- * downlinked rates. When the tracker is blinded the model holds its
- * last known attitude and says so — the ground only knows what it
- * heard.
+ * Left: a live 3D scene built from the SAME vehicle file the flight
+ * software runs. The satellite's components sit on their configured
+ * mounting axes (translucent, so the internals read), the body is
+ * oriented by the star-tracker attitude that crossed the radio, and it
+ * rides its configured orbit around a small Earth. The orbit PHASE is
+ * not downlinked — it is inferred from the attitude (the projection of
+ * the instrument axis onto the orbit plane, slew-rate-limited), and
+ * the pane says so: when the vehicle truly tracks nadir the cone
+ * visibly looks at the Earth, and when it doesn't, it visibly doesn't.
  *
- * Right: the composition table — what is real hardware and what is a
- * simulated device behind the same driver contract.
+ * Right: the composition table. Click a row to spotlight that
+ * component in the scene — components the config gives no geometry
+ * (the flight computer, the IMU) light the bus itself, which is where
+ * they live.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { MissionBlob } from '../data/types';
 
@@ -23,6 +27,7 @@ export interface VehicleInfo {
   strategy: string;
   estimator: string;
   rate_hz: number;
+  orbit: { altitude_m?: number; inclination_deg?: number; raan_deg?: number };
   sensors: { name: string; kind: string; realness: string; rate_hz: number }[];
   actuators: {
     name: string;
@@ -39,17 +44,14 @@ interface Props {
   blob: MissionBlob;
 }
 
-/** Last value of a channel, or undefined. */
 function last(blob: MissionBlob, channel: string): number | undefined {
   const s = blob.series[channel];
   return s && s.v.length > 0 ? s.v[s.v.length - 1] : undefined;
 }
 
-/** MRP sigma_BN -> body-to-world rotation for the scene. */
+/** MRP sigma_BN -> body-to-world rotation. */
 function mrpToQuaternion(sx: number, sy: number, sz: number): THREE.Quaternion {
   const s2 = sx * sx + sy * sy + sz * sz;
-  // MRP -> quaternion (scalar-first), then invert: sigma_BN orients
-  // body FROM inertial; the scene wants body IN inertial.
   const q = new THREE.Quaternion(
     (2 * sx) / (1 + s2),
     (2 * sy) / (1 + s2),
@@ -59,125 +61,242 @@ function mrpToQuaternion(sx: number, sy: number, sz: number): THREE.Quaternion {
   return q.invert();
 }
 
+const EARTH_R = 1.0; // scene units
+const ORBIT_R = 1.55; // exaggerated altitude so the geometry reads
+
 export function VehiclePanel({ vehicle, blob }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const sceneRef = useRef<{
-    body: THREE.Group;
-    wheels: { name: string; spinner: THREE.Object3D; axis: THREE.Vector3 }[];
-    renderer: THREE.WebGLRenderer;
-    camera: THREE.PerspectiveCamera;
-    scene: THREE.Scene;
-  } | null>(null);
   const blobRef = useRef(blob);
   blobRef.current = blob;
+  const [selected, setSelected] = useState<string | null>(null);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    const width = mount.clientWidth || 340;
-    const height = 260;
+    const width = mount.clientWidth || 380;
+    const height = 300;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-    camera.position.set(2.6, 1.8, 2.6);
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+    camera.position.set(3.4, 2.2, 3.4);
     camera.lookAt(0, 0, 0);
-    scene.add(new THREE.AmbientLight(0x8899aa, 1.2));
-    const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
-    sun.position.set(4, 3, 2);
+    scene.add(new THREE.AmbientLight(0x8899aa, 1.1));
+    const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+    sun.position.set(6, 3, 2);
     scene.add(sun);
 
-    const body = new THREE.Group();
-    scene.add(body);
-
-    // Bus structure.
-    const bus = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.9, 0.9),
-      new THREE.MeshStandardMaterial({ color: 0x2c3a4a, metalness: 0.4, roughness: 0.5 }),
+    // ------------------------------------------------------------ Earth --
+    const earth = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_R, 48, 32),
+      new THREE.MeshStandardMaterial({ color: 0x2266aa, roughness: 0.7, metalness: 0.1 }),
     );
+    scene.add(earth);
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(EARTH_R * 1.03, 48, 32),
+      new THREE.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0.12 }),
+    );
+    scene.add(atmosphere);
+
+    // Orbit ring from the CONFIG elements (inclination, raan).
+    const inc = ((vehicle.orbit.inclination_deg ?? 0) * Math.PI) / 180;
+    const raan = ((vehicle.orbit.raan_deg ?? 0) * Math.PI) / 180;
+    const orbitFrame = new THREE.Group();
+    orbitFrame.rotation.set(0, raan, 0);
+    const incFrame = new THREE.Group();
+    incFrame.rotation.set(inc, 0, 0);
+    orbitFrame.add(incFrame);
+    scene.add(orbitFrame);
+    const ringPts: THREE.Vector3[] = [];
+    for (let k = 0; k <= 128; k++) {
+      const a = (k / 128) * Math.PI * 2;
+      ringPts.push(new THREE.Vector3(Math.cos(a) * ORBIT_R, 0, Math.sin(a) * ORBIT_R));
+    }
+    incFrame.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(ringPts),
+        new THREE.LineBasicMaterial({ color: 0x44608a, transparent: true, opacity: 0.8 }),
+      ),
+    );
+
+    // ------------------------------------------------------- spacecraft --
+    const SAT_SCALE = 0.22;
+    const carrier = new THREE.Group(); // position on the orbit
+    incFrame.add(carrier);
+    const body = new THREE.Group(); // attitude from downlink
+    body.scale.setScalar(SAT_SCALE);
+    carrier.add(body);
+
+    const meshes = new Map<string, THREE.Mesh[]>();
+    const track = (name: string, mesh: THREE.Mesh) => {
+      const bucket = meshes.get(name) ?? [];
+      bucket.push(mesh);
+      meshes.set(name, bucket);
+    };
+    const material = (color: number, opacity = 0.55) =>
+      new THREE.MeshStandardMaterial({
+        color,
+        transparent: true,
+        opacity,
+        metalness: 0.4,
+        roughness: 0.45,
+        depthWrite: false,
+      });
+
+    const bus = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), material(0x3a4d63, 0.35));
     body.add(bus);
+    track('bus', bus);
+    track('flight computer', bus);
+    track('imu0', bus);
+    track('mag0', bus);
+    track('thermal_tj', bus);
 
-    // Instrument face: +z, the thing nadir pointing aims at the Earth.
-    const face = new THREE.Mesh(
-      new THREE.ConeGeometry(0.16, 0.3, 24),
-      new THREE.MeshStandardMaterial({ color: 0x4a90d9, emissive: 0x123, roughness: 0.3 }),
-    );
+    const face = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 24), material(0x4a90d9, 0.8));
     face.rotation.x = Math.PI / 2;
     face.position.set(0, 0, 0.6);
     body.add(face);
+    track('css0', face);
 
-    // Solar-ish panels for silhouette.
+    // Star tracker: boresight -z per its spec.
+    const tracker = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.12, 0.26, 16),
+      material(0x9a6ad9, 0.8),
+    );
+    tracker.rotation.x = Math.PI / 2;
+    tracker.position.set(0, 0, -0.58);
+    body.add(tracker);
+    track('st0', tracker);
+
     for (const side of [-1, 1]) {
-      const panel = new THREE.Mesh(
-        new THREE.BoxGeometry(1.5, 0.02, 0.5),
-        new THREE.MeshStandardMaterial({ color: 0x1a2c50, metalness: 0.7, roughness: 0.3 }),
-      );
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.02, 0.5), material(0x1a2c50, 0.6));
       panel.position.set(side * 1.25, 0, 0);
       body.add(panel);
     }
 
-    // Wheels and rods from the CONFIG's mounting axes.
-    const wheels: { name: string; spinner: THREE.Object3D; axis: THREE.Vector3 }[] = [];
+    const wheels: { spinner: THREE.Object3D; index: number }[] = [];
+    let wheelIndex = 0;
     for (const actuator of vehicle.actuators) {
       const axis = new THREE.Vector3(...(actuator.axis as [number, number, number])).normalize();
       if (actuator.kind.includes('wheel')) {
         const holder = new THREE.Group();
         const disk = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.16, 0.16, 0.06, 24),
-          new THREE.MeshStandardMaterial({ color: 0xd9b45b, metalness: 0.8, roughness: 0.35 }),
+          new THREE.CylinderGeometry(0.17, 0.17, 0.07, 24),
+          material(0xd9b45b, 0.85),
         );
         const marker = new THREE.Mesh(
-          new THREE.BoxGeometry(0.03, 0.062, 0.14),
-          new THREE.MeshStandardMaterial({ color: 0x222222 }),
+          new THREE.BoxGeometry(0.035, 0.075, 0.15),
+          material(0x333333, 0.9),
         );
-        marker.position.set(0.09, 0, 0);
+        marker.position.set(0.1, 0, 0);
         const spinner = new THREE.Group();
         spinner.add(disk);
         spinner.add(marker);
         holder.add(spinner);
-        // Cylinder spins about its local Y: align local Y to the mount axis.
         holder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
-        holder.position.copy(axis.clone().multiplyScalar(0.32));
+        holder.position.copy(axis.clone().multiplyScalar(0.34));
         body.add(holder);
-        wheels.push({ name: actuator.name, spinner, axis: new THREE.Vector3(0, 1, 0) });
+        wheels.push({ spinner, index: wheelIndex });
+        track(actuator.name, disk);
+        wheelIndex += 1;
       } else if (actuator.kind.includes('magnetorquer')) {
         const rod = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.03, 0.03, 1.1, 12),
-          new THREE.MeshStandardMaterial({ color: 0x8a5a2c, metalness: 0.6, roughness: 0.4 }),
+          new THREE.CylinderGeometry(0.035, 0.035, 1.15, 12),
+          material(0xb0722c, 0.85),
         );
         rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
-        rod.position.copy(axis.clone().multiplyScalar(0.0));
         body.add(rod);
+        track(actuator.name, rod);
       }
     }
 
-    // Inertial reference triad, faint.
-    scene.add(new THREE.AxesHelper(1.6));
+    // Nadir sightline: satellite -> Earth center, world frame.
+    const sightGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+    ]);
+    const sight = new THREE.Line(
+      sightGeom,
+      new THREE.LineBasicMaterial({ color: 0x7bc96f, transparent: true, opacity: 0.7 }),
+    );
+    scene.add(sight);
 
-    sceneRef.current = { body, wheels, renderer, camera, scene };
-
+    // ------------------------------------------------------ animation --
     let raf = 0;
     let lastT = performance.now();
-    const spinRates = new Map<string, number>();
+    let phase = 0; // orbit angle, slew-limited toward the attitude-inferred target
+    const orbitRate = 0.06; // rad/s of SCENE time — readable, not real-time
+    const spinRates = new Map<number, number>();
+    const baseOpacity = new Map<THREE.Mesh, number>();
+    for (const bucket of meshes.values())
+      for (const mesh of bucket)
+        baseOpacity.set(mesh, (mesh.material as THREE.MeshStandardMaterial).opacity);
+
     const animate = (now: number) => {
       const dt = Math.min(0.1, (now - lastT) / 1000);
       lastT = now;
       const b = blobRef.current;
+
+      // Attitude from the downlink.
       const sx = last(b, 'downlink/att.sigma_x');
       const sy = last(b, 'downlink/att.sigma_y');
       const sz = last(b, 'downlink/att.sigma_z');
       if (sx !== undefined && sy !== undefined && sz !== undefined) {
         body.quaternion.slerp(mrpToQuaternion(sx, sy, sz), 0.08);
       }
-      for (const [i, w] of wheels.entries()) {
-        const rate = last(b, `downlink/wheel${i}.speed_rad_s`);
-        if (rate !== undefined) spinRates.set(w.name, rate);
-        const spin = spinRates.get(w.name) ?? 0;
-        w.spinner.rotateOnAxis(w.axis, spin * dt * 0.15); // scaled for visibility
+
+      // Orbit phase inferred from attitude: project the instrument axis
+      // (+z body, in world) onto the orbit plane; the satellite belongs
+      // where that axis meets the Earth. Slew-limited so a tumbling
+      // vehicle doesn't teleport around the ring.
+      const zWorld = new THREE.Vector3(0, 0, 1).applyQuaternion(body.quaternion);
+      const planeInverse = incFrame.getWorldQuaternion(new THREE.Quaternion()).invert();
+      const dirLocal = zWorld.clone().negate().applyQuaternion(planeInverse);
+      const target = Math.atan2(-dirLocal.z, dirLocal.x);
+      let err = target - phase;
+      while (err > Math.PI) err -= 2 * Math.PI;
+      while (err < -Math.PI) err += 2 * Math.PI;
+      const maxStep = 2 * orbitRate * dt;
+      phase += Math.max(-maxStep, Math.min(maxStep, err));
+      carrier.position.set(Math.cos(phase) * ORBIT_R, 0, -Math.sin(phase) * ORBIT_R);
+
+      // Sightline satellite -> Earth center.
+      const satWorld = carrier.getWorldPosition(new THREE.Vector3());
+      const positions = sight.geometry.getAttribute('position') as THREE.BufferAttribute;
+      positions.setXYZ(0, satWorld.x, satWorld.y, satWorld.z);
+      positions.setXYZ(1, 0, 0, 0);
+      positions.needsUpdate = true;
+
+      // Wheel spin from downlinked rates.
+      for (const w of wheels) {
+        const rate = last(b, `downlink/wheel${w.index}.speed_rad_s`);
+        if (rate !== undefined) spinRates.set(w.index, rate);
+        w.spinner.rotateY((spinRates.get(w.index) ?? 0) * dt * 0.15);
       }
+
+      // Selection spotlight.
+      const sel = selectedRef.current;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 180);
+      for (const [name, bucket] of meshes) {
+        for (const mesh of bucket) {
+          const mat = mesh.material as THREE.MeshStandardMaterial;
+          const base = baseOpacity.get(mesh) ?? 0.6;
+          if (sel && meshes.has(sel) && name === sel) {
+            mat.opacity = Math.min(1, base + 0.4);
+            mat.emissive.setHex(0x2266ff);
+            mat.emissiveIntensity = 0.6 + pulse;
+          } else {
+            mat.opacity = sel && meshes.has(sel) ? base * 0.5 : base;
+            mat.emissive.setHex(0x000000);
+            mat.emissiveIntensity = 0;
+          }
+        }
+      }
+
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
     };
@@ -202,8 +321,11 @@ export function VehiclePanel({ vehicle, blob }: Props) {
       <div className="cmd-header">
         VEHICLE — {vehicle.name}
         <span className="cmd-note">
-          {vehicle.mass_kg} kg · {vehicle.strategy} @ {vehicle.rate_hz} Hz · attitude from the
-          downlinked star tracker
+          {vehicle.mass_kg} kg · {vehicle.strategy} @ {vehicle.rate_hz} Hz ·{' '}
+          {vehicle.orbit.altitude_m
+            ? `${Math.round((vehicle.orbit.altitude_m ?? 0) / 1000)} km / ${vehicle.orbit.inclination_deg}°`
+            : 'no orbit'}{' '}
+          · attitude downlinked · orbit phase inferred from attitude
           {starValid === 0 && <b className="veh-blind"> · TRACKER BLINDED — holding last</b>}
         </span>
       </div>
@@ -211,7 +333,11 @@ export function VehiclePanel({ vehicle, blob }: Props) {
         <div className="veh-3d" ref={mountRef} />
         <div className="veh-table">
           {rows.map((r) => (
-            <div key={r.name} className="veh-line">
+            <div
+              key={r.name}
+              className={`veh-line veh-clickable${selected === r.name ? ' veh-selected' : ''}`}
+              onClick={() => setSelected(selected === r.name ? null : r.name)}
+            >
               <span className="veh-name">{r.name}</span>
               <span className="veh-kind">{r.kind}</span>
               <span className={`veh-chip veh-${r.realness}`}>{r.realness}</span>

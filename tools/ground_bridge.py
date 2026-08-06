@@ -605,12 +605,26 @@ def vehicle_summary(path: str) -> dict[str, object]:
             }
         )
     control = cfg.control
+    orbit: dict[str, float] = {}
+    strategy = control.WhichOneof("strategy")
+    if strategy == "nadir_point" and control.nadir_point.HasField("orbit"):
+        from flatsat.core.config import load_textproto
+        from flatsat.sim import mission_pb2
+
+        msg = mission_pb2.OrbitConfig()
+        load_textproto(control.nadir_point.orbit, msg)
+        orbit = {
+            "altitude_m": msg.altitude_m,
+            "inclination_deg": msg.inclination_deg,
+            "raan_deg": msg.raan_deg,
+        }
     return {
         "name": cfg.name,
         "vehicle_path": path,
         "mass_kg": cfg.body.mass_kg,
         "inertia_kg_m2": list(cfg.body.inertia_kg_m2),
-        "strategy": control.WhichOneof("strategy"),
+        "strategy": strategy,
+        "orbit": orbit,
         "estimator": control.WhichOneof("estimator"),
         "rate_hz": control.rate_hz,
         "sensors": sensors,

@@ -478,3 +478,7 @@ body {
 .veh-real { color: #7bc96f; border: 1px solid #2e4a2b; }
 .veh-simulated { color: #d9b45b; border: 1px solid #4a3f22; }
 .veh-blind { color: #d96b6b; }
+
+.veh-clickable { cursor: pointer; }
+.veh-clickable:hover { background: #16202c; }
+.veh-selected { background: #182a40; outline: 1px solid #2c4a6e; border-radius: 3px; }
