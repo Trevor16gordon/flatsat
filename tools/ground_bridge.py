@@ -395,7 +395,7 @@ class LiveRun:
                     "run_id": self.run_id,
                     "source_kind": "SOURCE_KIND_FLIGHT",
                     "mission_name": f"live downlink ({self.prefix}/)",
-                    "vehicle_path": "config/vehicles/flatsat_v1_mldemo_rf.txtpb",
+                    "vehicle_path": str(VEHICLE_SUMMARY.get("vehicle_path", "")),
                     "vehicle_sha256": "",
                     "git_sha": "",
                     "git_dirty": False,
