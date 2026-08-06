@@ -1,195 +1,141 @@
-# Demo cheatsheet — commands only
+# Demo cheatsheet — detumble, point at Earth, dump the data
 
-Narrative, talk tracks, break-glass table: `docs/demo-runbook-2026-08-06.md`.
+The arc: a tumbling satellite arrests itself, swings its instrument
+face onto the Earth and tracks it; a sensor dies and the vehicle safes
+itself until ground commands recovery over the radio; then the whole
+flight is pulled down and scrubbed in the viewer. (No weight uplink,
+no activation/rollback — that machinery exists and is one sentence,
+not a segment.)
 
-**Three terminals + the browser + Vizard.**
+**Three terminals + two browser tabs + Vizard.**
 - **A** — Mac, `~/flatsat`: the Basilisk bridge (the universe)
-- **B** — Jetson ssh: the flight journal (the spacecraft's own voice)
-- **C** — Jetson ssh: sudo actions (restarts)
-- **Browser** — mission control: telemetry, passes, commanding, audit
-  (served by two Mac processes — see "Mission control web app" below)
+- **B** — Jetson ssh: the flight journal
+- **C** — Jetson ssh: sudo actions
+- **Browser tab 1** — live mission control (downlink over the radio)
+- **Browser tab 2** — the archive viewer (data dumps)
 - **Vizard** — the 3D vehicle
 
-Everything else (link services, ground bridge, viewer server) runs
-backgrounded from the setup block and stays out of sight. Commanding
-happens in the browser; the CLI equivalents live in the appendix as
-fallbacks.
+Vehicle: `flatsat_v1` — nadir pointing on the star tracker, momentum
+dump on the rods (wheels never ratchet between takes). The link
+services still read their comms config from the RF vehicle file; the
+topic names are identical.
 
-## 0 — Pre-demo reset (terminal C, once)
+## 0 — One-time vehicle restore + reset (terminal C)
 
-Clear stale test artifacts and confirm services:
 ```bash
-rm -rf ~/flatsat-uplink/staging/ml_policy@* ~/flatsat-uplink/slots/ml_policy* && sudo systemctl restart flatsat-uplink && systemctl is-active flatsat-router flatsat-uplink flatsat-adcs
+cd ~/flatsat && git checkout units/generated && ~/venvs/flatsat-ml/bin/python tools/gen-units.py && sudo bash tools/install-units.sh && sudo systemctl restart flatsat.target && journalctl -u flatsat-adcs -n 3 | grep controller
 ```
+Expect `controller: nadir_point …`.
 
 ## Setup (once)
 
-**Terminal C (Jetson)** — start the flight side of the space link,
-backgrounded. IDEMPOTENT: kills any prior instance first — duplicate
-link services double-deliver every sample and scribble the plots:
+**Terminal C (Jetson)** — flight side of the space link, backgrounded
+(idempotent — kills any prior instance):
 ```bash
 pkill -f "apps[.]link_service"; sleep 1; cd ~/flatsat && setsid ~/venvs/flatsat-ml/bin/python -m flatsat.apps.link_service --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_flight.log 2>&1 < /dev/null &
 ```
 
-**Any Mac terminal** — ground station stack, backgrounded (also
-idempotent — kills prior instances first):
+**Any Mac terminal** — ground station stack, backgrounded (idempotent):
 ```bash
 pkill -f "link_service --ground"; pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 && PYTHONPATH=$PWD nohup ~/venvs/gr-ground/bin/python -m flatsat.apps.link_service --ground --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_ground.log 2>&1 & nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 & (curl -s -o /dev/null http://localhost:5173 || nohup npm --prefix web run dev > /tmp/viewer.log 2>&1 &) ; sleep 3 && echo "ground station up"
 ```
 
-## Mission control web app (start now; restart any time)
-
-Two Mac processes + a browser tab.
-
-1. **Viewer server** (serves the page) — give it its own terminal, or
-   background it:
-```bash
-cd ~/flatsat && npm --prefix web run dev
-```
-2. **Ground bridge** (feeds downlink data to the page and carries its
-   commands to the ground station):
-```bash
-pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 &
-```
-3. **The page** (reload after restarting either process):
+**Browser tab 1** — live mission control:
 ```
 http://localhost:5173/?api=http://localhost:8600
 ```
-
-Diagnosis: page won't load at all → viewer server down (restart 1).
-Page loads but LIVE badge red/missing or commands fail → bridge down
-(restart 2) or the link is down. Note the Mac setup block above also
-starts both — these standalone commands are for restarting just the
-web app without touching the link.
-
-LIVE badge = age of newest downlinked sample (green: pass just landed,
-amber: between passes, red: link quiet). COMMANDING panel at the
-bottom: every command queues at the ground station and crosses at the
-next pass; every click is audited in the events lane.
+LIVE badge = age of the newest downlinked sample. Passes tile the
+timeline. COMMANDING panel at the bottom (mode requests cross the
+radio at the next pass; CONSOLE → clear view resets the ground display
+between takes, nothing reaches the vehicle).
 
 **Terminal B (Jetson)** — flight journal:
 ```bash
-journalctl -u flatsat-adcs -u flatsat-uplink -u flatsat-fdir -u flatsat-mode -f | grep --line-buffered -E "\[fdir\]|\[mode\]|\[uplink\]|\[adcs\] \|omega\||controller:"
+journalctl -u flatsat-adcs -u flatsat-fdir -u flatsat-mode -f | grep --line-buffered -E "\[fdir\]|\[mode\]|\[adcs\] \|omega\||controller:"
 ```
 
-## 1 — Release, detumble on fallback PD
+## Web app restart (any time)
 
-A — bridge FIRST (truth is flowing before the stack wakes, so FDIR
-never sees a stale window and the vehicle comes up NOMINAL; the
-detumble demo vehicle has no onboard-orbit dependency, so this order
-is safe here — nadir-pointing runs pair the restarts the other way):
+Page won't load → viewer server:
+```bash
+cd ~/flatsat && npm --prefix web run dev
+```
+Page loads but LIVE badge red / stale → bridge:
+```bash
+pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 &
+```
+Reload the tab after either.
+
+## 1 — Release: tumble → detumble → Earth-pointing
+
+A — bridge first:
 ```bash
 ~/venvs/flatsat-ground/bin/python -m flatsat.sim.basilisk_hil --orbit config/orbits/starlink_leo.txtpb --omega0 0.05,-0.04,0.03 --viz
 ```
-C — then release the vehicle:
+C — release the vehicle IMMEDIATELY after (within ~10 s: FDIR's stale
+window, and the epoch skew stays negligible for nadir):
 ```bash
 sudo systemctl restart flatsat.target
 ```
-**Then Vizard** (the bridge binds the socket; Vizard is the client):
-Direct Communication → `tcp://localhost:5556` → Start Visualization.
+**Then Vizard**: Direct Communication → `tcp://localhost:5556` →
+Start Visualization.
 
-B: `controller: ml_policy … NO ACTIVE VERSION — fallback PD`.
-Browser: drag `downlink/imu.omega_mrad_s` onto a plot — the detumble
-curve draws itself from samples that each rode a pass.
+Watch, in order:
+- B: `|omega|` falls 70 → <5 mrad/s (~3 min), then `off-target XX deg`
+  appears and falls — the vehicle is swinging +z onto the Earth.
+  Settles ~1–2° (orbit-rate tracking + sensor noise: that's physics).
+- Vizard: tumble dies, instrument face pins to Earth and TRACKS it.
+- Tab 1: drag `downlink/imu.omega_mrad_s` onto a plot — the curve
+  draws itself from samples that each rode a pass.
 
-## 2 — Blackout → safing (watch B: prints ONCE, ~10 s after the kill)
+## 2 — Sensor failure: safing without resetting the world
 
-A: **Ctrl-C**.
-B: `[fdir] tripped: imu_stale — requesting SAFE` →
-`[mode] … -> SYSTEM_MODE_SAFE`. Browser: mode chip flips to SAFE at
-the next pass.
-
-Restart the bridge — A (same command as step 1). Vehicle STAYS SAFE:
-no self-recovery.
-
-## 3 — Upload + the SAFE refusal (browser)
-
-COMMANDING → DEPLOY: **upload…** → pick
-`build/ml_detumble/2026-08-05a.json`, version tag `2026-08-05a`.
-Wait a pass: B shows `[uplink] staged ml_detumble@2026-08-05a`.
-
-Then select it in the dropdown → **activate** → confirm.
-B shows: `[uplink] REFUSED: activation refused in SAFE: survival law
-is not swappable`. (The refusal is the system declining power — say so.)
-
-## 4 — Recover, deliberately (browser)
-
-MODE row: reason `bridge restored` → **→ RECOVERY**. Wait for the pass
-(B: `SAFE -> RECOVERY`). Then reason `checkout complete` → **→ NOMINAL**.
-
-## 5 — Activate for real (browser), adopt by restart (C)
-
-DEPLOY: select `ml_detumble@2026-08-05a` → **activate** → confirm.
-Wait for `[uplink] activated …` in B, then C:
+C — kill the IMU (the universe keeps running; nothing resets):
 ```bash
-sudo systemctl restart flatsat-adcs
+sudo systemctl stop flatsat-imu0
 ```
-B: `controller: ml_policy … version=2026-08-05a hidden=32 …
-sha256=56974ca8ec34`. Browser events: `ACTIVE: ml_detumble@2026-08-05a`.
+B: `[fdir] tripped: imu_silent — requesting SAFE` →
+`[mode] … -> SYSTEM_MODE_SAFE`. Tab 1: mode chip goes SAFE at the next
+pass. Pointing drifts slowly (loop holds zero torque on stale input).
 
-## 6 — Fresh tumble, network flying
-
-C:
+C — "repair" the sensor:
 ```bash
-sudo systemctl restart flatsat.target
+sudo systemctl start flatsat-imu0
 ```
-A (immediately after):
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.sim.basilisk_hil --orbit config/orbits/starlink_leo.txtpb --omega0 0.06,0.05,-0.04 --viz
-```
-Slot pointer survives — B still shows `version=2026-08-05a`. The
-browser's omega plot now draws the NETWORK's detumble (settles ~0.5
-mrad/s; PD floor was 2–4).
+Vehicle STAYS SAFE — recovery is a human decision. Tab 1, MODE row:
+reason `sensor restored` → **→ RECOVERY**, wait a pass, then
+**→ NOMINAL**. Watch B: pointing re-acquires, off-target falls back
+to ~1–2°.
 
-## 7 — Rollback (browser)
+## 3 — The data dump
 
-DEPLOY → **rollback** → wait for the pass → C:
+Mac (any terminal) — pull the run and export it:
 ```bash
-sudo systemctl restart flatsat-adcs
+rm -rf ~/hil-trace/run-latest && RESTART=$(ssh trevor@100.65.0.120 "systemctl show flatsat-recorder.service -p ActiveEnterTimestamp --value") && ssh trevor@100.65.0.120 "cd ~/flatsat-telemetry && find . -type f -newermt \"$RESTART\" -print" | rsync -av --files-from=- trevor@100.65.0.120:~/flatsat-telemetry/ ~/hil-trace/run-latest/ && ~/venvs/flatsat-ground/bin/python -m flatsat.telemetry.export ~/hil-trace/run-latest -o ~/hil-trace/run-latest/mission.json
 ```
-B: back to `NO ACTIVE VERSION — fallback PD`.
-(`REFUSED: no previous version` is honest bookkeeping if only one
-version was ever active — the fallback line after restart is the same
-story.)
+**Browser tab 2** — plain `http://localhost:5173` → **load run…** →
+`~/hil-trace/run-latest/mission.json`. Scrub: the run header (vehicle,
+code sha, host), full channel list, the orbit panel with the +z arrow
+pinned to Earth, gyro/wheel plots, the SAFE window visible in
+`sys/mode`.
+
+Also worth loading: yesterday's eclipse-crossing nadir run for the
+star-tracker-through-shadow story.
 
 ## Between takes
 
-Browser CONSOLE row → **clear view**: fresh ground console (ground-side
-only; next pass repaints current state). For a full vehicle reset:
-step 1's restart pair.
+- Fresh tumble = the FULL pair in step 1 (bridge first, then target) —
+  the target restart zeroes wheel momentum and starts a new recording.
+- Tab 1 CONSOLE → **clear view** for a clean ground console.
+- Vehicle stuck SAFE? Tab 1: → RECOVERY, → NOMINAL (ground authority).
 
-## Sim segment (viewer, second tab)
+## If something breaks
 
-Plain `http://localhost:5173` → **load run…** →
-`~/hil-trace/campaign_pd_vs_ml.json`: six releases, pd/ml spans, drag
-`sim/ic180mrad/pd.omega_mrad_s` + `…/ml.omega_mrad_s` onto one plot.
-Then load the recorded nadir export for the orbit view.
-
-## Appendix — CLI fallbacks (terminal, same effect as the buttons)
-
-```bash
-cd ~/flatsat && export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447
-```
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground send ml_detumble 2026-08-05a build/ml_detumble/2026-08-05a.json --kind model
-```
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground activate ml_detumble 2026-08-05a --ground
-```
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.uplink_send --topic-prefix ground rollback ml_detumble
-```
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request RECOVERY --ground --reason "bridge restored" --topic-prefix ground
-```
-```bash
-~/venvs/flatsat-ground/bin/python -m flatsat.apps.mode_request --status
-```
-
-LINK FALLBACK (no radios — same story minus RF): kill both link
-services, then on the Jetson:
-```bash
-cd ~/flatsat && ~/venvs/flatsat-ml/bin/python tools/bench_link.py --vehicle config/vehicles/flatsat_v1_mldemo.txtpb
-```
-(If `flatsat-link.service` ever gets installed by a units reinstall:
-`sudo systemctl disable --now flatsat-link`.)
+| Symptom | First move |
+|---|---|
+| LIVE badge red, stays red | link died: rerun BOTH setup blocks (idempotent) |
+| Page won't load | viewer server: web app restart section |
+| Vizard blank | it connects to the bridge — start the bridge first, then Start Visualization |
+| No `off-target` in B | estimator has no attitude: check `systemctl is-active flatsat-st0 flatsat-css0` |
+| Wheels near ±100 rad/s | you skipped the target restart — do the step-1 pair |
+| Mode refused | check current mode in tab 1; away-from-safety needs RECOVERY first |
