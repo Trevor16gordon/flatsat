@@ -7,6 +7,7 @@ Narrative, talk tracks, break-glass table: `docs/demo-runbook-2026-08-06.md`.
 - **B** — Jetson ssh: the flight journal (the spacecraft's own voice)
 - **C** — Jetson ssh: sudo actions (restarts)
 - **Browser** — mission control: telemetry, passes, commanding, audit
+  (served by two Mac processes — see "Mission control web app" below)
 - **Vizard** — the 3D vehicle
 
 Everything else (link services, ground bridge, viewer server) runs
@@ -36,10 +37,31 @@ idempotent — kills prior instances first):
 pkill -f "link_service --ground"; pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && export FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 && PYTHONPATH=$PWD nohup ~/venvs/gr-ground/bin/python -m flatsat.apps.link_service --ground --vehicle config/vehicles/flatsat_v1_mldemo_rf.txtpb > /tmp/link_ground.log 2>&1 & nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 & (curl -s -o /dev/null http://localhost:5173 || nohup npm --prefix web run dev > /tmp/viewer.log 2>&1 &) ; sleep 3 && echo "ground station up"
 ```
 
-**Browser** — mission control:
+## Mission control web app (start now; restart any time)
+
+Two Mac processes + a browser tab.
+
+1. **Viewer server** (serves the page) — give it its own terminal, or
+   background it:
+```bash
+cd ~/flatsat && npm --prefix web run dev
+```
+2. **Ground bridge** (feeds downlink data to the page and carries its
+   commands to the ground station):
+```bash
+pkill -f "ground_bridge"; sleep 1; cd ~/flatsat && FLATSAT_ZENOH_CONNECT=tcp/100.65.0.120:7447 nohup ~/venvs/flatsat-ground/bin/python tools/ground_bridge.py > /tmp/ground_bridge.log 2>&1 &
+```
+3. **The page** (reload after restarting either process):
 ```
 http://localhost:5173/?api=http://localhost:8600
 ```
+
+Diagnosis: page won't load at all → viewer server down (restart 1).
+Page loads but LIVE badge red/missing or commands fail → bridge down
+(restart 2) or the link is down. Note the Mac setup block above also
+starts both — these standalone commands are for restarting just the
+web app without touching the link.
+
 LIVE badge = age of newest downlinked sample (green: pass just landed,
 amber: between passes, red: link quiet). COMMANDING panel at the
 bottom: every command queues at the ground station and crosses at the

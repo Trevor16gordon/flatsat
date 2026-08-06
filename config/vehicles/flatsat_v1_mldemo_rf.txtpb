@@ -193,8 +193,9 @@ comms {  # the space link, bench-shaped: loopback channel, real everything else.
   contact { period_s: 30 duration_s: 10 }   # a 10 s pass every 30 s
   pluto_gmsk {                         # TWO REAL RADIOS, padded coax between them.
     uri: "ip:192.168.2.1"              # flight radio (original Pluto)
-    ground_uri: "usb:0.3.5"            # ground radio on the MAC, USB backend (serial 104473b0…;
-                                       # macOS gets no IP on the Pluto iface without sudo — usb: needs none)
+    ground_uri: "usb:"                 # ground radio on the MAC: bare usb: auto-selects the only
+                                       # USB radio present, so replugging into a different port
+                                       # cannot orphan the config (serial 104473b0…)
     center_freq_hz: 915e6              # the proven bench recipe (BER 0.00 framed)
     sample_rate_hz: 2.084e6
     tx_attenuation_db: 20
