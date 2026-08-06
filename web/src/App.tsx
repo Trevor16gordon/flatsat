@@ -74,13 +74,28 @@ export default function App() {
     if (!api) return;
     const src = new ApiDataSource(api);
     setSource(src);
-    setApiBase(api.replace(/\/$/, ''));
-    void fetch(`${api.replace(/\/$/, '')}/api/capabilities`, { credentials: 'include' })
-      .then((r) => r.json())
-      .then((caps: { canCommand?: boolean }) => setCanCommand(Boolean(caps.canCommand)))
-      .catch(() => setCanCommand(false));
+    const base = api.replace(/\/$/, '');
+    setApiBase(base);
     let cancelled = false;
+    let capsKnown = false;
+    // Capabilities retry with every poll until they succeed — a page
+    // loaded before the bridge must not hide the commanding panel
+    // forever over one failed fetch.
+    const fetchCaps = async () => {
+      if (capsKnown) return;
+      try {
+        const r = await fetch(`${base}/api/capabilities`, { credentials: 'include' });
+        const caps = (await r.json()) as { canCommand?: boolean };
+        if (!cancelled) {
+          setCanCommand(Boolean(caps.canCommand));
+          capsKnown = true;
+        }
+      } catch {
+        /* bridge not up yet — retry on the next poll */
+      }
+    };
     const poll = async () => {
+      void fetchCaps();
       try {
         const runs = await src.listRuns();
         const first = runs[0];
