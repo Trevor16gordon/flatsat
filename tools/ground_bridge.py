@@ -43,7 +43,8 @@ from flatsat.core.bus import bus_config  # noqa: E402
 from flatsat.mode.manager import MODE_TOPIC, request_topic  # noqa: E402
 from flatsat.msgs import hal_pb2, health_pb2, mode_pb2, uplink_pb2  # noqa: E402
 
-MAX_POINTS_PER_SERIES = 100_000  # a long demo day at these rates is far below this
+MAX_POINTS_PER_SERIES = 100_000
+VEHICLE_SUMMARY: dict[str, object] = {}  # a long demo day at these rates is far below this
 
 
 class LiveRun:
@@ -292,6 +293,23 @@ class LiveRun:
             self._point("downlink/mag.mag_y_ut", t_ns, msg.mag_y_t * 1e6)
             self._point("downlink/mag.mag_z_ut", t_ns, msg.mag_z_t * 1e6)
 
+    def on_star(self, payload: bytes) -> None:
+        """Ingest one downlinked (sampled) star tracker attitude.
+
+        Args:
+            payload: Serialized StarTrackerSample.
+        """
+        msg = hal_pb2.StarTrackerSample.FromString(payload)
+        now = time.time_ns()
+        t_ns = self._wall(msg.header)
+        with self.lock:
+            self._track_pass(now)
+            self._point("downlink/att.star_valid", t_ns, 1.0 if msg.star_valid else 0.0)
+            if msg.star_valid:
+                self._point("downlink/att.sigma_x", t_ns, msg.sigma_x)
+                self._point("downlink/att.sigma_y", t_ns, msg.sigma_y)
+                self._point("downlink/att.sigma_z", t_ns, msg.sigma_z)
+
     def audit(self, message: str, level: str = "info") -> None:
         """Record one issued command in the console's own trail.
 
@@ -537,6 +555,89 @@ class CommandStation:
         return f"{name}@{version}: {len(payload)} B in {chunks} chunk(s) queued for next pass"
 
 
+def vehicle_summary(path: str) -> dict[str, object]:
+    """Describe the flying vehicle: composition, geometry, physics.
+
+    Args:
+        path: Vehicle file the flight stack is running.
+
+    Returns:
+        JSON-ready summary for the viewer's vehicle panel.
+    """
+    from flatsat.core.config import load_vehicle, which_impl
+    from flatsat.sim.orbit_config import load_orbit  # noqa: F401  (may vary)
+
+    spec = load_vehicle(path)
+    cfg = spec.config
+
+    def realness(kind: str) -> str:
+        """Classify a driver implementation name.
+
+        Args:
+            kind: Registry key, e.g. "basilisk_imu".
+
+        Returns:
+            "simulated" or "real".
+        """
+        return "simulated" if kind.startswith(("basilisk_", "sim_")) else "real"
+
+    sensors = []
+    for s in cfg.sensors:
+        kind = s.WhichOneof("options") or "?"
+        sensors.append(
+            {
+                "name": s.name,
+                "kind": kind,
+                "realness": realness(kind),
+                "rate_hz": s.rate_hz,
+            }
+        )
+    actuators = []
+    for a in cfg.actuators:
+        kind = which_impl(a, "options", a.name)
+        actuators.append(
+            {
+                "name": a.name,
+                "kind": kind,
+                "realness": realness(kind),
+                "position_m": list(a.mounting.position_m),
+                "axis": list(a.mounting.axis),
+            }
+        )
+    control = cfg.control
+    return {
+        "name": cfg.name,
+        "vehicle_path": path,
+        "mass_kg": cfg.body.mass_kg,
+        "inertia_kg_m2": list(cfg.body.inertia_kg_m2),
+        "strategy": control.WhichOneof("strategy"),
+        "estimator": control.WhichOneof("estimator"),
+        "rate_hz": control.rate_hz,
+        "sensors": sensors,
+        "actuators": actuators,
+        # The platform facts the config cannot know it sits on.
+        "platform": [
+            {
+                "name": "flight computer",
+                "kind": "NVIDIA Jetson Orin Nano (JetPack 6.2.1)",
+                "realness": "real",
+            },
+            {"name": "flight radio", "kind": "ADALM-Pluto SDR (915 MHz GMSK)", "realness": "real"},
+            {"name": "ground radio", "kind": "ADALM-Pluto SDR (pluto-ground)", "realness": "real"},
+            {
+                "name": "space link",
+                "kind": "CCSDS framing, 10 s pass / 30 s, 30 dB pads",
+                "realness": "real",
+            },
+            {
+                "name": "orbit + physics",
+                "kind": "Basilisk (Mac): rigid body, orbit, field, sun",
+                "realness": "simulated",
+            },
+        ],
+    }
+
+
 def make_handler(run: LiveRun, station: CommandStation) -> type[BaseHTTPRequestHandler]:
     """Build the request handler bound to one live run.
 
@@ -571,6 +672,8 @@ def make_handler(run: LiveRun, station: CommandStation) -> type[BaseHTTPRequestH
             parts = [p for p in url.path.split("/") if p]
             if parts == ["api", "capabilities"]:
                 self._send({"canBrowseRuns": True, "canCommand": True})
+            elif parts == ["api", "vehicle"]:
+                self._send(VEHICLE_SUMMARY)
             elif parts == ["api", "runs"]:
                 self._send([run.summary()])
             elif parts[:2] == ["api", "runs"] and len(parts) == 3:
@@ -656,7 +759,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Live downlink -> mission viewer bridge.")
     parser.add_argument("--prefix", default="ground", help="ground namespace prefix")
     parser.add_argument("--port", type=int, default=8600)
+    parser.add_argument(
+        "--flight-vehicle",
+        default="config/vehicles/flatsat_v1.txtpb",
+        help="vehicle file the FLIGHT stack is running (for the vehicle panel)",
+    )
     args = parser.parse_args()
+    global VEHICLE_SUMMARY
+    VEHICLE_SUMMARY = vehicle_summary(args.flight_vehicle)
 
     run = LiveRun(args.prefix)
     session = zenoh.open(bus_config())
@@ -730,6 +840,12 @@ def main() -> int:
         session.declare_subscriber(
             f"{args.prefix}/hal/mag0/sample",
             lambda smp: run.on_mag(bytes(smp.payload.to_bytes())),
+        )
+    )
+    subs.append(
+        session.declare_subscriber(
+            f"{args.prefix}/hal/st0/sample",
+            lambda smp: run.on_star(bytes(smp.payload.to_bytes())),
         )
     )
     station = CommandStation(session, args.prefix)

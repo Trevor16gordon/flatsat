@@ -442,3 +442,39 @@ body {
 }
 .cmd-console { border-top: 1px dashed #26303a; padding-top: 8px; }
 .cmd-result { font-size: 12px; color: #9fb3c8; font-family: var(--mono, monospace); }
+
+
+/* Vehicle panel: the config made visible. */
+.vehicle-panel {
+  border: 1px solid var(--line, #26303a);
+  border-radius: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.veh-row { display: flex; gap: 14px; align-items: stretch; flex-wrap: wrap; }
+.veh-3d { flex: 0 0 340px; min-height: 260px; border: 1px solid #1c2632; border-radius: 4px; }
+.veh-table { flex: 1; min-width: 320px; display: flex; flex-direction: column; gap: 2px; }
+.veh-line {
+  display: grid;
+  grid-template-columns: 120px 1fr 84px;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-bottom: 1px solid #131b24;
+}
+.veh-name { color: #cfe3f5; font-family: var(--mono, monospace); }
+.veh-kind { color: #7b8a99; }
+.veh-chip {
+  text-align: center;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.veh-real { color: #7bc96f; border: 1px solid #2e4a2b; }
+.veh-simulated { color: #d9b45b; border: 1px solid #4a3f22; }
+.veh-blind { color: #d96b6b; }

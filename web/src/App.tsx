@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChannelList } from './components/ChannelList';
 import { CommandPanel } from './components/CommandPanel';
+import { VehiclePanel } from './components/VehiclePanel';
+import type { VehicleInfo } from './components/VehiclePanel';
 import { OrbitPanel } from './components/OrbitPanel';
 import { PlotPanel } from './components/PlotPanel';
 import type { DropZone } from './components/PlotPanel';
@@ -63,6 +65,7 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [apiBase, setApiBase] = useState<string | null>(null);
   const [canCommand, setCanCommand] = useState(false);
+  const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Live mode: ?api=http://localhost:8600 points the viewer at a
@@ -86,8 +89,11 @@ export default function App() {
       try {
         const r = await fetch(`${base}/api/capabilities`, { credentials: 'include' });
         const caps = (await r.json()) as { canCommand?: boolean };
+        const vr = await fetch(`${base}/api/vehicle`, { credentials: 'include' });
+        const veh = (await vr.json()) as VehicleInfo;
         if (!cancelled) {
           setCanCommand(Boolean(caps.canCommand));
+          if (veh && veh.name) setVehicleInfo(veh);
           capsKnown = true;
         }
       } catch {
@@ -423,6 +429,8 @@ export default function App() {
                   </div>
                 )}
               </section>
+
+              {vehicleInfo && <VehiclePanel vehicle={vehicleInfo} blob={blob} />}
 
               {canCommand && apiBase && <CommandPanel apiBase={apiBase} blob={blob} />}
 
