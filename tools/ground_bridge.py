@@ -261,6 +261,37 @@ class LiveRun:
             self._point(f"downlink/{wheel}.speed_rad_s", t_ns, msg.speed_rad_s)
             self._point(f"downlink/{wheel}.momentum_n_m_s", t_ns, msg.momentum_n_m_s)
 
+    def on_mtq(self, rod: str, payload: bytes) -> None:
+        """Ingest one downlinked (sampled) magnetorquer state.
+
+        Args:
+            rod: Rod name, e.g. "mtq_x".
+            payload: Serialized MagnetorquerState.
+        """
+        msg = hal_pb2.MagnetorquerState.FromString(payload)
+        now = time.time_ns()
+        t_ns = self._wall(msg.header)
+        with self.lock:
+            self._track_pass(now)
+            self._point(f"downlink/{rod}.dipole_a_m2", t_ns, msg.dipole_a_m2)
+
+    def on_mag(self, payload: bytes) -> None:
+        """Ingest one downlinked (sampled) magnetometer reading.
+
+        Args:
+            payload: Serialized MagnetometerSample.
+        """
+        msg = hal_pb2.MagnetometerSample.FromString(payload)
+        now = time.time_ns()
+        t_ns = self._wall(msg.header)
+        field = math.sqrt(msg.mag_x_t**2 + msg.mag_y_t**2 + msg.mag_z_t**2)
+        with self.lock:
+            self._track_pass(now)
+            self._point("downlink/mag.field_ut", t_ns, field * 1e6)
+            self._point("downlink/mag.mag_x_ut", t_ns, msg.mag_x_t * 1e6)
+            self._point("downlink/mag.mag_y_ut", t_ns, msg.mag_y_t * 1e6)
+            self._point("downlink/mag.mag_z_ut", t_ns, msg.mag_z_t * 1e6)
+
     def audit(self, message: str, level: str = "info") -> None:
         """Record one issued command in the console's own trail.
 
@@ -672,6 +703,35 @@ def main() -> int:
         subs.append(
             session.declare_subscriber(f"{args.prefix}/hal/{wheel}/state", wheel_handler(wheel))
         )
+
+    def mtq_handler(rod: str) -> Callable[[zenoh.Sample], None]:
+        """Bind one rod's name into its subscriber callback.
+
+        Args:
+            rod: Rod name.
+
+        Returns:
+            The callback.
+        """
+
+        def on_message(smp: zenoh.Sample) -> None:
+            """Ingest one magnetorquer state sample.
+
+            Args:
+                smp: The bus message.
+            """
+            run.on_mtq(rod, bytes(smp.payload.to_bytes()))
+
+        return on_message
+
+    for rod in ("mtq_x", "mtq_y", "mtq_z"):
+        subs.append(session.declare_subscriber(f"{args.prefix}/hal/{rod}/state", mtq_handler(rod)))
+    subs.append(
+        session.declare_subscriber(
+            f"{args.prefix}/hal/mag0/sample",
+            lambda smp: run.on_mag(bytes(smp.payload.to_bytes())),
+        )
+    )
     station = CommandStation(session, args.prefix)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(run, station))
     print(

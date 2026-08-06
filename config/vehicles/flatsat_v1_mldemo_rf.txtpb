@@ -187,7 +187,11 @@ comms {  # the space link, bench-shaped: loopback channel, real everything else.
     { topic: "hal/imu0/sample" period_s: 1.0 },
     { topic: "hal/wheel0/state" period_s: 2.0 },
     { topic: "hal/wheel1/state" period_s: 2.0 },
-    { topic: "hal/wheel2/state" period_s: 2.0 }
+    { topic: "hal/wheel2/state" period_s: 2.0 },
+    { topic: "hal/mtq_x/state" period_s: 2.0 },
+    { topic: "hal/mtq_y/state" period_s: 2.0 },
+    { topic: "hal/mtq_z/state" period_s: 2.0 },
+    { topic: "hal/mag0/sample" period_s: 2.0 }
   ]
   segment_bytes: 512
   contact { period_s: 30 duration_s: 10 }   # a 10 s pass every 30 s
