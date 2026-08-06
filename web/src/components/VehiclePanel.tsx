@@ -86,15 +86,22 @@ export function VehiclePanel({ vehicle, blob }: Props) {
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
     camera.position.set(3.4, 2.2, 3.4);
     camera.lookAt(0, 0, 0);
-    scene.add(new THREE.AmbientLight(0x8899aa, 1.1));
-    const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+    scene.add(new THREE.AmbientLight(0x334455, 0.5));
+    const sun = new THREE.DirectionalLight(0xfff2dd, 2.8);
     sun.position.set(6, 3, 2);
     scene.add(sun);
 
     // ------------------------------------------------------------ Earth --
+    const earthTexture = new THREE.TextureLoader().load('/earth.jpg');
+    earthTexture.colorSpace = THREE.SRGBColorSpace;
     const earth = new THREE.Mesh(
-      new THREE.SphereGeometry(EARTH_R, 48, 32),
-      new THREE.MeshStandardMaterial({ color: 0x2266aa, roughness: 0.7, metalness: 0.1 }),
+      new THREE.SphereGeometry(EARTH_R, 64, 48),
+      new THREE.MeshStandardMaterial({
+        map: earthTexture,
+        color: 0xffffff,
+        roughness: 1.0,
+        metalness: 0.0,
+      }),
     );
     scene.add(earth);
     const atmosphere = new THREE.Mesh(
@@ -270,6 +277,18 @@ export function VehiclePanel({ vehicle, blob }: Props) {
       positions.setXYZ(0, satWorld.x, satWorld.y, satWorld.z);
       positions.setXYZ(1, 0, 0, 0);
       positions.needsUpdate = true;
+
+      // The Earth turns beneath the orbit (scene-scaled, like the rest).
+      earth.rotation.y += dt * 0.015;
+
+      // Chase camera: ride just outside the satellite, Earth in frame.
+      const outward = satWorld.clone().normalize();
+      const chase = satWorld
+        .clone()
+        .add(outward.multiplyScalar(0.95))
+        .add(new THREE.Vector3(0, 0.38, 0));
+      camera.position.lerp(chase, 0.06);
+      camera.lookAt(satWorld.clone().multiplyScalar(0.45));
 
       // Wheel spin from downlinked rates.
       for (const w of wheels) {
